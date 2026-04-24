@@ -1,0 +1,39 @@
+{
+  "metadata": {
+    "topic": "清末衙门末代刽子手的一生",
+    "project_name": "清末衙门末代刽子手的一生",
+    "era": "清朝末年（1890年 - 1911年）"
+  },
+  "master_design": {
+    "full_narration": "今天你要体验的人生副本是，清末衙门末代刽子手的一生。[CUT_0001] 十四岁你拜师，[CUT_0002] 每天对着几百个冬瓜挥刀。[CUT_0003] 师傅说这里不是刑场，[CUT_0004] 是明码标价的集市。[CUT_0005] 十八岁你第一次主刀，[CUT_0006] 家属塞来三两碎银。[CUT_0007] 你一刀下去，[CUT_0008] 故意留着喉管一层皮不断。[CUT_0009] 这叫全尸刀，[CUT_0010] 家属得再掏五两找缝尸匠，[CUT_0011] 你从中抽成二两。[CUT_0012] 你发现人命的残缺程度，[CUT_0013] 就是你积累筹码的速度。[CUT_0014] 二十五岁你成为大狱首刀，[CUT_0015] 建立了自己的灰产规则。[CUT_0016] 痛快死收十两，[CUT_0017] 钝刀折磨收二十两免痛费。[CUT_0018] 每一滴人血都被蘸成馒头，[CUT_0019] 五两银子一个卖给痨病鬼。[CUT_0020] 你把三成利给牢头，[CUT_0021] 四成送给知府。[CUT_0022] 至于刀下是死囚还是书生，[CUT_0023] 你从不关心。[CUT_0024] 三十五岁你收了乱党家属三千两，[CUT_0025] 转身却因为知府给的五千两，[CUT_0026] 毫不犹豫剁掉对方的头。[CUT_0027] 权力的钱能保命，[CUT_0028] 死人的家属不敢报官。[CUT_0029] 你坐拥五万两身家，[CUT_0030] 宅妾成群。[CUT_0031] 1905年朝廷废除斩刑，[CUT_0032] 你的绝世刀法瞬间归零。[CUT_0033] 宣统三年新军入城，[CUT_0034] 以清廷鹰犬之名抄了你的家。[CUT_0035] 你被押上自己熟悉的法场，[CUT_0036] 面对一排冰冷的步枪。[CUT_0037] 你想花十两求个全尸，[CUT_0038] 却发现新兵不收银票。[CUT_0039] 子弹从来不懂得留皮。[CUT_0040]",
+    "character_anchors": {
+      "child": "Cyanide and Happiness style, flat illustration, simple line art, minimalist character design, bold outlines, flat vibrant colors, pure 2D flat aesthetic, absolutely no 3D rendering, young/poor version, wearing ragged Qing dynasty servant clothes, holding a wooden practice sword, character design sheet, triple view (front, side, back), simple solid white background.",
+      "middle": "Cyanide and Happiness style, flat illustration, simple line art, minimalist character design, bold outlines, flat vibrant colors, pure 2D flat aesthetic, absolutely no 3D rendering, mature/successful version, wearing official executioner's red headscarf and leather apron, holding a large cleaver with blood stains, character design sheet, triple view (front, side, back), simple solid white background.",
+      "old": "Cyanide and Happiness style, flat illustration, simple line art, minimalist character design, bold outlines, flat vibrant colors, pure 2D flat aesthetic, absolutely no 3D rendering, older/boss version, wearing luxurious silk robes, holding a long tobacco pipe, slightly fat belly, character design sheet, triple view (front, side, back), simple solid white background."
+    },
+    "stage_map": [
+      {
+        "stage": "child",
+        "start_shot": 1,
+        "end_shot": 13
+      },
+      {
+        "stage": "middle",
+        "start_shot": 14,
+        "end_shot": 30
+      },
+      {
+        "stage": "elderly",
+        "start_shot": 31,
+        "end_shot": 40
+      }
+    ],
+    "physical_char_anchors": {
+      "youth": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_youth\\triple_view.png",
+      "middle": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png"
+    },
+    "detected_life_stages": [
+      "youth"
+    ]
+  }
+}

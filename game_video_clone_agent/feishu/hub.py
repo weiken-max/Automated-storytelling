@@ -27,6 +27,24 @@ PID_FILE = BASE_DIR / "feishu" / "hub.pid"
 PENDING_RESTART_FILE = BASE_DIR / "feishu" / "pending_restart_open_id.json"
 LAST_ERROR_CTX_FILE = BASE_DIR / "feishu" / "last_error_context.json"
 
+def preflight_story_ready(expected_topic: str = ""):
+    """生产前置校验：确保剧本存在且与当前主题一致。"""
+    if not FULL_STORY_V6_PATH.exists():
+        return False, f"前置缺失：未找到剧本文件 {FULL_STORY_V6_PATH}"
+    try:
+        data = json.loads(FULL_STORY_V6_PATH.read_text(encoding="utf-8"))
+    except Exception as e:
+        return False, f"前置缺失：剧本文件不可读 ({e})"
+
+    story_topic = (data.get("metadata", {}) or {}).get("topic", "")
+    if expected_topic and story_topic and story_topic != expected_topic:
+        return False, f"前置冲突：当前项目是【{expected_topic}】，但剧本是【{story_topic}】"
+
+    narration = (data.get("master_design", {}) or {}).get("full_narration", "")
+    if not narration:
+        return False, "前置缺失：剧本中没有 full_narration"
+    return True, "ok"
+
 def write_pid():
     with open(PID_FILE, "w") as f:
         f.write(str(os.getpid()))
@@ -201,6 +219,11 @@ def run_project_pipeline(topic: str, receive_id: str):
     """
     try:
         clear_last_error_context()
+        ok, reason = preflight_story_ready(topic)
+        if not ok:
+            raise RuntimeError(
+                f"{reason}\n请先点击「重写剧本 + 全部重画」或重新生成定妆照后再开始生产。"
+            )
         msg1 = f"🚀 收到开工指令，正在全面生产 \n主题: 【{topic}】\n这大约需要 20 分钟左右，请您耐心等待..."
         mgr.send_text(receive_id, "open_id", msg1)
         add_to_history(receive_id, "assistant", msg1)
@@ -372,7 +395,12 @@ def run_visual_setup(topic: str, receive_id: str, regen_stage: str = None):
         except: pass
 
         if regen_stage == "__all__":
-            msg_pre = "🎨 保留剧本，正在重画全部阶段定妆照，约 1-2 分钟..."
+            if not FULL_STORY_V6_PATH.exists():
+                print("  -> [HUB] 检测到 __all__ 但本地无剧本，自动回退为全新生成。")
+                regen_stage = None
+                msg_pre = "⚠️ 未检测到可复用剧本，已自动切换为【重写剧本 + 全部重画】..."
+            else:
+                msg_pre = "🎨 保留剧本，正在重画全部阶段定妆照，约 1-2 分钟..."
         elif regen_stage:
             msg_pre = f"🧠 正在为您重新绘制【{regen_stage}】阶段的形象，请稍候..."
         else:
@@ -628,7 +656,12 @@ def do_card_action(data: P2CardActionTrigger) -> P2CardActionTriggerResponse:
             curr_state = state.get_current_state()
             if curr_state["status"] not in ["WAITING_CHARACTER_APPROVAL"]:
                 return P2CardActionTriggerResponse({"toast": {"type": "warning", "content": "任务已被分配，当前已处于生产中或任务已丢弃，请勿重复点击"}})
-            threading.Thread(target=run_project_pipeline, args=(topic, open_id)).start()
+            run_topic = curr_state.get("topic") or topic
+            ok, reason = preflight_story_ready(run_topic)
+            if not ok:
+                mgr.send_text(open_id, "open_id", f"⚠️ 无法开始生产：{reason}")
+                return P2CardActionTriggerResponse({"toast": {"type": "error", "content": "前置素材不完整，请先重写剧本或重画"}})
+            threading.Thread(target=run_project_pipeline, args=(run_topic, open_id)).start()
             return P2CardActionTriggerResponse({"toast": {"type": "success", "content": "收到！开始爆肝生产！"}})
             
         elif action_type == "reject_visuals":

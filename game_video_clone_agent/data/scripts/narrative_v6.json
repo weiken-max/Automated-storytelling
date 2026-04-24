@@ -1,0 +1,294 @@
+{
+  "metadata": {
+    "topic": "清末衙门末代刽子手的一生",
+    "project_name": "清末衙门末代刽子手的一生",
+    "era": "清朝末年（1890年 - 1911年）"
+  },
+  "director_chapters": [
+    {
+      "chapter_id": 1,
+      "shots": [
+        {
+          "shot_id": "0001",
+          "narration": "今天你要体验的人生副本是，清末衙门末代刽子手的一生。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold outlines, cel-shaded. Man, half-shaved head, long braided queue, facial scars, red vest, dark trousers, holding broadsword. Standing in moody traditional Chinese yamen courtyard. Stick figure limbs, round bean head. Flat colors.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0002",
+          "narration": "十四岁你拜师，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold outlines, cel-shaded. Man, half-shaved head, braided queue, facial scars, red vest, holding broadsword. Bowing to blurry old master NPC. Training courtyard, warm sunset lighting. Stick figure limbs, round bean head. Flat colors.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0003",
+          "narration": "每天对着几百个冬瓜挥刀。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, middle-aged man with scarred face, braid, red vest, stick limbs swinging broadsword at green winter melons. Cyanide and Happiness style, flat colors, bold outlines, bright daylight.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0004",
+          "narration": "师傅说这里不是刑场，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, scarred middle-aged man in red vest holding broadsword, facing blurry master NPC. Tense training yard. Cyanide and Happiness style, flat colors, bold outlines, dramatic shadows.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0005",
+          "narration": "是明码标价的集市。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold outlines, flat colors. Bright Chinese market stalls with price tags. Protagonist: middle-aged warrior, round bean head, scar, braided queue, red vest, large dao sword. Blurry NPCs. High angle. No 3D.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0006",
+          "narration": "十八岁你第一次主刀，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold outlines, flat colors. Dramatic low angle. Protagonist: middle-aged warrior, round bean head, scar, braided queue, red vest, aggressively swinging large dao sword. Tense action. No 3D.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0007",
+          "narration": "家属塞来三两碎银。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold black outlines, flat colors. Close-up. Blurry NPC hands passing silver pieces to protagonist (middle-aged man, shaved front, long braid, face scar, red sleeveless tunic, stick figure limbs). Dim lighting, moody execution ground background.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0008",
+          "narration": "你一刀下去，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold black outlines, flat colors. Dynamic low angle. Protagonist (middle-aged man, shaved front, long braid, face scar, red sleeveless tunic, stick figure limbs) forcefully swinging a large broadsword downward. Motion blur, intense action lighting.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0009",
+          "narration": "故意留着喉管一层皮不断。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold outlines, flat colors. Close-up. Protagonist (round bean head, braided hair, facial scar, red vest, stick limbs) holds broadsword precisely to a blurry NPC's neck. Tense lighting, detailed background. Flat 2D comic style, no 3D.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0010",
+          "narration": "这叫全尸刀，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold outlines, flat colors. Medium low angle. Protagonist (round bean head, braided hair, facial scar, red vest, stick limbs) stands confidently holding his broadsword. Blurry defeated NPC background. Dramatic rim lighting. Flat 2D comic style, no 3D.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0011",
+          "narration": "家属得再掏五两找缝尸匠，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold outlines, flat colors. Protagonist (scarred face, queue hair, red vest, stick limbs) showing five silver coins. Blurry mourning family and stitcher in background. Gloomy morgue, dim lighting.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0012",
+          "narration": "你从中抽成二两。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold outlines, flat colors. Protagonist (scarred face, queue hair, red vest, stick limbs) slyly pocketing two silver coins. Close-up, greedy smirk, dramatic side lighting, dark background.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0013",
+          "narration": "你发现人命的残缺程度，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold black outlines, flat colors. Protagonist in red vest, braided hair, facial scars, holding sword. Standing over blurry defeated enemies. Dark moody lighting, grim battlefield.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0014",
+          "narration": "就是你积累筹码的速度。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold black outlines, flat colors. Protagonist in red vest, braided hair, facial scars. Grasping glowing gold coins and chips. Blurry dark background, dramatic rim lighting.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0015",
+          "narration": "二十五岁你成为大狱首刀，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "A man with shaved front head, long braided ponytail, facial scars, red vest, baggy dark pants, holding a large curved sword. Standing in a dark dungeon. Low angle, dramatic rim lighting. High-quality 2D vector cartoon, bold black outlines, vibrant flat colors, cel-shading, stick figure limbs, round bean head. No 3D.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0016",
+          "narration": "建立了自己的灰产规则。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "A man with shaved front head, long braided ponytail, facial scars, red vest, baggy dark pants. Sitting as a boss at a desk in a dim back room counting coins. Blurry NPCs in background. Cinematic lighting. High-quality 2D vector cartoon, bold black outlines, vibrant flat colors, cel-shading, stick figure limbs, round bean head. No 3D.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0017",
+          "narration": "痛快死收十两，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold black outlines, Cyanide and Happiness style, stick limbs, round bean head. Bald protagonist, back braid, scar, stubble, red vest, holding curved broadsword. Demanding ten silver taels from blurry cowering NPC. Gleaming sword, low angle, dramatic shadows, flat colors.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0018",
+          "narration": "钝刀折磨收二十两免痛费。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold black outlines, Cyanide and Happiness style, stick limbs, round bean head. Bald protagonist, back braid, scar, stubble, red vest, holding jagged blunt sword. Demanding twenty silver taels from blurry terrified NPC. Close up, sinister smirk, dark lighting, flat colors.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0019",
+          "narration": "每一滴人血都被蘸成馒头，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold black outlines, flat colors, cel-shaded. Protagonist: bald round bean head, long braid, facial scars, dark eye bags, red vest, black baggy pants, stick figure limbs. Holding a blood-soaked steamed bun. Moody dark street, eerie red ambient lighting.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0020",
+          "narration": "五两银子一个卖给痨病鬼。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold black outlines, flat colors, cel-shaded. Protagonist: bald round head, long braid, scars, red vest, stick limbs. Handing a bloody steamed bun over a wooden table with silver coins. Blurry pale, sickly NPC in background. Shady market stall, dramatic shadows.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0021",
+          "narration": "你把三成利给牢头，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, flat comic style, bold black outlines. Protagonist (scarred face, red vest, braid, stick limbs) handing silver coins to a blurry jailer. Dim stone dungeon, cold dramatic lighting.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0022",
+          "narration": "四成送给知府。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, flat comic style, bold black outlines. Protagonist (scarred face, red vest, braid, stick limbs) offering a treasure chest to a blurry wealthy official. Luxurious ancient Chinese office, warm lantern glow.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0023",
+          "narration": "至于刀下是死囚还是书生，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "High-quality 2D vector cartoon, bold outlines, flat colors, soft cel-shading. Middle-aged man with facial scar, long braid, red vest, holding broadsword. Looking down at a blurry kneeling figure. Gloomy lighting, illustrated background. Flat 2D comic style, stick figure limbs, bean head. No 3D.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0024",
+          "narration": "你从不关心。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "High-quality 2D vector cartoon, bold outlines, flat colors, soft cel-shading. Close-up of middle-aged man, facial scar, dark eye bags, long braid. Cold, apathetic expression. Dramatic shadow lighting. Flat 2D comic style, bean head. No 3D.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0025",
+          "narration": "三十五岁你收了乱党家属三千两，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, flat comic style, bold outlines. Protagonist (middle-aged man, queue hair, facial scar, red vest, dark pants) secretly taking silver pouches from blurry, desperate NPCs. Dark alleyway, dim lighting, mysterious atmosphere. Stick limbs, round bean heads.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0026",
+          "narration": "转身却因为知府给的五千两，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, flat comic style, bold outlines. Protagonist (middle-aged man, queue hair, facial scar, red vest, dark pants) turning to accept a larger chest of gold from a blurry, wealthy official NPC. Opulent room, dramatic bright lighting, greedy atmosphere. Stick limbs, round bean heads.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0027",
+          "narration": "毫不犹豫剁掉对方的头。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold black outlines, flat colors. Protagonist (bean head, queue braid, red vest, stick limbs) violently swinging broadsword to behead a blurry NPC. Cartoon blood splash. Dynamic low angle, dark dramatic lighting.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0028",
+          "narration": "权力的钱能保命，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold black outlines, flat colors. Protagonist (bean head, queue braid, red vest, stick limbs) smirking, holding a glowing bag of gold coins. Blurry guards in background. Golden opulent lighting, wealthy atmosphere.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0029",
+          "narration": "死人的家属不敢报官。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "Trembling family huddled in a dim room crying over a covered body, terrified expressions. 2D vector cartoon, bold black outlines, flat colors, Cyanide and Happiness style, dramatic lighting.",
+          "has_protagonist": false
+        },
+        {
+          "shot_id": "0030",
+          "narration": "你坐拥五万两身家，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "[PROTAGONIST] middle-aged man, half-shaved head, long braid, facial scar, red vest, stick limbs, sitting proudly on massive piles of silver ingots. 2D vector cartoon, bold black outlines, flat colors, Cyanide and Happiness style, warm golden lighting.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0031",
+          "narration": "宅妾成群。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold black outlines, stick figure limbs, bean heads. Scarred man, Qing braided queue, red vest, dark pants, in lavish Chinese courtyard. Blurred concubines in background. Vibrant flat colors, soft cel-shading.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0032",
+          "narration": "1905年朝廷废除斩刑，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold black outlines, stick figure limbs, bean heads. Scarred man, Qing braided queue, red vest, dark pants, dropping large broadsword in shock. Imperial decree poster behind him. Dramatic sunset lighting, flat colors, soft cel-shading.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0033",
+          "narration": "你的绝世刀法瞬间归零。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "Protagonist, bean head, queue braid, facial scar, red vest, stick limbs. Dropping broadsword in shock, glowing energy fading away. Dark dramatic lighting. 2D vector cartoon, bold black outlines, flat colors, soft cel-shading, comic style.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0034",
+          "narration": "宣统三年新军入城，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "Protagonist, bean head, queue braid, facial scar, red vest, holding broadsword, foreground. Blurry marching soldiers in 1911 military uniforms, background. Traditional Chinese city gate. Overcast daylight. 2D vector cartoon, bold outlines, flat colors, cel-shading, comic style.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0035",
+          "narration": "以清廷鹰犬之名抄了你的家。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, flat comic style, bold outlines. Protagonist: middle-aged man, round bean head, shaved front, long braid, face scar, red vest, dark pants, stick limbs. Standing in ruined Chinese house. Blurry soldiers looting background. Low angle, dramatic lighting. No 3D.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0036",
+          "narration": "你被押上自己熟悉的法场，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, flat comic style, bold outlines. Protagonist: middle-aged man, round bean head, shaved front, long braid, face scar, red vest, dark pants, stick limbs. Hands bound, escorted to execution block. Blurry guards. Eye-level, gloomy overcast lighting. No 3D.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0037",
+          "narration": "面对一排冰冷的步枪。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold outlines, stick limbs, bean head. Protagonist (man, queue, scar, red vest, broadsword) facing blurry NPCs aiming rifles. Cold dramatic lighting, flat colors, cel-shaded.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0038",
+          "narration": "你想花十两求个全尸，",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, bold outlines, stick limbs, bean head. Protagonist (man, queue, scar, red vest, broadsword) offering silver taels. Grim expression, dark shadows, flat colors, cel-shaded.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0039",
+          "narration": "却发现新兵不收银票。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, thick black lines, flat colors. Protagonist (balding man, long braid, scar, red vest, stick limbs, bean head) offering Chinese banknotes. Blurry NPC soldier rejecting the money. Over-the-shoulder shot, military camp background, daylight, cinematic lighting.",
+          "has_protagonist": true
+        },
+        {
+          "shot_id": "0040",
+          "narration": "子弹从来不懂得留皮。",
+          "anchor_look": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png",
+          "visual_prompt": "2D vector cartoon, thick black lines, flat colors. Protagonist (balding man, long braid, scar, red vest, stick limbs, bean head) gripping broadsword. Bullets flying past, sparking on nearby wall. Medium shot, dramatic dynamic lighting, smoke, gritty atmosphere.",
+          "has_protagonist": true
+        }
+      ]
+    }
+  ]
+}

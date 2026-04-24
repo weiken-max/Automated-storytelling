@@ -1,0 +1,70 @@
+# =========================
+# 备份白名单（只保留需要备份的内容）
+# 用法（建议 rsync/robocopy 等工具配合）：
+# 1) 先排除全部
+# 2) 再按本文件保留条目
+# =========================
+
+# 仓库基础
+.git/
+.gitignore/
+README.md
+LICENSE
+
+# Python 项目核心
+**/*.py
+**/*.md
+**/*.txt
+**/*.json
+**/*.yaml
+**/*.yml
+**/*.toml
+**/*.ini
+**/*.cfg
+**/*.sh
+**/*.bat
+**/*.ps1
+
+# 依赖与构建配置
+requirements.txt
+requirements-*.txt
+pyproject.toml
+setup.py
+setup.cfg
+Pipfile
+Pipfile.lock
+
+# 核心目录（按你的项目）
+game_video_clone_agent/src/
+game_video_clone_agent/feishu/
+game_video_clone_agent/data/scripts/
+game_video_clone_agent/README.md
+
+# 明确不保留（即使命中上面的通配）
+!**/__pycache__/
+!**/*.pyc
+!**/*.pyo
+!**/*.pyd
+!**/*.db
+!**/*.sqlite
+!**/*.sqlite3
+!**/*.png
+!**/*.jpg
+!**/*.jpeg
+!**/*.webp
+!**/*.gif
+!**/*.bmp
+!**/*.tiff
+!**/*.svg
+!**/*.mp3
+!**/*.wav
+!**/*.aac
+!**/*.m4a
+!**/*.flac
+!**/*.ogg
+!**/*.mp4
+!**/*.mov
+!**/*.avi
+!**/*.mkv
+!**/*.webm
+!**/*.flv

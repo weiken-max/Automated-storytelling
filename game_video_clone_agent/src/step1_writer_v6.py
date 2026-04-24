@@ -18,6 +18,11 @@ from datetime import datetime
 from pathlib import Path
 from openai import OpenAI
 
+# ── Windows GBK 终端编码修复 ──
+if hasattr(sys.stdout, "buffer"):
+    from io import TextIOWrapper
+    sys.stdout = TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
 # ── 自动对齐项目根目录 ──
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
