@@ -1,0 +1,35 @@
+{
+  "metadata": {
+    "topic": "深圳初代流水线打工妹的一生",
+    "project_name": "深圳初代流水线打工妹的一生",
+    "era": "1992年-2024年（中国制造大爆发至产业转移期）"
+  },
+  "master_design": {
+    "full_narration": "今天你要体验的人生副本是，深圳初代流水线打工妹的一生。[CUT_0001] 1992年，你揣着借来的暂住证混进宝安电子厂。[CUT_0002] 每天14小时计件焊接，月薪320元。[CUT_0003] 你发现机器转得再快，也分不到蛋糕。[CUT_0004] 于是你花半个月工资买条软中华塞给主任。[CUT_0005] 换到了负责排班的线长位置。1998年，[CUT_0006] 你摸透了制造业底层灰产的分配逻辑。[CUT_0007] 你将15%的良品判定为废料，贱卖抽成。[CUT_0008] 为了凑齐小产权房首付，你把亲妹妹调岗。[CUT_0009] 只为那每月120元的毒害津贴。2008年，[CUT_0010] 你抄底五台二手注塑机，自立门户。你对大厂[CUT_0011] 准备两套账本，对下游只招九元时薪的散工。[CUT_0012] 你将利润压榨到八分钱，代价是车间里[CUT_0013] 被轧断的四根手指。你甩出80万现金私了，[CUT_0014] 将那几个人的人生彻底打包封口。2024年，[CUT_0015] 你坐拥深圳湾大平层，年流水过亿。但产业转移[CUT_0016] 让你签下抵押全副身家的对赌协议。早年吸入的[CUT_0017] 有毒气体反噬，确诊了重度肺纤维化。[CUT_0018] 你躺在日收2.5万的ICU，切开了喉咙。[CUT_0019] 维持呼吸的导管，正是你工厂违规生产的劣质货。[CUT_0020]",
+    "character_anchors": {
+      "child": "Cyanide and Happiness style, flat illustration, simple line art, minimalist character design, bold outlines, flat vibrant colors, pure 2D flat aesthetic, absolutely no 3D rendering, young/poor version, character design sheet, triple view (front, side, back), simple solid white background.",
+      "middle": "Cyanide and Happiness style, flat illustration, simple line art, minimalist character design, bold outlines, flat vibrant colors, pure 2D flat aesthetic, absolutely no 3D rendering, mature/successful version, character design sheet, triple view (front, side, back), simple solid white background.",
+      "old": "Cyanide and Happiness style, flat illustration, simple line art, minimalist character design, bold outlines, flat vibrant colors, pure 2D flat aesthetic, absolutely no 3D rendering, older/boss version, character design sheet, triple view (front, side, back), simple solid white background."
+    },
+    "stage_map": [
+      {
+        "stage": "child",
+        "start_shot": 1,
+        "end_shot": 5
+      },
+      {
+        "stage": "middle",
+        "start_shot": 6,
+        "end_shot": 14
+      },
+      {
+        "stage": "old",
+        "start_shot": 15,
+        "end_shot": 20
+      }
+    ],
+    "physical_char_anchors": {
+      "middle": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png"
+    }
+  }
+}

@@ -1,0 +1,198 @@
+"""
+🧠 模型与厂商预设库 (Model Presets Registry) — v3.0 三分离版
+=============================================================
+三个独立控制变量，分别管理 LLM / VLM / IMG 三类任务。
+更换厂商时只需修改对应的 ACTIVE_xxx_VENDOR 变量。
+"""
+
+# ================================================================
+#  🚩 三分离：LLM / VLM / IMG 各自独立选厂商
+# ================================================================
+ACTIVE_LLM_VENDOR = "gribo_text"          # ✅ 调头：使用 Gribo 转发 Qwen
+ACTIVE_VLM_VENDOR = "gribo_text"          # ✅ 保持 Gribo (gpt-4o-mini) 处理分镜
+ACTIVE_IMG_VENDOR = "gribo_img"          # ✅ 保持 Gribo (Gemini-3.1-Flash) 生图
+# 备选厂商（降级时才改）："doubao_v4" | "aliyun_dashscope"
+
+
+# ================================================================
+#  📚 厂商预设库
+# ================================================================
+VENDORS_PRESETS = {
+
+    # ----------------------------------------------------------
+    # 阿里云 DashScope（LLM + VLM 主力）
+    # ----------------------------------------------------------
+    "aliyun_dashscope": {
+        "vendor_name": "阿里云 DashScope",
+        "api_key": "sk-06dea8f56ba545b0b3e7466ff912d81a",
+        "app_secret": "",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "dashscope_base_http": "https://dashscope.aliyuncs.com/api/v1",
+        "models": {
+            "llm": "qwen-max-latest",
+            "vlm": "qwen-vl-max-latest",
+            "img": "qwen-image-2.0",
+        },
+        "extra_params": {}
+    },
+
+    # ----------------------------------------------------------
+    # 豆包 / 火山方舟（Doubao-Seedream-4.0 1K/2K/4K）
+    # ----------------------------------------------------------
+    "doubao_v4": {
+        "vendor_name": "豆包 (Seedream-4.0)",
+        "api_key": "348cb4e5-419f-4b9f-afc5-bac306ade4c8",
+        "app_secret": "",
+        "base_url": "https://ark.cn-beijing.volces.com",
+        "dashscope_base_http": "",
+        "models": {
+            "llm": "doubao-pro-32k",
+            "vlm": "",
+            "img": "doubao-seedream-4-0-250828",
+        },
+        "extra_params": {
+            "gen_endpoint": "/api/v3/images/generations",
+            "size": "1312x736", # 官方推荐的 1K 16:9 画幅
+            "watermark": False,
+            "stream": True, # 从文档看，工业级产线优先使用 stream=True 和 disabled 模式
+        }
+    },
+
+    # ----------------------------------------------------------
+    # 豆包 / 火山方舟（Doubao-Seedream-5.0 Endpoint版保留）
+    # ----------------------------------------------------------
+    "doubao": {
+        "vendor_name": "豆包 (火山方舟)",
+        "api_key": "348cb4e5-419f-4b9f-afc5-bac306ade4c8",
+        "app_secret": "",
+        "base_url": "https://ark.cn-beijing.volces.com",
+        "dashscope_base_http": "",
+        "models": {
+            "llm": "doubao-pro-32k",
+            "vlm": "",                          # 豆包暂无 VLM，留空
+            "img": "ep-m-20260401101830-6h6qd",
+        },
+        "extra_params": {
+            "gen_endpoint": "/api/v3/images/generations",
+            "size": "2k",
+            "watermark": True,
+            "stream": False,
+        }
+    },
+
+    # ----------------------------------------------------------
+    # 谷歌 Gemini (Nano Banana)
+    # ----------------------------------------------------------
+    "nano_banana": {
+        "vendor_name": "Google Gemini (Banana)",
+        "api_key": "AIzaSyCIZ4DlzKxaOCEJWge9iZUROjK1DDsqg78",
+        "app_secret": "",
+        "base_url": "https://generativelanguage.googleapis.com",
+        "dashscope_base_http": "",
+        "models": {
+            "llm": "gemini-1.5-pro",
+            "vlm": "gemini-1.5-pro",
+            "img": "nano-banana-pro-preview",
+        },
+        "extra_params": {
+            "gen_endpoint": "/v1beta/models/{model}:generateContent"
+        }
+    },
+
+    # ----------------------------------------------------------
+    # 星流 (LibLib / StarFlow)
+    # ----------------------------------------------------------
+    "starflow_liblib": {
+        "vendor_name": "星流 (LibLib API)",
+        "api_key": "J_uVJPk6t9LWrbvCD-HO2w",
+        "app_secret": "9jgyW2WEjWkxgZfnGChkjvoZY0C-IQnq",
+        "base_url": "https://openapi.liblibai.cloud",
+        "dashscope_base_http": "",
+        "models": {
+            "llm": "qwen-plus",
+            "vlm": "qwen-vl-max-latest",
+            "img": "starflow-ultra",
+        },
+        "extra_params": {
+            "template_uuid": "07e00af4fc464c7ab55ff906f8acf1b7",
+            "prompt_magic": 1,
+            "status_endpoint": "/api/generate/webui/status",
+            "gen_endpoint": "/api/generate/webui/img2img/ultra",
+        }
+    },
+
+    # ----------------------------------------------------------
+    # 📝 Gribo Text (VLM / LLM 专用)
+    # ----------------------------------------------------------
+    "gribo_text": {
+        "vendor_name": "Gribo Text (Qwen-Plus 转发版)",
+        "api_key": "sk-EftQFdYw7Tylk6Uy60KtRpPeHfV6oTie0E4g0WQj3sjUxBwg",
+        "base_url": "https://www.gribo.top/v1",
+        "models": {
+            "llm": "gemini-3.1-pro-preview",
+            "vlm": "gemini-3.1-pro-preview",
+        },
+        "extra_params": {
+            "protocol": "openai_compatible",
+        }
+    },
+
+    # ----------------------------------------------------------
+    # 🎨 Gribo Image (IMG 专用)
+    # ----------------------------------------------------------
+    "gribo_img": {
+        "vendor_name": "Gribo Image (Nano Banana 2)",
+        "api_key": "sk-h0VED7GBngKGkxepV9Jv71kTu3MTJUwgZbnSwHhrRqUMhseT",
+        "base_url": "https://www.gribo.top/v1",
+        "models": {
+            "img": "gemini-3.1-flash-image-preview",
+        },
+        "extra_params": {
+            "cooldown": 35,
+            "gen_endpoint": "/v1beta/models/{model}:generateContent",
+        }
+    },
+}
+
+
+
+# ================================================================
+# ⚡ 自动加载三分离配置（供其他模块引用）
+# ================================================================
+def _get_config(vendor_key: str, role: str) -> dict:
+    cfg = VENDORS_PRESETS.get(vendor_key)
+    if not cfg:
+        raise ValueError(f"未找到厂商预设: {vendor_key}（{role}）请检查 model_presets.py")
+    return cfg
+
+_llm_cfg  = _get_config(ACTIVE_LLM_VENDOR, "LLM")
+_vlm_cfg  = _get_config(ACTIVE_VLM_VENDOR, "VLM")
+_img_cfg  = _get_config(ACTIVE_IMG_VENDOR, "IMG")
+
+# ── LLM 相关 ──────────────────────────────────────────
+LLM_API_KEY          = _llm_cfg["api_key"]
+LLM_BASE_URL         = _llm_cfg["base_url"]
+LLM_DASHSCOPE_HTTP   = _llm_cfg.get("dashscope_base_http", "")
+MODEL_LLM            = _llm_cfg["models"]["llm"]
+
+# ── VLM 相关 ──────────────────────────────────────────
+VLM_API_KEY          = _vlm_cfg["api_key"]
+VLM_BASE_URL         = _vlm_cfg["base_url"]
+VLM_DASHSCOPE_HTTP   = _vlm_cfg.get("dashscope_base_http", "")
+VLM_COMPAT_URL       = _vlm_cfg["base_url"]   # OpenAI 兼容 URL
+MODEL_VLM            = _vlm_cfg["models"]["vlm"]
+
+# ── IMG 相关 ──────────────────────────────────────────
+IMG_API_KEY          = _img_cfg["api_key"]
+IMG_BASE_URL         = _img_cfg["base_url"]
+IMG_DASHSCOPE_HTTP   = _img_cfg.get("dashscope_base_http", "")
+MODEL_IMG            = _img_cfg["models"]["img"]
+IMG_EXTRA_PARAMS     = _img_cfg.get("extra_params", {})
+
+# ── 向后兼容别名（让旧代码不报错）──────────────────────
+API_KEY              = IMG_API_KEY       # 旧代码里 API_KEY 默认指生图厂商
+APP_SECRET           = _img_cfg.get("app_secret", "")
+BASE_URL             = IMG_BASE_URL
+DASHSCOPE_BASE_HTTP  = IMG_DASHSCOPE_HTTP
+EXTRA_PARAMS         = IMG_EXTRA_PARAMS
+MODELS               = _img_cfg["models"]

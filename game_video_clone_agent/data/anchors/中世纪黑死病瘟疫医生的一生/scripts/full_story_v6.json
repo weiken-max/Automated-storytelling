@@ -1,0 +1,38 @@
+{
+  "metadata": {
+    "topic": "中世纪黑死病瘟疫医生的一生",
+    "project_name": "中世纪黑死病瘟疫医生的一生",
+    "era": "14世纪中叶（黑死病肆虐时期的欧洲）"
+  },
+  "master_design": {
+    "full_narration": "今天你要体验的人生副本是，中世纪黑死病瘟疫医生的一生。[CUT_0001]1348年，你背负三百金币的高利贷，[CUT_0002]接下市政厅没人敢碰的死亡契约。[CUT_0003]套上浸蜡大衣，戴上塞满香料的鸟嘴面具。[CUT_0004]你拿到每月十五金币底薪和初级判定权。[CUT_0005]你很快参透了这里的第一条潜规则。[CUT_0006]面具不是挡瘴气的，而是隔绝人性的。[CUT_0007]你不再费心医治，开始兜售健康证明。[CUT_0008]富商感染，只要支付五十金币的诊费，[CUT_0009]你就在他的羊皮纸上写下偶感风寒。[CUT_0010]交不出五个铜币保护费的健康平民，[CUT_0011]你用手杖在他们门上画个白十字。[CUT_0012]他们立刻被强行拉去高死亡率的隔离岛。[CUT_0013]你熟练掌握了临终代笔的绝对权力。[CUT_0014]作为遗嘱执行人划走三成的绝嗣财产。[CUT_0015]三年过去，你用两千金币买通卫生法庭。[CUT_0016]脱离一线跃升为共和国首席隔离官。[CUT_0017]你搬进宽敞执政厅操盘这场灾难灰产。[CUT_0018]你与大贵族结成同盟，将防疫权武器化。[CUT_0019]以清除疫源为由焚毁政敌五座丝绸仓库。[CUT_0020]随后以一成的极低价格兼并优质地皮。[CUT_0021]你将三千名贫民定性为高风险驱逐出城。[CUT_0022]实质是为贵族腾出庄园扩建的净土。[CUT_0023]作为交换你拿到城中香料贸易的干股。[CUT_0024]个人财富因此迅速膨胀至五万金币。[CUT_0025]道德早被典当，只剩冰冷精准的利益算计。[CUT_0026]第十年瘟疫退去，你稳稳站在财富巅峰。[CUT_0027]但系统需要替罪羊平息民愤填补国库。[CUT_0028]在市政厅晚宴上你因喉咙发干咳嗽一声。[CUT_0029]曾与你分赃的贵族瞬间默契地拉开距离。[CUT_0030]他们最高效率启动你亲自起草的隔离法。[CUT_0031]你的豪华宅邸被他们连夜焊死封条。[CUT_0032]大门上钉着你曾经挥舞的鸟嘴面具。[CUT_0033]你没有感染黑死病，却被死死锁在屋里。[CUT_0034]困在自己亲手打造的权力闭环里。[CUT_0035]最终你抱着五万金币的沉重账本，[CUT_0036]在买不到一口清水的牢笼中活活渴死。[CUT_0037]",
+    "character_anchors": {
+      "child": "Cyanide and Happiness style, flat illustration, simple line art, minimalist character design, bold outlines, flat vibrant colors, pure 2D flat aesthetic, absolutely no 3D rendering, young/poor version, poor medieval barber wearing shabby clothes holding basic scissors, character design sheet, triple view (front, side, back), simple solid white background.",
+      "middle": "Cyanide and Happiness style, flat illustration, simple line art, minimalist character design, bold outlines, flat vibrant colors, pure 2D flat aesthetic, absolutely no 3D rendering, mature/successful version, plague doctor wearing wax coated leather coat and bird beak mask holding a wooden cane, character design sheet, triple view (front, side, back), simple solid white background.",
+      "old": "Cyanide and Happiness style, flat illustration, simple line art, minimalist character design, bold outlines, flat vibrant colors, pure 2D flat aesthetic, absolutely no 3D rendering, older/boss version, wealthy medieval official in luxurious robes clutching a thick gold ledger, sweating, character design sheet, triple view (front, side, back), simple solid white background."
+    },
+    "stage_map": [
+      {
+        "stage": "child",
+        "start_shot": 1,
+        "end_shot": 15
+      },
+      {
+        "stage": "middle",
+        "start_shot": 16,
+        "end_shot": 26
+      },
+      {
+        "stage": "elderly",
+        "start_shot": 27,
+        "end_shot": 37
+      }
+    ],
+    "physical_char_anchors": {
+      "middle": "C:\\Users\\libohang\\Desktop\\Automated storytelling\\game_video_clone_agent\\data\\refs\\protagonist_middle\\triple_view.png"
+    },
+    "detected_life_stages": [
+      "middle"
+    ]
+  }
+}
