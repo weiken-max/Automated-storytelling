@@ -162,12 +162,27 @@ def crop_and_save_shots(grid_path: Path, shots_metadata: list):
 #  🎙️ 语音生成逻辑
 # ================================================================
 
+def _sanitize_for_tts(raw_text: str) -> str:
+    """
+    [TTS 入参清洗] 剥除 [CUT_XXXX] 等导演级控制标签与多余空白。
+
+    背景：旁白文本里残留 [CUT_0001] 这种标签会让 Edge TTS 在该位置出现
+    明显机械停顿，甚至触发接口拒绝导致整段音频失败缺失（直接拖累下游
+    时间轴）。本函数是 Step2 的最后一道清洗闸。
+    """
+    if not raw_text:
+        return ""
+    text = re.sub(r"\[CUT_\d+\]", "", raw_text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
 async def _generate_single_audio(shot, audio_dir):
     """单体分镜原子配音任务"""
     try:
         import edge_tts
         sid = shot['shot_id']
-        clean_text = shot.get('narration', '').strip()
+        clean_text = _sanitize_for_tts(shot.get('narration', ''))
         if not clean_text:
             return
             

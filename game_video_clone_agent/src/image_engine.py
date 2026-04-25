@@ -448,8 +448,21 @@ def generate_grid_image(batch_metadata: list, output_path: Path) -> bool:
 
         if is_protagonist_here:
             has_any_protagonist = True
-            # 获取主角当前的人生阶段，若无则默认使用 middle
-            stage = s.get("protagonist_stage", "middle")
+            # 🧪 V8.3 [Phase2 修复] 取消"无字段就静默回退 middle"的隐患。
+            # 优先级：1) shot 自带 protagonist_stage  2) 反推自 anchor_look 路径  3) middle 兜底 + 显式告警
+            stage = s.get("protagonist_stage")
+            if not stage:
+                a_look_str = str(s.get("anchor_look") or "")
+                for known_stage in ("child", "youth", "middle", "elderly"):
+                    if f"protagonist_{known_stage}" in a_look_str:
+                        stage = known_stage
+                        break
+            if not stage:
+                stage = "middle"
+                print(
+                    f"      ⚠️ [Stage] shot {s.get('shot_id')} 无法识别人生阶段，"
+                    "回退 middle（请检查 step1 是否正确写入 protagonist_stage）。"
+                )
             batch_tags.add(stage)
         
         # 配角与其他标签仍按原逻辑（可选）

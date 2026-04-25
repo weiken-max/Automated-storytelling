@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -60,6 +61,41 @@ def render_atomic_shot(sid, img_file, audio_file, out_file):
         print(f"  ⚠️ Shot {sid} 渲染物理失败: {e}")
         return False
 
+def estimate_silent_duration(narration: str, min_seconds: float = 2.0) -> float:
+    """
+    根据旁白字数估算应有的镜头时长（剥除 [CUT_XXXX] 标签后按 ~5 字/秒折算）。
+    用于：当真实 TTS 音频缺失时，生成等长静音占位以保全总时长不缩水。
+    """
+    if not narration:
+        return min_seconds
+    text = re.sub(r"\[CUT_\d+\]", "", narration).strip()
+    if not text:
+        return min_seconds
+    return max(min_seconds, len(text) / 5.0)
+
+
+def generate_silent_mp3(out_path: Path, duration: float) -> bool:
+    """
+    使用 ffmpeg 生成指定时长的静音 mp3（采样率 44100 / 双声道 / libmp3lame），
+    与 Step2 的 Edge TTS 输出格式保持一致，确保后续 -c copy 合拢不报错。
+    """
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "lavfi",
+        "-i", "anullsrc=channel_layout=stereo:sample_rate=44100",
+        "-t", f"{duration:.3f}",
+        "-c:a", "libmp3lame",
+        "-b:a", "192k",
+        str(out_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"  ⚠️ 静音 mp3 生成失败: {result.stderr[:300]}")
+        return False
+    return out_path.exists() and out_path.stat().st_size > 0
+
+
 def render_atomic_shot_fallback(sid, audio_file, out_file):
     """
     [原子化渲染：黑场保全模式]：如果图像缺失，采用黑屏进行物理占位以保全世界时间轴。
@@ -118,17 +154,27 @@ def main():
             print(f"  ⏩ Shot {sid} 已同步物理跳过 (Cache Hit)")
             shot_mp4s.append(str(out_file))
             continue
-            
+
+        # 🔇 音频缺失保全：不再静默跳过；改为按旁白字数估算时长生成静音占位，
+        #    避免 Step2 偶发 TTS 失败导致最终视频整段缩水。
+        effective_audio = audio_file
         if not audio_file.exists():
-            print(f"  ❌ Shot {sid} 音频彻底缺失，无法保全时间轴，跳过。")
-            continue
-            
+            est_duration = estimate_silent_duration(s.get("narration", ""))
+            silent_audio = CACHE_DIR / f"silent_{id_str}.mp3"
+            print(
+                f"  ⚠️ Shot {sid} 音频缺失，启用静音占位 ({est_duration:.1f}s) 以保全时间轴。"
+            )
+            if not generate_silent_mp3(silent_audio, est_duration):
+                print(f"  ❌ Shot {sid} 静音占位生成失败，本镜放弃（请重跑 Step2 补齐音频）。")
+                continue
+            effective_audio = silent_audio
+
         if not img_file.exists():
             print(f"  ⚠️ Shot {sid} 连带图像缺失，强制启用黑场占位帧以保全时间同步！")
-            success = render_atomic_shot_fallback(sid, audio_file, out_file)
+            success = render_atomic_shot_fallback(sid, effective_audio, out_file)
         else:
-            success = render_atomic_shot(sid, img_file, audio_file, out_file)
-            
+            success = render_atomic_shot(sid, img_file, effective_audio, out_file)
+
         if success:
             shot_mp4s.append(str(out_file))
 

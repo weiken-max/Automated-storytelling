@@ -207,18 +207,94 @@ def call_vlm_visual_batch(chunk_shots: list, era: str, anchor_prompt: str, ancho
         f"最后原因: {last_reason}"
     )
 
-def get_stage_anchor(shot_id: int, master_plan: dict):
-    """根据分镜 ID 物理对位生命阶段，并返回物理图片路径"""
-    physical_anchors = master_plan.get("physical_char_anchors", {})
-    stage_map = master_plan.get("stage_map", [])
-    
-    current_stage = "middle"
+def _normalize_stage_map(stage_map: list, total_shots: int) -> list:
+    """
+    [V8.3 防短视频规约器] 强制让 stage_map 覆盖 [1, total_shots] 全量分镜。
+
+    背景：LLM 经常把示例里的 1-20 范围照搬过来用在 80 镜剧本上，导致 21-80
+    全部命中默认兜底 → 全部回退 middle → 幼年/老年定妆照根本没机会被引用。
+    本函数对 LLM 给的 stage_map 做四件事：
+      1. 起点强制压到 1；
+      2. 末点强制扩到 total_shots；
+      3. 解决前后段重叠（后段被吞噬则丢弃）；
+      4. 填补段间缺口（把前段 end 拉到后段 start - 1）。
+    """
+    if total_shots <= 0:
+        return []
+
+    if not stage_map:
+        return [{"stage": "middle", "start_shot": 1, "end_shot": total_shots}]
+
+    valid = []
+    for entry in stage_map:
+        if not isinstance(entry, dict):
+            continue
+        stage = entry.get("stage")
+        start = entry.get("start_shot")
+        end = entry.get("end_shot")
+        if (
+            isinstance(stage, str)
+            and isinstance(start, int)
+            and isinstance(end, int)
+            and start <= end
+        ):
+            valid.append({"stage": stage, "start_shot": start, "end_shot": end})
+
+    if not valid:
+        return [{"stage": "middle", "start_shot": 1, "end_shot": total_shots}]
+
+    valid.sort(key=lambda x: x["start_shot"])
+    valid[0]["start_shot"] = 1
+
+    repaired = [valid[0]]
+    for entry in valid[1:]:
+        prev = repaired[-1]
+        if entry["start_shot"] <= prev["end_shot"]:
+            entry["start_shot"] = prev["end_shot"] + 1
+            if entry["start_shot"] > entry["end_shot"]:
+                continue
+        elif entry["start_shot"] > prev["end_shot"] + 1:
+            prev["end_shot"] = entry["start_shot"] - 1
+        repaired.append(entry)
+
+    repaired[-1]["end_shot"] = max(repaired[-1]["end_shot"], total_shots)
+    return repaired
+
+
+def resolve_shot_stage(shot_id: int, stage_map: list, physical_anchors: dict):
+    """
+    [V8.3] 给定 shot_id，返回 (stage_name, anchor_path) 二元组。
+    - stage_map 必须已经过 _normalize_stage_map 处理；
+    - anchor_path 缺失时按 middle 兜底，并打印明确告警，便于排查。
+    """
+    current_stage = None
     for entry in stage_map:
         if entry["start_shot"] <= shot_id <= entry["end_shot"]:
             current_stage = entry["stage"]
             break
-    # 🧪 V7.2 返回物理文件路径，确保生图引擎能“找得着”图
-    return physical_anchors.get(current_stage, physical_anchors.get("middle", ""))
+    if current_stage is None and stage_map:
+        current_stage = stage_map[-1]["stage"]
+    if current_stage is None:
+        current_stage = "middle"
+
+    anchor_path = physical_anchors.get(current_stage)
+    if not anchor_path:
+        fallback = physical_anchors.get("middle", "")
+        if anchor_path != fallback and current_stage != "middle":
+            print(
+                f"  ⚠️ [Stage] shot {shot_id} 阶段='{current_stage}' 缺定妆图，回退 middle。"
+            )
+        anchor_path = fallback
+
+    return current_stage, anchor_path
+
+
+def get_stage_anchor(shot_id: int, master_plan: dict):
+    """[向后兼容] 老接口：仅返回物理路径（内部已切换到 resolve_shot_stage）。"""
+    physical_anchors = master_plan.get("physical_char_anchors", {})
+    stage_map = master_plan.get("stage_map", [])
+    _, anchor = resolve_shot_stage(shot_id, stage_map, physical_anchors)
+    return anchor
 
 def validate_stage_map(stage_map: list):
     """轻量校验 stage_map 的结构与区间重叠，仅告警不阻断。"""
@@ -305,16 +381,32 @@ def main():
             continue
         clean_parts.append(text)
     
+    # 🧪 V8.3 [Phase2 修复] 在装配 shot 前先归一化 stage_map，避免 LLM 给出
+    #          的 stage_map 只覆盖部分镜次（典型表现：21~80 镜全部回退 middle）。
+    physical_anchors = master_plan.get("physical_char_anchors", {})
+    raw_stage_map = master_plan.get("stage_map", [])
+    norm_stage_map = _normalize_stage_map(raw_stage_map, total_shots=len(clean_parts))
+    print(
+        "  ├─ [StageMap 归一化] 输入="
+        f"{[(e.get('stage'), e.get('start_shot'), e.get('end_shot')) for e in raw_stage_map]} "
+        f"→ 输出={[(e['stage'], e['start_shot'], e['end_shot']) for e in norm_stage_map]}"
+    )
+
     all_shots = []
+    stage_distribution = {}
     for idx, part in enumerate(clean_parts):
         sid = idx + 1
+        stage_name, anchor_path = resolve_shot_stage(sid, norm_stage_map, physical_anchors)
         all_shots.append({
             "shot_id": f"{sid:04d}",
             "narration": part,
-            "anchor_look": get_stage_anchor(sid, master_plan)
+            "protagonist_stage": stage_name,
+            "anchor_look": anchor_path,
         })
+        stage_distribution[stage_name] = stage_distribution.get(stage_name, 0) + 1
 
     print(f"  ├─ 剧本语义降噪完成：已物理合并标签残留，当前共 {len(all_shots)} 镜。")
+    print(f"  ├─ [Phase2 阶段分布审计] {stage_distribution}")
 
     # 🧪 V14.1 工业审计：分镜数量合法性校验 (仅拦截 > 150 镜的膨胀异常)
     if len(all_shots) > 150:
