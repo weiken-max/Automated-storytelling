@@ -22,7 +22,7 @@ if load_dotenv:
 #  🚩 三分离：LLM / VLM / IMG 各自独立选厂商
 # ================================================================
 ACTIVE_LLM_VENDOR = "gribo_text"          # ✅ 调头：使用 Gribo 转发 Qwen
-ACTIVE_VLM_VENDOR = "gribo_text"          # ✅ 保持 Gribo (gpt-4o-mini) 处理分镜
+ACTIVE_VLM_VENDOR = "gribo_text"          # ✅ 保持 Gribo (Gemini-3.1-Flash) 处理分镜
 ACTIVE_IMG_VENDOR = "gribo_img"          # ✅ 保持 Gribo (Gemini-3.1-Flash) 生图
 # 备选厂商（降级时才改）："doubao_v4" | "aliyun_dashscope"
 
@@ -142,8 +142,8 @@ VENDORS_PRESETS = {
         "api_key": os.getenv("GRIBO_TEXT_API_KEY", ""),
         "base_url": "https://www.gribo.top/v1",
         "models": {
-            "llm": "gemini-3.1-pro-preview",
-            "vlm": "gemini-3.1-pro-preview",
+            "llm": "gemini-3.1-flash-lite-preview",
+            "vlm": "gemini-3.1-flash-lite-preview",
         },
         "extra_params": {
             "protocol": "openai_compatible",
