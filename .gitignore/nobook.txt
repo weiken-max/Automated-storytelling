@@ -61,3 +61,6 @@ game_video_clone_agent/data/archive/
 game_video_clone_agent/data/output/
 game_video_clone_agent/data/temp/
 game_video_clone_agent/data/cache/
+game_video_clone_agent/data/logs/
+game_video_clone_agent/data/scripts/line_timeline.json
+game_video_clone_agent/data/scripts/narrative_v6.json

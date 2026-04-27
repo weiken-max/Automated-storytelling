@@ -3,7 +3,62 @@
 .env.*
 !.env.example
 
+# IDE and system files
+.cursor/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
 # Python cache
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+
+# Runtime logs and temp files
+*.log
+*.tmp
+*.temp
+
+# Runtime databases and state
+*.db
+*.sqlite
+*.sqlite3
+feishu/state.db
+feishu/last_error_context.json
+feishu/temp_*.json
+
+# Runtime generated artifacts
+data/logs/
+data/scripts/line_timeline.json
+data/scripts/narrative_v6.json
+
+# Large generated assets
+data/anchors/
+data/archive/
+data/output/
+data/temp/
+data/cache/
+
+# Media artifacts
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.bmp
+*.tiff
+*.svg
+*.mp3
+*.wav
+*.aac
+*.m4a
+*.flac
+*.ogg
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.flv
