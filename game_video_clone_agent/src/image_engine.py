@@ -110,14 +110,42 @@ def _update_last_gen_time():
 # 1.5 宫格提示词包装器 (V5.0 Gemini 专供)
 # ================================================================
 
-def wrap_grid_prompt(batch_panels: list) -> str:
+def wrap_grid_prompt(batch_panels: list, layout_mode: str = "quad") -> str:
+    """根据容器策略包装提示词（single / vertical / quad）。"""
+    if layout_mode == "single":
+        panel = batch_panels[0] if batch_panels else {"image_prompt": "cinematic scene"}
+        return (
+            "[LAYOUT CONSTRAINT: SINGLE FRAME]\n"
+            "Generate ONE single cinematic frame only. No split panels, no collage.\n\n"
+            "[FRAME]\n"
+            f"- Main: {panel['image_prompt']}\n\n"
+            "[STYLE & COMPOSITION]\n"
+            "Cinematic composition, clean subject separation, consistent character appearance."
+        )
+
+    if layout_mode == "vertical":
+        if len(batch_panels) < 2:
+            while len(batch_panels) < 2:
+                batch_panels.append({"shot_id": "VOID", "image_prompt": "Empty white background, no content."})
+        return (
+            "[LAYOUT CONSTRAINT: MANDATORY 2-PANEL VERTICAL STACK]\n"
+            "You MUST divide the canvas into 2 EQUAL panels stacked vertically (Top and Bottom). "
+            "Use a thin white separator line. Do NOT generate side-by-side layout.\n\n"
+            "[PANEL INDEXING]\n"
+            f"- Top: {batch_panels[0]['image_prompt']}\n"
+            f"- Bottom: {batch_panels[1]['image_prompt']}\n\n"
+            "[STYLE & COMPOSITION]\n"
+            "Each panel is an independent cinematic shot with consistent character references."
+        )
+
+    # 默认四宫格（3/4 subshot 均用四宫格容器）
     if len(batch_panels) != 4:
         while len(batch_panels) < 4:
             batch_panels.append({"shot_id": "VOID", "image_prompt": "Empty white background, no content."})
 
-    template = (
+    return (
         "[LAYOUT CONSTRAINT: MANDATORY 2x2 GRID]\n"
-        "You MUST divide the 16:9 canvas into 4 EQUAL-SIZED RECTANGULAR PANELS strictly in 2 rows and 2 columns. "
+        "You MUST divide the canvas into 4 EQUAL-SIZED RECTANGULAR PANELS strictly in 2 rows and 2 columns. "
         "Use thin white gutter lines to separate the 4 panels. DO NOT create more or fewer than 4 panels.\n\n"
         "[PANEL INDEXING]\n"
         f"- Top-Left: {batch_panels[0]['image_prompt']}\n"
@@ -125,10 +153,9 @@ def wrap_grid_prompt(batch_panels: list) -> str:
         f"- Bottom-Left: {batch_panels[2]['image_prompt']}\n"
         f"- Bottom-Right: {batch_panels[3]['image_prompt']}\n\n"
         "[STYLE & COMPOSITION]\n"
-        "Each panel should be an independent 16:9 landscape cinematic shot. No collage, no overlapping. "
+        "Each panel should be an independent cinematic shot. No collage, no overlapping. "
         "Strictly follow the reference characters for each panel."
     )
-    return template
 
 
 # ================================================================
@@ -258,7 +285,7 @@ async def _generate_openai_images(prompt: str, image_refs: list = None, size: st
             model=MODEL_IMG,
             prompt=prompt[:4000],  # 防止prompt过长
             n=1,
-            size="1792x1024",  # 16:9最接近的尺寸
+            size=(size or "1024x768"),
             response_format="b64_json"
         )
         if resp.data and resp.data[0].b64_json:
@@ -299,11 +326,24 @@ async def _generate_gemini(prompt: str, image_refs: list = None, size: str = Non
         "Content-Type": "application/json"
     }
 
+    def _size_to_aspect(s: str) -> str:
+        try:
+            w_str, h_str = s.lower().replace("*", "x").split("x")
+            w, h = int(w_str), int(h_str)
+            if w * 3 == h * 2:
+                return "2:3"
+            if w * 3 == h * 4:
+                return "4:3"
+        except Exception:
+            pass
+        return "4:3"
+
+    aspect = _size_to_aspect(size or "1024x768")
     payload = {
         "contents": [{"parts": parts}],
         "generationConfig": {
             "responseModalities": ["TEXT", "IMAGE"],
-            "aspectRatio": "16:9"
+            "aspectRatio": aspect
         }
     }
 
@@ -370,17 +410,26 @@ async def generate_image(prompt: str,
     # 1. 如果传入的是物理路径列表 (V7.2+ 显式注入的 anchor_look)
     if image_refs:
         for ref_path in image_refs:
-            if isinstance(ref_path, str) and not ref_path.startswith("data:"):
-                p = Path(ref_path)
+            ref_str = str(ref_path or "").strip()
+            if not ref_str:
+                continue
+            if not ref_str.startswith("data:"):
+                p = Path(ref_str)
                 if p.exists():
                     b64 = _encode_and_resize(p)
-                    if b64: final_image_refs.append(b64)
-                    else: print(f"      ⚠️  [ImageEngine] 物理图编码失败: {p}")
-                else: 
-                    # 如果不是文件路径，可能是 base64 字符串本身或其他
-                    final_image_refs.append(ref_path)
+                    if b64:
+                        final_image_refs.append(b64)
+                    else:
+                        print(f"      ⚠️  [ImageEngine] 物理图编码失败: {p}")
+                else:
+                    # 允许调用方直接传 b64 串；但对看似文件路径却不存在的场景做显式告警。
+                    looks_like_path = any(sep in ref_str for sep in ("/", "\\", ":"))
+                    if looks_like_path:
+                        print(f"      ⚠️  [ImageEngine] 引用图路径不存在，已忽略: {ref_str}")
+                    else:
+                        final_image_refs.append(ref_str)
             else:
-                final_image_refs.append(ref_path)
+                final_image_refs.append(ref_str)
 
     # 2. 如果传入的是角色标签或场景标签 (旧版逻辑)
     if not final_image_refs and (tags or scenes):
@@ -427,8 +476,8 @@ async def generate_image(prompt: str,
 # ================================================================
 # 4. 高层包装器 (供 V6 同步调用)
 # ================================================================
-def generate_grid_image(batch_metadata: list, output_path: Path) -> bool:
-    """批量生成 2x2 宫格图并保存 (集成多阶段人生样张与主角出现判定)"""
+def generate_grid_image(batch_metadata: list, output_path: Path, layout_mode: str = "auto") -> bool:
+    """批量生成容器图并保存 (single / vertical / quad)。"""
     prompts_list = [s.get('visual_prompt', s.get('shot_summary', '')) for s in batch_metadata]
     
     # ── 🚨 V6.5 核心逻辑：智能搜集多阶段标签 ──
@@ -479,11 +528,32 @@ def generate_grid_image(batch_metadata: list, output_path: Path) -> bool:
         if a_look and Path(a_look).exists():
             batch_refs.add(a_look)
 
+    # 推导布局：1 -> single，2 -> vertical，3/4 -> quad
+    actual_layout = layout_mode
+    if actual_layout == "auto":
+        n = len(batch_metadata)
+        if n <= 1:
+            actual_layout = "single"
+        elif n == 2:
+            actual_layout = "vertical"
+        else:
+            actual_layout = "quad"
+
+    # 目标尺寸：直接向云端生图请求目标比例，不走 16:9 再裁。
+    requested_size = "1024x768"
+    if actual_layout == "vertical":
+        requested_size = "1024x1536"   # 2:3 @ 1K（上下切）
+    elif actual_layout == "quad":
+        requested_size = "2048x1536"   # 4:3 @ 2K
+
     # 包装提示词
     panels = [{"image_prompt": p} for p in prompts_list]
-    full_prompt = wrap_grid_prompt(panels)
+    full_prompt = wrap_grid_prompt(panels, layout_mode=actual_layout)
     
-    print(f"    🔍 [V7.3 Physical Binding] 需求：主角={has_any_protagonist} | 物理定妆={len(batch_refs)}张 | 阶段={batch_tags}")
+    print(
+        f"    🔍 [V7.3 Physical Binding] layout={actual_layout} | 主角={has_any_protagonist} | "
+        f"物理定妆={len(batch_refs)}张 | 阶段={batch_tags}"
+    )
 
     try:
         # ── 🚨 V6.6 asyncio 并发补丁 ──
@@ -491,7 +561,8 @@ def generate_grid_image(batch_metadata: list, output_path: Path) -> bool:
             full_prompt, 
             image_refs=list(batch_refs), # 🔒 注入物理路径列表
             tags=list(batch_tags), 
-            scenes=list(batch_scenes)
+            scenes=list(batch_scenes),
+            size=requested_size,
         )
         
         try:

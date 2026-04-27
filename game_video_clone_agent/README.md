@@ -1,49 +1,109 @@
-# 🎬 工业级电影叙事总线 V15.6 (黄金镜像版)
+# 🎬 Automated Storytelling Pipeline
 
-本系统已全面加固为 **“单点锚定 + 全量自愈”** 生产线。专为 6-7 分钟、追求角色人物永久一致性的高清短片设计。
-并已全面弃用容易在 Windows 11 下报错的 `wmic` 命令，改用 `psutil` 进行工业级的进程监控与清场。
+这是一个“剧情驱动自动讲故事视频生成”项目，不是素材混剪项目。
 
----
-
-## 🚀 极简操作流程 (必须按序)
-
-### 1. 构思项目 (Planner)
-运行 `python -m src.story_planner_v6` 或在飞书中点选卡片
-- **功能**：构思人物角色与 80 镜黄金剧本。
-- **核心变动 (DNA 写入)**：系统会自动先构思 **“中年版”** 形象并作为母版。
-
-### 2. 人物定容 (Ref Generator - 关键！)
-运行 `python -m src.ref_generator --topic [主题]` 或在飞书中审批定妆卡片
-- **智能阶段裁剪 (V15.6 新增)**：系统会根据剧情大纲的时间跨度，**自动判断**是否需要生成幼年或老年。如果剧本只聚焦中年，则只出中年图，不强制浪费算力，飞书卡片上也会友好提示并动态调整重画按钮。
-- **核心逻辑**：如果需要多阶段，系统会强制 **先生成中年定妆照**，再“盯着中年照片”生成幼年和老年。
-- **物理回写**：生成的图片会立刻实时备份到金库，并将物理路径写回 `full_story_v6.json` 的 `physical_char_anchors` 中，为下一步锁定一致性。
-- **飞书交互**：飞书定妆卡片支持 **“原地刷新单阶段重画”**（不再刷屏）和 **“保留剧本，重画全部人物”**。
-
-### 3. 初始化生产 (Step 1)
-运行 `python -m src.step1_writer_v6`
-- **⚠️ 核平清理**：启动即执行 **“全量物理闪抹”**。自动清空工作台下的图、音、剧本残片，确保新项目 100% 纯净。
-- **分镜审计**：自动拦截超过 150 镜的膨胀异常。
-
-### 4. 原子化生成 (Step 2)
-运行 `python -m src.step2_comic_generator_v6`
-- **功能**：由 VLM 盯着定妆基准图进行 2x2 宫格生图、剪裁与配音。已修复 Python 3.12 的 asyncio 兼容问题。
-- **存档**：每一张图、每一段音实时备份至金库。
-
-### 5. 破碎化合位 (Step 3)
-运行 `python -m src.step3_assembler_v6`
-- **功能**：分段碎压 + FFmpeg 瞬时无损拼接。
-- **结果**：极低内存占用，产出 `data/output/final_video.mp4` 并自动存入金库与百度网盘。
+当前主链路目标：
+- A/B 两阶段分镜（A 产结构，B 产提示词）
+- 主音轨连续化（DSP：trim + crossfade + loudness normalize）
+- Step3 主音轨驱动时间轴执行
+- 全链路统一 4:3
 
 ---
 
-## 🏛️ 项目金库 (The Vault)
-文件夹：`data/anchors/{项目名}/`
-- 这里是您真正的 **“永久资产库”**。
-- 即便您以后在 `data/` 下把素材全删了，金库里的原始剧本、高清原图、音轨和成片永远都在。
-- **定妆图实时入库**：当您在飞书收到定妆照审批卡片时，这些图片**已经**安全存在了金库中。
+## 🚀 运行流程（必须按序）
 
-## 🛡️ 工业准则
-- **时长锁定**：默认 1,800 汉字 / 80 分镜。
-- **记忆不丢**：飞书对话历史 (`CHAT_HISTORY`) 已接入 SQLite 持久化，重启 `hub.py` AI 导演也不会失忆。
-- **一致性锁死**：严禁在未生成中年定妆照前直接生分镜，否则人物会跑偏。
-- **清理逻辑**：Step 1 和 “重写剧本” 按钮具有破坏性，启动前请确保需要保留的素材已转移。
+### 1) 剧本规划（Planner）
+运行：
+- `python -m src.story_planner_v6`
+
+产物：
+- `data/scripts/full_story_v6.json`
+
+---
+
+### 2) 分镜结构 + 主音轨先行（Step1）
+运行：
+- `python -m src.step1_writer_v6`
+
+功能：
+- 先生成 `srt_like_timeline.json`（文案语义时间轴）
+- 基于语义段做 TTS，合成为 `master_voice.mp3`，并产出真实 `line_timeline.json`
+- A 阶段只产结构：`beat_id/subshot_count/subshot_id/role/continuity_lock`
+- B 阶段按 A 结构产 prompt，并执行门禁（数量/ID/长度/重复率/连续性/语义相关）
+
+核心产物：
+- `data/scripts/srt_like_timeline.json`
+- `data/audio/master_voice.mp3`
+- `data/scripts/line_timeline.json`
+- `data/scripts/narrative_v6.json`
+
+---
+
+### 3) 容器生图（Step2）
+运行：
+- `python -m src.step2_comic_generator_v6`
+
+功能：
+- 按 beat 强绑定容器策略生图（1/2/3-4 subshot）
+- 容器请求直接走目标比例（不再固定 16:9）
+- 分镜图统一归一到 4:3
+- 校验 Step1 的主音轨与时间线存在后继续执行
+
+核心产物：
+- `data/storyboards/*.png`（单镜 4:3）
+
+---
+
+### 4) 视频合成（Step3）
+运行：
+- `python -m src.step3_assembler_v6`
+
+功能：
+- 读取 `master_voice.mp3 + line_timeline.json`
+- 按主音轨时间轴切换镜头（仅告警，不改切点）
+- 生成 4:3 成片
+
+产物：
+- `data/output/narrative_v6_final_epic.mp4`
+
+---
+
+## 📐 尺寸与容器策略（冻结）
+
+- 最终成片：4:3
+- 1 subshot：单图（4:3 @ 1K）
+- 2 subshot：二宫格容器（2:3 @ 1K，上下切），切分后单镜仍归一为 4:3
+- 3/4 subshot：四宫格（4:3 @ 2K）
+
+---
+
+## 🧾 错误与日志
+
+统一错误模型字段：
+- `task_id`
+- `stage`
+- `beat_id`
+- `subshot_id`
+- `error_code`
+- `error_message`
+- `raw_response_snippet`
+
+日志目录：
+- `data/logs/`
+
+---
+
+## 📦 最小可运行目录（建议保留）
+
+- `src/`（核心代码）
+- `feishu/`（飞书交互与状态管理）
+- `data/scripts/`（运行时脚本与时间轴产物）
+- `data/storyboards/`（分镜帧产物目录，可清空但建议保留目录）
+- `data/audio/`（主音轨目录，可清空但建议保留目录）
+- `data/output/`（成片目录，可清空但建议保留目录）
+- `.env`（本地密钥配置，不提交到 git）
+- `requirements.txt` / 启动脚本（如 `STARTUP_SILENT.bat`）
+
+说明：
+- 本项目主链路为：`Step1(主音轨+时间轴) -> Step2(仅生图) -> Step3(主音轨驱动合成)`。
+- 历史日志、历史样片、迁移说明等文件不影响主链路运行，可按需清理。
