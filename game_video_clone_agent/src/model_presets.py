@@ -5,11 +5,24 @@
 更换厂商时只需修改对应的 ACTIVE_xxx_VENDOR 变量。
 """
 
+import os
+from pathlib import Path
+
+try:
+    from dotenv import load_dotenv
+except Exception:
+    load_dotenv = None
+
+if load_dotenv:
+    # 统一从项目根目录加载 .env，避免在不同入口脚本下读取失败
+    _env_path = Path(__file__).resolve().parent.parent / ".env"
+    load_dotenv(dotenv_path=_env_path)
+
 # ================================================================
 #  🚩 三分离：LLM / VLM / IMG 各自独立选厂商
 # ================================================================
 ACTIVE_LLM_VENDOR = "gribo_text"          # ✅ 调头：使用 Gribo 转发 Qwen
-ACTIVE_VLM_VENDOR = "gribo_text"          # ✅ 保持 Gribo (gpt-4o-mini) 处理分镜
+ACTIVE_VLM_VENDOR = "gribo_text"          # ✅ 保持 Gribo (Gemini-3.1-Flash) 处理分镜
 ACTIVE_IMG_VENDOR = "gribo_img"          # ✅ 保持 Gribo (Gemini-3.1-Flash) 生图
 # 备选厂商（降级时才改）："doubao_v4" | "aliyun_dashscope"
 
@@ -24,8 +37,8 @@ VENDORS_PRESETS = {
     # ----------------------------------------------------------
     "aliyun_dashscope": {
         "vendor_name": "阿里云 DashScope",
-        "api_key": "sk-06dea8f56ba545b0b3e7466ff912d81a",
-        "app_secret": "",
+        "api_key": os.getenv("ALIYUN_DASHSCOPE_API_KEY", ""),
+        "app_secret": os.getenv("ALIYUN_DASHSCOPE_APP_SECRET", ""),
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "dashscope_base_http": "https://dashscope.aliyuncs.com/api/v1",
         "models": {
@@ -41,8 +54,8 @@ VENDORS_PRESETS = {
     # ----------------------------------------------------------
     "doubao_v4": {
         "vendor_name": "豆包 (Seedream-4.0)",
-        "api_key": "348cb4e5-419f-4b9f-afc5-bac306ade4c8",
-        "app_secret": "",
+        "api_key": os.getenv("DOUBAO_V4_API_KEY", ""),
+        "app_secret": os.getenv("DOUBAO_V4_APP_SECRET", ""),
         "base_url": "https://ark.cn-beijing.volces.com",
         "dashscope_base_http": "",
         "models": {
@@ -63,8 +76,8 @@ VENDORS_PRESETS = {
     # ----------------------------------------------------------
     "doubao": {
         "vendor_name": "豆包 (火山方舟)",
-        "api_key": "348cb4e5-419f-4b9f-afc5-bac306ade4c8",
-        "app_secret": "",
+        "api_key": os.getenv("DOUBAO_API_KEY", ""),
+        "app_secret": os.getenv("DOUBAO_APP_SECRET", ""),
         "base_url": "https://ark.cn-beijing.volces.com",
         "dashscope_base_http": "",
         "models": {
@@ -85,8 +98,8 @@ VENDORS_PRESETS = {
     # ----------------------------------------------------------
     "nano_banana": {
         "vendor_name": "Google Gemini (Banana)",
-        "api_key": "AIzaSyCIZ4DlzKxaOCEJWge9iZUROjK1DDsqg78",
-        "app_secret": "",
+        "api_key": os.getenv("NANO_BANANA_API_KEY", ""),
+        "app_secret": os.getenv("NANO_BANANA_APP_SECRET", ""),
         "base_url": "https://generativelanguage.googleapis.com",
         "dashscope_base_http": "",
         "models": {
@@ -104,8 +117,8 @@ VENDORS_PRESETS = {
     # ----------------------------------------------------------
     "starflow_liblib": {
         "vendor_name": "星流 (LibLib API)",
-        "api_key": "J_uVJPk6t9LWrbvCD-HO2w",
-        "app_secret": "9jgyW2WEjWkxgZfnGChkjvoZY0C-IQnq",
+        "api_key": os.getenv("STARFLOW_LIBLIB_API_KEY", ""),
+        "app_secret": os.getenv("STARFLOW_LIBLIB_APP_SECRET", ""),
         "base_url": "https://openapi.liblibai.cloud",
         "dashscope_base_http": "",
         "models": {
@@ -126,11 +139,11 @@ VENDORS_PRESETS = {
     # ----------------------------------------------------------
     "gribo_text": {
         "vendor_name": "Gribo Text (Qwen-Plus 转发版)",
-        "api_key": "sk-EftQFdYw7Tylk6Uy60KtRpPeHfV6oTie0E4g0WQj3sjUxBwg",
+        "api_key": os.getenv("GRIBO_TEXT_API_KEY", ""),
         "base_url": "https://www.gribo.top/v1",
         "models": {
-            "llm": "gemini-3.1-pro-preview",
-            "vlm": "gemini-3.1-pro-preview",
+            "llm": "gemini-3.1-flash-lite-preview",
+            "vlm": "gemini-3.1-flash-lite-preview",
         },
         "extra_params": {
             "protocol": "openai_compatible",
@@ -142,7 +155,7 @@ VENDORS_PRESETS = {
     # ----------------------------------------------------------
     "gribo_img": {
         "vendor_name": "Gribo Image (Nano Banana 2)",
-        "api_key": "sk-h0VED7GBngKGkxepV9Jv71kTu3MTJUwgZbnSwHhrRqUMhseT",
+        "api_key": os.getenv("GRIBO_IMG_API_KEY", ""),
         "base_url": "https://www.gribo.top/v1",
         "models": {
             "img": "gemini-3.1-flash-image-preview",

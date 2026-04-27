@@ -26,6 +26,9 @@ FULL_STORY_V6_PATH = BASE_DIR / "data" / "scripts" / "full_story_v6.json"
 PID_FILE = BASE_DIR / "feishu" / "hub.pid"
 PENDING_RESTART_FILE = BASE_DIR / "feishu" / "pending_restart_open_id.json"
 LAST_ERROR_CTX_FILE = BASE_DIR / "feishu" / "last_error_context.json"
+SRT_LIKE_TIMELINE_PATH = BASE_DIR / "data" / "scripts" / "srt_like_timeline.json"
+LINE_TIMELINE_PATH = BASE_DIR / "data" / "scripts" / "line_timeline.json"
+MASTER_VOICE_PATH = BASE_DIR / "data" / "audio" / "master_voice.mp3"
 
 def preflight_story_ready(expected_topic: str = ""):
     """生产前置校验：确保剧本存在且与当前主题一致。"""
@@ -232,15 +235,23 @@ def run_project_pipeline(topic: str, receive_id: str):
         # 1. 跑导播剧剧本 (生成提示词)
         print(f"  -> [HUB] 运行 step1_writer_v6.py...")
         subprocess.run(["python", "src/step1_writer_v6.py"], cwd=str(BASE_DIR), env=dict(os.environ, PYTHONIOENCODING="utf-8"), check=True)
-        msg2 = "✅ [1/3] 分镜脚本已规划完毕！正在进入最核心的‘全量画面+配音’生成阶段..."
+        if not SRT_LIKE_TIMELINE_PATH.exists():
+            raise RuntimeError(f"Step1 结束后未找到时间轴文件：{SRT_LIKE_TIMELINE_PATH}")
+        if not MASTER_VOICE_PATH.exists():
+            raise RuntimeError(f"Step1 结束后未找到主音轨：{MASTER_VOICE_PATH}")
+        if not LINE_TIMELINE_PATH.exists():
+            raise RuntimeError(f"Step1 结束后未找到真实时间线：{LINE_TIMELINE_PATH}")
+        msg2 = "✅ [1/3] Step1 完成（A/B 分镜 + 主音轨 + 真实时间线）！正在进入‘容器生图’阶段..."
         mgr.send_text(receive_id, "open_id", msg2)
         add_to_history(receive_id, "assistant", msg2)
         
         state.set_status("STEP2_GENERATING", topic)
-        # 2. 跑生图与配音
+        # 2. 跑容器生图（主链路不再二次配音）
         print(f"  -> [HUB] 运行 step2_comic_generator_v6.py...")
         subprocess.run(["python", "src/step2_comic_generator_v6.py"], cwd=str(BASE_DIR), env=dict(os.environ, PYTHONIOENCODING="utf-8"), check=True)
-        msg3 = "✅ [2/3] 全量原画与音频素材已杀青！正在为您进行最终的视频剪辑与特效合成..."
+        if not MASTER_VOICE_PATH.exists() or not LINE_TIMELINE_PATH.exists():
+            raise RuntimeError("Step2 结束后检测到 Step1 音频产物缺失，无法进入 Step3。")
+        msg3 = "✅ [2/3] Step2 完成（容器生图）！正在执行主音轨驱动的最终合成..."
         mgr.send_text(receive_id, "open_id", msg3)
         add_to_history(receive_id, "assistant", msg3)
         
@@ -271,7 +282,7 @@ def run_project_pipeline(topic: str, receive_id: str):
         if not output_mp4.exists():
             raise RuntimeError(f"Step3 结束后未找到成片文件：{output_mp4}")
 
-        mgr.send_text(receive_id, "open_id", "✅ [3/3] 视频合成大功告成！正在为您同步标清预览版（飞书）和超清母带（百度网盘）...")
+        mgr.send_text(receive_id, "open_id", "✅ [3/3] 主音轨驱动合成完成！正在为您同步标清预览版（飞书）和超清母带（百度网盘）...")
 
         # ======= 第一步：尝试推送标清版本（飞书） =======
         file_key = mgr.upload_video(str(output_mp4))
@@ -432,6 +443,16 @@ def run_visual_setup(topic: str, receive_id: str, regen_stage: str = None):
                 if r0.returncode != 0:
                     err = (r0.stderr or r0.stdout or "无详情")[-600:]
                     raise RuntimeError(f"剧本生成失败 (exit={r0.returncode}):\n{err}")
+
+                # 🛡️ 二次校验：即使 returncode=0，也必须确认文件真的落盘了。
+                # 背景：story_planner 早期版本在 LLM 失败时只 return（退出码仍为 0），
+                # 导致 hub 误判为成功，继续跑定妆照，最后在"通过"环节才暴露报错。
+                if not FULL_STORY_V6_PATH.exists():
+                    partial_log = (r0.stderr or r0.stdout or "无日志")[-800:]
+                    raise RuntimeError(
+                        f"剧本进程虽返回 0，但 full_story_v6.json 未写入磁盘，"
+                        f"流水线中止。\n子进程日志:\n{partial_log}"
+                    )
 
             print(f"  -> [HUB] 运行定妆照生成引擎 ref_generator.py...")
             ref_cmd = ["python", "src/ref_generator.py", "--topic", topic, "--role", "protagonist"]
@@ -781,7 +802,7 @@ def send_status_card(open_id, topic, status):
         "GENERATING_VISUALS": "🎨 正在绘制三阶段定妆照...",
         "WAITING_CHARACTER_APPROVAL": "👀 定妆照已发，等待您决定是否重画",
         "STEP1_WRITING": "✍️ [生产阶段 1/3] 正在规划分镜和视觉脚本...",
-        "STEP2_GENERATING": "🖼️ [生产阶段 2/3] 生图流与配音满载运转中 (耗时较长)...",
+        "STEP2_GENERATING": "🖼️ [生产阶段 2/3] 仅容器生图执行中 (耗时较长)...",
         "STEP3_ASSEMBLING": "🎬 [生产阶段 3/3] 正在剪辑合并视频大片...",
         "COMPLETED": "✅ 视频已交付！",
         "ERROR": "❌ 发生崩溃中断！流程已卡死"

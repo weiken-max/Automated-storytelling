@@ -1,377 +1,438 @@
 """
-🚀 视觉小说导播引擎 V7.1 - 物理隔离一致性版 (step1_director_v7.py)
-==============================================================
-重构：
-1. 物理锁：按 Shot ID 强制隔离主角年龄，GPT 无法跨段干扰。
-2. 语义补丁：物理剔除、合并旁白中的孤儿标点，杜绝音频丢失。
-3. 解析锁：强开启 JSON 模式，彻底封死“通用保底词”污染风险。
-# 🧪 V9.2 全局风格锁定：氰化物风格 (Cyanide and Happiness)
-STYLE_ANCHOR = "Cyanide and Happiness comic style, minimalist stick-figure character, bold black outlines, flat colors, no shading, humorous and simple illustration."
+🎞️ 剧情解构与物理时间轴底座 (src/step1_writer_v6.py)
+==========================================================
+阶段二 (Phase 2)：读取纯净长文案 -> 生成音频/SRT -> 临时行号切分 Beat -> 产出 pseudo_srt.json
+阶段三 (Phase 3)：切分 text_segment -> 线性插值计算绝对 trigger_time -> 产出 narrative_v6_final.json
 """
 
 import json
-import re
+import os
 import sys
-import base64
-import time
-from datetime import datetime
+import argparse
+import subprocess
 from pathlib import Path
 from openai import OpenAI
+from dotenv import load_dotenv
 
-# ── Windows GBK 终端编码修复 ──
-if hasattr(sys.stdout, "buffer"):
-    from io import TextIOWrapper
-    sys.stdout = TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-
-# ── 自动对齐项目根目录 ──
+# ── 路径与环境配置 ──
+load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
+DATA_DIR = BASE_DIR / "data"
 
-from src.style_config import (
-    VLM_API_KEY, VLM_BASE_URL, MODEL_VLM,
-    FULL_STORY_V6_PATH, NARRATIVE_V6_PATH,
-    STYLE_ANCHOR, BATCH_SIZE, timeout,
-    CURRENT_PROJECT_PATH, IMG_DIR, AUDIO_DIR,
-    SCRIPT_DIR, REFS_DIR, OUTPUT_DIR
-)
-import shutil
+from src.style_config import LLM_API_KEY, LLM_BASE_URL, MODEL_LLM, FULL_STORY_V6_PATH, SCRIPT_DIR
+from src.project_vault import backup as vault_backup
 
-# 🧠 VISUAL DIRECTOR V7.1 - 物理隔离版
-VISUAL_SYSTEM_PROMPT = """You are a Cinematic Director. 
-Task: Translate my Chinese narration into High-Quality Stable Diffusion Prompts (English).
+MODEL_WRITER = MODEL_LLM
 
-【PROTAGONIST ANCHOR】 (MUST USE FOR CHARACTER): {CHARACTER_ANCHOR}
+# 尝试获取 AUDIO_DIR，若无则默认
+try:
+    from src.style_config import AUDIO_DIR
+except ImportError:
+    AUDIO_DIR = DATA_DIR / "audio"
 
-【VISUAL RULES】:
-1. **Consistency**: Use ONLY the above Anchor for the protagonist's look. Do NOT mix other ages or clothes.
-2. **Crowd Separation**: NPCs should be blurry or distinct from the protagonist.
-3. **Style**: {STYLE_ANCHOR}. Everything MUST be flat 2D comic style. NO 3D, NO realism.
-4. **Cinematography**: Add lighting, angle, and atmosphere based on narration.
+PSEUDO_SRT_PATH = SCRIPT_DIR / "pseudo_srt.json"
+MASTER_SRT_PATH = AUDIO_DIR / "master_srt.json"
+NARRATIVE_FINAL_PATH = SCRIPT_DIR / "narrative_v6_final.json"
 
-    Output purely in JSON format: 
-    {{ "prompts": [
-        {{"shot_id": "0001", "visual_prompt": "Prompt text...", "has_protagonist": true}}
-    ] }}"""
+def get_client():
+    return OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
-# 质量闸门参数（可按项目偏好微调）
-PROMPT_MIN_LEN = 60
-PROMPT_MAX_RETRIES = 3
-PROMPT_MIN_UNIQUE_RATIO = 0.70
+def parse_vtt_time(vtt_time_str: str) -> float:
+    """解析 VTT 时间戳 (00:00:02.500) 为秒数"""
+    parts = vtt_time_str.replace(',', '.').split(':')
+    seconds = 0.0
+    if len(parts) == 3:
+        h, m, s = parts
+        seconds = int(h) * 3600 + int(m) * 60 + float(s)
+    elif len(parts) == 2:
+        m, s = parts
+        seconds = int(m) * 60 + float(s)
+    return round(seconds, 3)
 
-def _looks_like_generic_fallback(prompt_text: str) -> bool:
-    """识别明显退化的通用兜底句。"""
-    p = (prompt_text or "").strip().lower()
-    return (
-        p.startswith("cinematic historical flat illustration for")
-        or p == "cinematic shot"
-        or ("high quality" in p and len(p) < 120)
-    )
+# ==============================================================================
+#  [Phase 2] 生成音频底座与 Beat 划分
+# ==============================================================================
 
-def _validate_prompt_payload(parsed: dict, expected_count: int):
-    """严格校验 VLM 返回结构与提示词质量。"""
-    if not isinstance(parsed, dict):
-        return False, "返回结果不是 JSON 对象"
-
-    prompts = parsed.get("prompts")
-    if not isinstance(prompts, list):
-        return False, "缺少 prompts 数组"
-    if len(prompts) != expected_count:
-        return False, f"prompts 数量不匹配: expected={expected_count}, got={len(prompts)}"
-
-    cleaned = []
-    generic_hits = 0
-    for idx, item in enumerate(prompts):
-        if not isinstance(item, dict):
-            return False, f"prompts[{idx}] 不是对象"
-        vp = (item.get("visual_prompt") or "").strip()
-        if len(vp) < PROMPT_MIN_LEN:
-            return False, f"prompts[{idx}] 文本过短({len(vp)}<{PROMPT_MIN_LEN})"
-        if _looks_like_generic_fallback(vp):
-            generic_hits += 1
-        cleaned.append(vp)
-
-    unique_ratio = len(set(cleaned)) / max(1, len(cleaned))
-    if unique_ratio < PROMPT_MIN_UNIQUE_RATIO:
-        return False, f"批次提示词重复率过高(unique_ratio={unique_ratio:.2f})"
-    if generic_hits > 0:
-        return False, f"检测到通用退化提示词 {generic_hits} 条"
-
-    return True, "ok"
-
-def _dump_prompt_failure_log(chunk_shots: list, reason: str, raw_text: str):
-    """失败可观测：落盘原始返回和失败原因，便于复盘。"""
-    try:
-        logs_dir = BASE_DIR / "data" / "logs"
-        logs_dir.mkdir(parents=True, exist_ok=True)
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        shot_ids = [s.get("shot_id", "?") for s in chunk_shots]
-        payload = {
-            "ts": ts,
-            "reason": reason,
-            "shot_ids": shot_ids,
-            "input": chunk_shots,
-            "raw_text": raw_text or ""
-        }
-        log_path = logs_dir / f"step1_prompt_fail_{ts}.json"
-        with open(log_path, "w", encoding="utf-8") as f:
-            json.dump(payload, f, ensure_ascii=False, indent=2)
-        print(f"    🧾 失败日志已保存: {log_path}")
-    except Exception as e:
-        print(f"    ⚠️ 失败日志写入告警: {e}")
-
-def encode_image_to_b64(image_path: Path):
-    """同 image_engine 同款的高质量图片编码"""
-    from PIL import Image
-    import io
-    try:
-        with Image.open(image_path) as img:
-            # 缩放至 VLM 友好尺寸
-            img.thumbnail((512, 512))
-            buffered = io.BytesIO()
-            img.convert("RGB").save(buffered, format="JPEG", quality=85)
-            return base64.b64encode(buffered.getvalue()).decode('utf-8')
-    except Exception as e:
-        print(f"      ⚠️  图片编码失败: {e}")
-        return None
-
-def call_vlm_visual_batch(chunk_shots: list, era: str, anchor_prompt: str, anchor_image_b64: str = None):
-    """视觉翻译枢纽 (V8.0 多模态物理对位版)"""
-    client = OpenAI(api_key=VLM_API_KEY, base_url=VLM_BASE_URL)
+def generate_master_audio_and_srt(text: str, audio_path: Path) -> list:
+    """调用 edge-tts 生成音频并解析 VTT 为 JSON SRT，构建绝对物理时间轴"""
+    print("  🔊 [TTS] 正在调用 Edge-TTS 生成主音频与物理字幕...")
+    vtt_path = audio_path.with_suffix('.vtt')
+    temp_txt = audio_path.with_suffix('.txt')
+    temp_txt.write_text(text, encoding='utf-8')
     
-    shots_input = json.dumps(chunk_shots, ensure_ascii=False)
-    system_prompt = VISUAL_SYSTEM_PROMPT.format(
-        ERA=era, 
-        CHARACTER_ANCHOR=anchor_prompt, 
-        STYLE_ANCHOR=STYLE_ANCHOR
-    )
+    cmd = [
+        "edge-tts",
+        "-f", str(temp_txt),
+        "--write-media", str(audio_path),
+        "--write-subtitles", str(vtt_path),
+        "--voice", "zh-CN-YunxiNeural",  
+        "--rate", "+10%" 
+    ]
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except FileNotFoundError:
+        print("❌ [FATAL] 找不到 edge-tts 命令。请在终端运行: pip install edge-tts")
+        temp_txt.unlink(missing_ok=True)
+        sys.exit(1)
+    except subprocess.CalledProcessError as e:
+        print(f"❌ [TTS] 音频生成失败: {e.stderr.decode('utf-8', errors='ignore')}")
+        temp_txt.unlink(missing_ok=True)
+        sys.exit(1)
+        
+    temp_txt.unlink(missing_ok=True)
 
-    # 构造多模态消息：让导播“亲眼看见”主角定妆照
-    content = [{"type": "text", "text": f"Character physical reference is provided in the image. Narration to translate:\n{shots_input}"}]
-    if anchor_image_b64:
-        content.insert(0, {
-            "type": "image_url",
-            "image_url": {"url": f"data:image/jpeg;base64,{anchor_image_b64}"}
-        })
+    lines = vtt_path.read_text(encoding='utf-8').strip().split('\n')
+    srt_data = []
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if '-->' in line:
+            times = line.split('-->')
+            start_time = parse_vtt_time(times[0].strip())
+            end_time = parse_vtt_time(times[1].strip())
+            
+            if i + 1 < len(lines):
+                text_content = lines[i+1].strip()
+                j = i + 2
+                while j < len(lines) and lines[j].strip() and '-->' not in lines[j]:
+                    text_content += " " + lines[j].strip()
+                    j += 1
+                
+                if len(text_content.replace(' ', '')) > 0:
+                    srt_data.append({
+                        "start_time": start_time,
+                        "end_time": end_time,
+                        "text": text_content
+                    })
+                i = j - 1
+        i += 1
+        
+    MASTER_SRT_PATH.write_text(json.dumps(srt_data, ensure_ascii=False, indent=2), encoding='utf-8')
+    vault_backup(MASTER_SRT_PATH, f"audio/{MASTER_SRT_PATH.name}")
+    print(f"  ✅ [TTS] 物理时间轴锚定成功！共解析出 {len(srt_data)} 个微句子 (Cues)。")
+    return srt_data
 
-    last_reason = "unknown"
-    last_raw_text = ""
-    for attempt in range(1, PROMPT_MAX_RETRIES + 1):
+def chunk_beats_by_llm(srt_data: list) -> list:
+    """通过行号锚定消除大模型时间幻觉，让LLM只做逻辑切分"""
+    print("  🧠 [LLM] 正在给纯净文本打临时行号，并委派大模型进行 Beat 逻辑切分...")
+    
+    numbered_lines = []
+    for idx, item in enumerate(srt_data):
+        numbered_lines.append(f"[{idx}] {item['text']}")
+    text_payload = "\n".join(numbered_lines)
+    
+    system_prompt = f"""你是一个顶级的电影剪辑指导。
+任务：将我提供的【带行号的连续旁白】，按照叙事起伏划分为 6-12 个连续的剧情节拍 (Beat)。
+
+【钢铁纪律】：
+1. 完整覆盖：必须从行号 [0] 开始，一直覆盖到最大行号 [{len(srt_data)-1}]，绝不允许遗漏任何一句话。
+2. 严丝合缝：下一个 Beat 的 start_index 必须严格等于上一个 Beat 的 end_index + 1。
+3. 闭区间映射：start_index 和 end_index 都是闭区间（包含自身）。
+4. 凝练总结：为每个 Beat 提炼一句 summary（15字以内）。
+
+请输出严格的 JSON 格式：
+{{
+  "beats": [
+    {{ "beat_id": "beat_1", "summary": "...", "start_index": 0, "end_index": 5 }},
+    ...
+  ]
+}}"""
+
+    client = get_client()
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_LLM,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"需要切分的行号文本：\n\n{text_payload}"}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.2
+        )
+        result = json.loads(response.choices[0].message.content)
+        beats_plan = result.get("beats", [])
+        
+        pseudo_srt = []
+        for b in beats_plan:
+            s_idx = max(0, min(b["start_index"], len(srt_data)-1))
+            e_idx = max(0, min(b["end_index"], len(srt_data)-1))
+            
+            cues = srt_data[s_idx:e_idx+1]
+            beat_text = "".join([c["text"] for c in cues])
+            
+            pseudo_srt.append({
+                "beat_id": b["beat_id"],
+                "summary": b["summary"],
+                "start_time": cues[0]["start_time"],
+                "end_time": cues[-1]["end_time"],
+                "text": beat_text,
+                "cues": cues
+            })
+            
+        print(f"  ✅ [LLM] Beat 拆解完毕，共切分为 {len(pseudo_srt)} 个节拍！临时行号已安全丢弃。")
+        return pseudo_srt
+    except Exception as e:
+        print(f"❌ [LLM] Beat 划分失败: {e}")
+        sys.exit(1)
+
+
+# ==============================================================================
+#  [Phase 3] 视觉重构与绝对时间戳插值算法
+# ==============================================================================
+
+def calculate_trigger_time(char_index: int, beat_cues: list) -> float:
+    """核心算法：基于相对字符位置，在线性物理时间轴上进行插值"""
+    current_len = 0
+    for cue in beat_cues:
+        cue_text = cue["text"]
+        cue_len = len(cue_text)
+        if cue_len == 0:
+            continue
+            
+        # 判断当前字落在哪一个 cue 区间内
+        if current_len <= char_index < current_len + cue_len:
+            offset = char_index - current_len
+            percentage = offset / cue_len
+            t_trigger = cue["start_time"] + (cue["end_time"] - cue["start_time"]) * percentage
+            return round(t_trigger, 3)
+            
+        current_len += cue_len
+        
+    # 防止下标越界溢出
+    if beat_cues:
+        return beat_cues[-1]["end_time"]
+    return 0.0
+
+def _extract_segments_from_tagged_text(tagged_text: str) -> list:
+    """
+    从带 <subshot> 标签的文本中提取有序分镜片段。
+    标签作为分镜边界，不保留在最终文本里。
+    """
+    if not tagged_text:
+        return []
+    # 不能 strip：必须保留原始字符边界，避免破坏插值游标精度。
+    # 仅过滤纯空白片段，内容本身保持原样。
+    parts = tagged_text.split("<subshot>")
+    return [p for p in parts if p and p.strip()]
+
+def _pick_stage_anchor(stage: str, physical_anchors: dict) -> str:
+    """按阶段优先匹配定妆照路径，匹配不到时回退到可用锚点。"""
+    if not isinstance(physical_anchors, dict) or not physical_anchors:
+        return ""
+    if stage in physical_anchors and physical_anchors.get(stage):
+        return str(physical_anchors.get(stage))
+    for fallback in ("middle", "youth", "child", "elderly"):
+        if physical_anchors.get(fallback):
+            return str(physical_anchors.get(fallback))
+    first = next(iter(physical_anchors.values()), "")
+    return str(first) if first else ""
+
+def _resolve_subshot_stage(subshot_id: int, stage_map: list) -> str:
+    """根据 stage_map 的 shot 区间，为当前 subshot 选择人生阶段。"""
+    if not isinstance(stage_map, list):
+        return "middle"
+    for item in stage_map:
         try:
-            user_content = list(content)
-            if attempt > 1:
-                user_content.append({
-                    "type": "text",
-                    "text": (
-                        "Previous output was invalid/too generic. "
-                        "Regenerate strictly: one distinct cinematic prompt per shot; "
-                        "include action, setting, camera angle, lighting and atmosphere; "
-                        "avoid generic filler text."
-                    )
-                })
-
-            response = client.chat.completions.create(
-                model=MODEL_VLM,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_content}
-                ],
-                response_format={"type": "json_object"},
-                timeout=timeout
-            )
-            raw_text = (response.choices[0].message.content or "").strip()
-            last_raw_text = raw_text
-            # 兼容处理 Markdown 干扰
-            if "```json" in raw_text:
-                raw_text = raw_text.split("```json")[-1].split("```")[0].strip()
-
-            parsed = json.loads(raw_text)
-            ok, reason = _validate_prompt_payload(parsed, expected_count=len(chunk_shots))
-            if ok:
-                if attempt > 1:
-                    print(f"    ✅ VLM 第 {attempt} 次重试通过质检。")
-                return parsed
-
-            last_reason = reason
-            print(f"    ⚠️ VLM 第 {attempt} 次返回不合格: {reason}")
-            _dump_prompt_failure_log(chunk_shots, f"attempt_{attempt}: {reason}", last_raw_text)
-            time.sleep(1.2)
-        except Exception as e:
-            last_reason = f"VLM 调用/解析异常: {e}"
-            print(f"    ⚠️ VLM 第 {attempt} 次异常: {e}")
-            _dump_prompt_failure_log(chunk_shots, f"attempt_{attempt}: {last_reason}", last_raw_text)
-            time.sleep(1.2)
-
-    raise RuntimeError(
-        f"VLM 连续 {PROMPT_MAX_RETRIES} 次未产出合格逐镜头提示词，已中断。"
-        f"最后原因: {last_reason}"
-    )
-
-def get_stage_anchor(shot_id: int, master_plan: dict):
-    """根据分镜 ID 物理对位生命阶段，并返回物理图片路径"""
-    physical_anchors = master_plan.get("physical_char_anchors", {})
-    stage_map = master_plan.get("stage_map", [])
-    
-    current_stage = "middle"
-    for entry in stage_map:
-        if entry["start_shot"] <= shot_id <= entry["end_shot"]:
-            current_stage = entry["stage"]
-            break
-    # 🧪 V7.2 返回物理文件路径，确保生图引擎能“找得着”图
-    return physical_anchors.get(current_stage, physical_anchors.get("middle", ""))
-
-def validate_stage_map(stage_map: list):
-    """轻量校验 stage_map 的结构与区间重叠，仅告警不阻断。"""
-    if not isinstance(stage_map, list) or not stage_map:
-        return
-
-    normalized = []
-    for idx, entry in enumerate(stage_map):
-        if not isinstance(entry, dict):
-            print(f"  ⚠️ [StageMap] 第 {idx+1} 项不是对象，已跳过校验。")
+            start = int(item.get("start_shot"))
+            end = int(item.get("end_shot"))
+            if start <= subshot_id <= end:
+                return str(item.get("stage") or "middle")
+        except Exception:
             continue
+    return "middle"
 
-        stage = entry.get("stage", "unknown")
-        start = entry.get("start_shot")
-        end = entry.get("end_shot")
+def generate_visual_subshots(beat: dict, text_anchors: dict, physical_anchors: dict) -> list:
+    """调用 LLM 打标并生成提示词，再计算插值绝对时间戳"""
+    print(f"  🎬 [Vision] 正在解构 Beat 并计算插值: {beat['summary']} ...")
+    beat_text = beat["text"]
+    beat_summary = (beat.get("summary") or "").strip()
+    if not beat_summary:
+        raise ValueError(f"Beat {beat.get('beat_id', 'unknown')} 缺少 summary，拒绝继续生成 visual_prompt。")
+    if not text_anchors and not physical_anchors:
+        raise ValueError("缺少角色锚点（text_anchors/physical_anchors 均为空），拒绝继续生成 visual_prompt。")
 
-        if not isinstance(start, int) or not isinstance(end, int):
-            print(f"  ⚠️ [StageMap] 阶段 {stage} 的 start_shot/end_shot 不是整数。")
-            continue
-        if start > end:
-            print(f"  ⚠️ [StageMap] 阶段 {stage} 区间非法: start_shot({start}) > end_shot({end})。")
-            continue
+    system_prompt = f"""你是一个顶级的电影分镜师和AI绘图专家。
+任务：根据剧情节拍文本，先在文本中插入 <subshot> 标签标记分镜切换点，再为每个分镜生成 visual_prompt。
 
-        normalized.append((start, end, stage))
+【文本定妆锚点（角色外观语义约束）】：
+{json.dumps(text_anchors, ensure_ascii=False, indent=2)}
 
-    normalized.sort(key=lambda x: (x[0], x[1]))
+【物理定妆锚点（真实参考图路径）】：
+{json.dumps(physical_anchors, ensure_ascii=False, indent=2)}
 
-    for i in range(1, len(normalized)):
-        prev_start, prev_end, prev_stage = normalized[i - 1]
-        cur_start, cur_end, cur_stage = normalized[i]
-        if cur_start <= prev_end:
-            print(
-                "  ⚠️ [StageMap] 检测到区间重叠: "
-                f"{prev_stage}[{prev_start}-{prev_end}] 与 "
-                f"{cur_stage}[{cur_start}-{cur_end}]。"
-            )
+【切分与提示词规则】：
+1. 必须输出 `tagged_text`：在原文中插入 `<subshot>` 作为分镜边界。除插入标签外，原文本内容不得改写、不得丢字。
+2. 切换时机：在场景转换、人物动作变化或情绪转折处打标签。每个 Beat 建议切出 2-4 个分镜。
+3. 必须输出 `visual_prompts` 数组，长度必须与分镜数量一致，顺序严格对应。
+4. 视觉提示词 (visual_prompt)：
+   - 必须保留画风控制：Cyanide and Happiness comic style, flat illustration, simple line art, pure 2D, solid colors.
+   - 根据文意引用定妆锚点的人物特征（判断目前是幼年、中年还是老年），确保人物连戏。
+   - 详细描述镜头景别、人物动作和背景。
+
+输出严格 JSON 格式：
+{{
+  "tagged_text": "原文第一段<subshot>原文第二段<subshot>原文第三段",
+  "visual_prompts": ["prompt1", "prompt2", "prompt3"]
+}}"""
+
+    client = get_client()
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_WRITER,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {
+                    "role": "user",
+                    "content": (
+                        f"Beat故事概括(summary): {beat_summary}\n"
+                        f"需要打标并分镜的原文：\n{beat_text}"
+                    ),
+                }
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.4
+        )
+        result = json.loads(response.choices[0].message.content)
+        tagged_text = (result.get("tagged_text") or "").strip()
+        visual_prompts = result.get("visual_prompts", [])
+        text_segments = _extract_segments_from_tagged_text(tagged_text)
+
+        # 回退兼容旧输出结构
+        if (not text_segments or len(text_segments) != len(visual_prompts)) and isinstance(result.get("subshots"), list):
+            legacy_subshots = result.get("subshots", [])
+            text_segments = [s.get("text_segment", "").strip() for s in legacy_subshots if s.get("text_segment", "").strip()]
+            visual_prompts = [s.get("visual_prompt", "").strip() for s in legacy_subshots if s.get("text_segment", "").strip()]
+
+        if not text_segments or len(text_segments) != len(visual_prompts):
+            print("❌ [Vision] LLM 返回的 <subshot> 标注结果不合法，无法对齐文本与提示词。")
+            return []
+
+        # --- 核心算法：触发时间绝对值映射 ---
+        current_char_idx = 0
+        subshots_with_time = []
+        
+        for i, t_segment in enumerate(text_segments):
+            v_prompt = visual_prompts[i]
+            
+            # 算法调用：计算此 subshot 第一个字的绝对爆发时间
+            t_trigger = calculate_trigger_time(current_char_idx, beat["cues"])
+            
+            subshots_with_time.append({
+                "text_segment": t_segment,
+                "trigger_time": t_trigger,
+                "visual_prompt": v_prompt
+            })
+            
+            # 游标向前推进
+            current_char_idx += len(t_segment)
+            
+        return subshots_with_time
+    except Exception as e:
+        print(f"❌ [Vision] Beat 分镜解析失败: {e}")
+        return []
+
+# ==============================================================================
+#  总控流
+# ==============================================================================
 
 def main():
-    global_topic = "未知主题"
-    if CURRENT_PROJECT_PATH.exists():
-        with open(CURRENT_PROJECT_PATH, "r", encoding="utf-8") as f:
-            global_topic = json.load(f).get("project_name", "未知主题")
+    parser = argparse.ArgumentParser(description="工业级电影叙事总线 - 时间轴锚定与分镜拆解")
+    parser.add_argument("--phase", type=str, choices=["phase2", "phase3"], default="phase2", help="执行阶段")
+    args = parser.parse_args()
     
-    print(f"\n🎬 [Step 1B] 导播引擎 V7.1 启动 (强制物理隔离版)...")
+    if args.phase == "phase2":
+        print("\n=======================================================")
+        print("🎬 [Phase 2] 绝对时钟底座与行号锚定 (生成 pseudo_srt.json)")
+        print("=======================================================")
+        
+        if not FULL_STORY_V6_PATH.exists():
+            print(f"❌ 找不到长文案 {FULL_STORY_V6_PATH}，请先执行阶段一。")
+            sys.exit(1)
+            
+        story_data = json.loads(FULL_STORY_V6_PATH.read_text(encoding="utf-8"))
+        narration = story_data.get("master_design", {}).get("full_narration", "")
+        
+        if not narration:
+            print("❌ narration 为空，无法生成音频。")
+            sys.exit(1)
+            
+        AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+        master_audio_path = AUDIO_DIR / "master.mp3"
+        
+        srt_data = generate_master_audio_and_srt(narration, master_audio_path)
+        pseudo_srt_list = chunk_beats_by_llm(srt_data)
+        
+        output_data = {
+            "metadata": story_data.get("metadata", {}),
+            "pseudo_srt": pseudo_srt_list
+        }
+        
+        PSEUDO_SRT_PATH.write_text(json.dumps(output_data, ensure_ascii=False, indent=2), encoding="utf-8")
+        vault_backup(PSEUDO_SRT_PATH, f"scripts/{PSEUDO_SRT_PATH.name}")
+        
+        print(f"\n🏆 阶段二完美落幕！产物: {PSEUDO_SRT_PATH}")
+        
+    elif args.phase == "phase3":
+        print("\n=======================================================")
+        print("🚀 [Phase 3] 插值定位与视觉 Prompt (生成 narrative_v6_final.json)")
+        print("=======================================================")
+        
+        if not PSEUDO_SRT_PATH.exists() or not FULL_STORY_V6_PATH.exists():
+            print("❌ 找不到前置数据，请确保已顺次执行 Phase 1 和 Phase 2。")
+            sys.exit(1)
+            
+        pseudo_data = json.loads(PSEUDO_SRT_PATH.read_text(encoding="utf-8"))
+        story_data = json.loads(FULL_STORY_V6_PATH.read_text(encoding="utf-8"))
+        
+        beats = pseudo_data.get("pseudo_srt", [])
+        master_design = story_data.get("master_design", {})
+        text_anchors = master_design.get("character_anchors", {})
+        physical_anchors = master_design.get("physical_char_anchors", {})
+        stage_map = master_design.get("stage_map", [])
 
-    if not FULL_STORY_V6_PATH.exists():
-        raise RuntimeError(f"Step1 前置缺失：剧本不存在 -> {FULL_STORY_V6_PATH}")
-
-    with open(FULL_STORY_V6_PATH, "r", encoding="utf-8") as f:
-        full_data = json.load(f)
-
-    meta = full_data.get("metadata", {})
-    master_plan = full_data.get("master_design", {})
-    full_narration = master_plan.get("full_narration", "")
-    validate_stage_map(master_plan.get("stage_map", []))
-
-    # 🧪 V14.0 工业级资产超量清场：启动新副本前，全量抹除库内素材 (杜绝所有旧项目残留)
-    print(f"  ├─ 物理隔离：正在强制闪抹历史生产路径...")
-    for target_dir in [IMG_DIR, AUDIO_DIR, OUTPUT_DIR]: # 移除了 SCRIPT_DIR 和 REFS_DIR 保留原始物料
-        if target_dir.exists():
+        if not text_anchors and not physical_anchors:
+            print("❌ [Phase3] 未检测到任何角色锚点：character_anchors 与 physical_char_anchors 均为空。")
+            print("   请先确保阶段一已成功生成并回写定妆锚点。")
+            sys.exit(1)
+        
+        final_narrative = []
+        global_subshot_id = 1
+        
+        for beat in beats:
             try:
-                shutil.rmtree(target_dir)
-            except Exception as e:
-                print(f"  ⚠️  清理 {target_dir.name} 告警 (进程占用中?): {e}")
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-    if NARRATIVE_V6_PATH.exists():
-        try:
-            NARRATIVE_V6_PATH.unlink()
-            print(f"  ├─ 物理隔离：旧版分镜剧本已由于物理由于删除。")
-        except Exception as e:
-            print(f"  ⚠️  物理隔离告警：无法删除旧剧本 ({e})")
-
-    # 1. 语义补丁：合并标点，防止音频丢失
-    # 我们先按标签拆分，但如果某一段只有标点，我们强制将其合并到前一个肉段
-    raw_parts = re.split(r'\[?CUT_?\d+\]?', full_narration)
-    clean_parts = []
-    for p in raw_parts:
-        text = p.strip().lstrip(':： ')
-        if not text: continue
-        # 🧪 V8.0 物理补丁：精确匹配标点残留
-        if re.fullmatch(r'[\s，。！？、…“”"\'\']+', text):
-            if clean_parts: clean_parts[-1] += text
-            continue
-        clean_parts.append(text)
-    
-    all_shots = []
-    for idx, part in enumerate(clean_parts):
-        sid = idx + 1
-        all_shots.append({
-            "shot_id": f"{sid:04d}",
-            "narration": part,
-            "anchor_look": get_stage_anchor(sid, master_plan)
-        })
-
-    print(f"  ├─ 剧本语义降噪完成：已物理合并标签残留，当前共 {len(all_shots)} 镜。")
-
-    # 🧪 V14.1 工业审计：分镜数量合法性校验 (仅拦截 > 150 镜的膨胀异常)
-    if len(all_shots) > 150:
-        raise RuntimeError(f"分镜数量严重异常：{len(all_shots)} 镜（超过 150 镜工业红线）")
-
-    # 2. 段落化物理翻译
-    processed_shots = []
-    # 🧪 V7.1：为了防止 Batch 内跨年龄导致的混淆，我们强制按 Anchor 的连续性进行 Batch 分组
-    i = 0
-    while i < len(all_shots):
-        current_anchor = all_shots[i]['anchor_look']
-        # 寻找这一批次内相同 Anchor 的分镜
-        batch = []
-        for j in range(i, min(i + BATCH_SIZE, len(all_shots))):
-            if all_shots[j]['anchor_look'] == current_anchor:
-                batch.append(all_shots[j])
-            else:
-                break
+                subshots = generate_visual_subshots(beat, text_anchors, physical_anchors)
+            except ValueError as e:
+                print(f"❌ [Phase3] 输入验收失败: {e}")
+                sys.exit(1)
+            
+            # 装配并降维到 final_narrative 一维数组
+            for s in subshots:
+                protagonist_stage = _resolve_subshot_stage(global_subshot_id, stage_map)
+                anchor_look = _pick_stage_anchor(protagonist_stage, physical_anchors)
+                final_narrative.append({
+                    "subshot_id": f"S_{global_subshot_id:03d}",
+                    "beat_id": beat["beat_id"],
+                    "trigger_time": s["trigger_time"],
+                    "text_segment": s["text_segment"],
+                    "visual_prompt": s["visual_prompt"],
+                    "protagonist_stage": protagonist_stage,
+                    "anchor_look": anchor_look
+                })
+                global_subshot_id += 1
+                
+        output_data = {
+            "metadata": pseudo_data.get("metadata", {}),
+            "timeline": final_narrative
+        }
         
-        i += len(batch)
-        print(f"  ├─ 进度: {i}/{len(all_shots)} (对位母照: {Path(current_anchor).name if current_anchor else 'None'})")
+        NARRATIVE_FINAL_PATH.write_text(json.dumps(output_data, ensure_ascii=False, indent=2), encoding="utf-8")
+        vault_backup(NARRATIVE_FINAL_PATH, f"scripts/{NARRATIVE_FINAL_PATH.name}")
         
-        # 🧪 V8.0 物理对位：编码这张母照并传给 VLM
-        anchor_b64 = None
-        if current_anchor and Path(current_anchor).exists():
-            anchor_b64 = encode_image_to_b64(Path(current_anchor))
-        
-        res = call_vlm_visual_batch(batch, meta.get('era', '历史'), current_anchor, anchor_b64)
-        
-        prompts = res["prompts"]
-        for idx_b, shot_meta in enumerate(batch):
-            p_data = prompts[idx_b]
-            shot_meta['visual_prompt'] = p_data.get('visual_prompt', '').strip()
-            shot_meta['has_protagonist'] = p_data.get('has_protagonist', True)
-            processed_shots.append(shot_meta)
-
-    # 🧪 V9.9 熔断保障：强制检验分镜完整性
-    if len(processed_shots) != len(all_shots):
-        raise RuntimeError(
-            f"生产管线偏差：预期 {len(all_shots)} 镜，实出 {len(processed_shots)} 镜，禁止入库"
-        )
-
-    # 增量存档
-    save_data = {
-        "metadata": meta,
-        "director_chapters": [{"chapter_id": 1, "shots": processed_shots}]
-    }
-    
-    # 🧪 原子化物理写入：先写 Temp，再 Rename，防止磁盘读写死锁
-    temp_path = NARRATIVE_V6_PATH.with_suffix(".tmp")
-    with open(temp_path, "w", encoding="utf-8") as f:
-        json.dump(save_data, f, ensure_ascii=False, indent=2)
-    
-    if NARRATIVE_V6_PATH.exists(): NARRATIVE_V6_PATH.unlink()
-    temp_path.rename(NARRATIVE_V6_PATH)
-
-    print(f"\n[OK] V7.1 物理隔离导播剧本已由于锁定：{NARRATIVE_V6_PATH}")
+        print(f"\n🏆 阶段三 (分镜插值与视觉蓝图) 成功完工！")
+        print(f"📍 核心产物: {NARRATIVE_FINAL_PATH}")
+        print(f"   共生成 {len(final_narrative)} 个毫秒级精准卡点分镜。")
 
 if __name__ == "__main__":
     main()

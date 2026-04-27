@@ -68,3 +68,6 @@ game_video_clone_agent/README.md
 !**/*.mkv
 !**/*.webm
 !**/*.flv
+!game_video_clone_agent/data/logs/
+!game_video_clone_agent/data/scripts/line_timeline.json
+!game_video_clone_agent/data/scripts/narrative_v6.json
