@@ -243,7 +243,13 @@ def _resolve_subshot_stage(subshot_id: int, stage_map: list) -> str:
             continue
     return "middle"
 
-def generate_visual_subshots(beat: dict, text_anchors: dict, physical_anchors: dict) -> list:
+def generate_visual_subshots(
+    beat: dict,
+    text_anchors: dict,
+    physical_anchors: dict,
+    stage_map: list,
+    beat_start_subshot_id: int
+) -> list:
     """调用 LLM 打标并生成提示词，再计算插值绝对时间戳"""
     print(f"  🎬 [Vision] 正在解构 Beat 并计算插值: {beat['summary']} ...")
     beat_text = beat["text"]
@@ -268,7 +274,7 @@ def generate_visual_subshots(beat: dict, text_anchors: dict, physical_anchors: d
 3. 必须输出 `visual_prompts` 数组，长度必须与分镜数量一致，顺序严格对应。
 4. 视觉提示词 (visual_prompt)：
    - 必须保留画风控制：Cyanide and Happiness comic style, flat illustration, simple line art, pure 2D, solid colors.
-   - 根据文意引用定妆锚点的人物特征（判断目前是幼年、中年还是老年），确保人物连戏。
+   - 必须遵守用户给定的人生阶段提示（child/youth/middle/elderly），确保人物连戏。
    - 详细描述镜头景别、人物动作和背景。
 
 输出严格 JSON 格式：
@@ -287,6 +293,9 @@ def generate_visual_subshots(beat: dict, text_anchors: dict, physical_anchors: d
                     "role": "user",
                     "content": (
                         f"Beat故事概括(summary): {beat_summary}\n"
+                        f"该 Beat 的起始 subshot_id: S_{beat_start_subshot_id:03d}\n"
+                        f"分镜阶段判定规则(stage_map): {json.dumps(stage_map, ensure_ascii=False)}\n"
+                        "请在生成每个 visual_prompt 时，按将来分镜顺序(从起始 subshot_id 开始依次+1)匹配对应阶段。\n"
                         f"需要打标并分镜的原文：\n{beat_text}"
                     ),
                 }
@@ -315,6 +324,9 @@ def generate_visual_subshots(beat: dict, text_anchors: dict, physical_anchors: d
         
         for i, t_segment in enumerate(text_segments):
             v_prompt = visual_prompts[i]
+            subshot_id_num = beat_start_subshot_id + i
+            protagonist_stage = _resolve_subshot_stage(subshot_id_num, stage_map)
+            anchor_look = _pick_stage_anchor(protagonist_stage, physical_anchors)
             
             # 算法调用：计算此 subshot 第一个字的绝对爆发时间
             t_trigger = calculate_trigger_time(current_char_idx, beat["cues"])
@@ -322,7 +334,9 @@ def generate_visual_subshots(beat: dict, text_anchors: dict, physical_anchors: d
             subshots_with_time.append({
                 "text_segment": t_segment,
                 "trigger_time": t_trigger,
-                "visual_prompt": v_prompt
+                "visual_prompt": v_prompt,
+                "protagonist_stage": protagonist_stage,
+                "anchor_look": anchor_look
             })
             
             # 游标向前推进
@@ -402,23 +416,27 @@ def main():
         
         for beat in beats:
             try:
-                subshots = generate_visual_subshots(beat, text_anchors, physical_anchors)
+                subshots = generate_visual_subshots(
+                    beat=beat,
+                    text_anchors=text_anchors,
+                    physical_anchors=physical_anchors,
+                    stage_map=stage_map,
+                    beat_start_subshot_id=global_subshot_id
+                )
             except ValueError as e:
                 print(f"❌ [Phase3] 输入验收失败: {e}")
                 sys.exit(1)
             
             # 装配并降维到 final_narrative 一维数组
             for s in subshots:
-                protagonist_stage = _resolve_subshot_stage(global_subshot_id, stage_map)
-                anchor_look = _pick_stage_anchor(protagonist_stage, physical_anchors)
                 final_narrative.append({
                     "subshot_id": f"S_{global_subshot_id:03d}",
                     "beat_id": beat["beat_id"],
                     "trigger_time": s["trigger_time"],
                     "text_segment": s["text_segment"],
                     "visual_prompt": s["visual_prompt"],
-                    "protagonist_stage": protagonist_stage,
-                    "anchor_look": anchor_look
+                    "protagonist_stage": s.get("protagonist_stage", "middle"),
+                    "anchor_look": s.get("anchor_look", "")
                 })
                 global_subshot_id += 1
                 
