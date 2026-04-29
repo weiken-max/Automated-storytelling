@@ -1,0 +1,66 @@
+# =========================
+# 备份黑名单（排除不需要备份的内容）
+# 目标：保留代码与架构，排除素材与运行缓存
+# =========================
+
+# IDE 和系统文件
+.cursor/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 常见图片
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.bmp
+*.tiff
+*.svg
+
+# 常见音频
+*.mp3
+*.wav
+*.aac
+*.m4a
+*.flac
+*.ogg
+
+# 常见视频
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.flv
+
+# Python 运行缓存
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# 日志与临时文件
+*.log
+*.tmp
+*.temp
+
+# 运行时数据库与状态
+*.db
+*.sqlite
+*.sqlite3
+game_video_clone_agent/feishu/state.db
+game_video_clone_agent/feishu/last_error_context.json
+game_video_clone_agent/feishu/temp_*.json
+
+# 生成素材和归档（通常体积大）
+game_video_clone_agent/data/anchors/
+game_video_clone_agent/data/archive/
+game_video_clone_agent/data/output/
+game_video_clone_agent/data/temp/
+game_video_clone_agent/data/cache/
+game_video_clone_agent/data/logs/
+game_video_clone_agent/data/scripts/line_timeline.json
+game_video_clone_agent/data/scripts/narrative_v6.json
