@@ -1,0 +1,86 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# IDE and system files
+.cursor/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Virtual environment (do not commit)
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Runtime logs and temp files
+*.log
+*.tmp
+*.temp
+
+# Runtime databases and state
+*.db
+*.sqlite
+*.sqlite3
+feishu/state.db
+feishu/last_error_context.json
+feishu/temp_*.json
+
+# data/: 仅提交各子目录下的 .gitkeep 占位；运行时素材与生成物不入库
+data/audio/*
+!data/audio/.gitkeep
+data/storyboards/*
+!data/storyboards/.gitkeep
+data/exports/*
+!data/exports/.gitkeep
+data/refs/*
+!data/refs/.gitkeep
+data/logs/*
+!data/logs/.gitkeep
+data/scripts/*
+!data/scripts/.gitkeep
+data/anchors/*
+!data/anchors/.gitkeep
+data/archive/*
+!data/archive/.gitkeep
+data/output/*
+!data/output/.gitkeep
+data/temp/*
+!data/temp/.gitkeep
+data/cache/*
+!data/cache/.gitkeep
+
+# Real-ESRGAN ncnn-vulkan (large binaries; add from official Windows release zip, see toolsrealesrgan/高清组块使用指南.md)
+toolsrealesrgan/realesrgan-ncnn-vulkan.exe
+toolsrealesrgan/vcomp140.dll
+toolsrealesrgan/vcomp140d.dll
+toolsrealesrgan/models/*.bin
+toolsrealesrgan/*.zip
+
+# Media artifacts
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.bmp
+*.tiff
+*.svg
+*.mp3
+*.wav
+*.aac
+*.m4a
+*.flac
+*.ogg
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.webm
+*.flv
