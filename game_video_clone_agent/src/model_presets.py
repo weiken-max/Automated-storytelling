@@ -142,8 +142,8 @@ VENDORS_PRESETS = {
         "api_key": os.getenv("GRIBO_TEXT_API_KEY", ""),
         "base_url": "https://www.gribo.top/v1",
         "models": {
-            "llm": "gemini-3.1-flash-lite-preview",
-            "vlm": "gemini-3.1-flash-lite-preview",
+            "llm": "gemini-3.1-pro-preview",
+            "vlm": "gemini-3.1-pro-preview",
         },
         "extra_params": {
             "protocol": "openai_compatible",

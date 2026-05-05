@@ -1,6 +1,6 @@
 """
 ✂️ 图像处理器与裁切脚手架 (src/image_processor.py)
-处理 16 宫格的切割、去白边以及 Real-ESRGAN 高清放大
+处理 16 宫格的物理均分切割以及 Real-ESRGAN 高清放大。
 """
 import os
 import subprocess
@@ -14,7 +14,43 @@ _REALESRGAN_EXE = _REALESRGAN_DIR / "realesrgan-ncnn-vulkan.exe"
 _missing_exe_warned = False
 
 
-def upscale_image(img_path: Path) -> None:
+def _imread_unicode(path: Path):
+    """
+    兼容 Windows 中文路径读取图片：
+    优先使用 np.fromfile + cv2.imdecode，避免 cv2.imread 在非 ASCII 路径下失败。
+    """
+    p = Path(path)
+    try:
+        data = np.fromfile(str(p), dtype=np.uint8)
+        if data.size == 0:
+            return None
+        img = cv2.imdecode(data, cv2.IMREAD_COLOR)
+        if img is not None:
+            return img
+    except Exception:
+        pass
+    # 回退：保留原逻辑
+    return cv2.imread(str(p))
+
+
+def _imwrite_unicode(path: Path, img) -> bool:
+    """
+    兼容 Windows 中文路径写图片：
+    先 cv2.imencode，再由 Python 写字节，避免 cv2.imwrite 路径编码问题。
+    """
+    p = Path(path)
+    ext = p.suffix or ".png"
+    ok, enc = cv2.imencode(ext, img)
+    if not ok:
+        return False
+    try:
+        p.write_bytes(enc.tobytes())
+        return True
+    except Exception:
+        return False
+
+
+def upscale_image(img_path: Path) -> bool:
     """
     调用 `toolsrealesrgan/realesrgan-ncnn-vulkan.exe` 对单张子图做超分，成功则覆盖原 `S_XXX.png`。
 
@@ -31,24 +67,29 @@ def upscale_image(img_path: Path) -> None:
         "true",
         "yes",
     ):
-        return
+        return False
     if not _REALESRGAN_EXE.is_file():
         if not _missing_exe_warned:
             print(
-                "[upscale] 未找到 toolsrealesrgan/realesrgan-ncnn-vulkan.exe，已跳过高清；"
-                "请按「高清组块使用指南」放入完整发行包文件。"
+                "[upscale] 未找到 toolsrealesrgan/realesrgan-ncnn-vulkan.exe，无法执行高清。"
             )
             _missing_exe_warned = True
-        return
+        return False
 
-    model = (os.environ.get("REALESRGAN_MODEL") or "realesr-animevideov3").strip()
-    scale = (os.environ.get("REALESRGAN_SCALE") or "3").strip()
+    # 强制使用用户指定方案：realesr-animevideov3 x3
+    model = "realesr-animevideov3"
+    scale = "3"
     gpu = (os.environ.get("REALESRGAN_GPU") or "").strip()
 
     src = Path(img_path).resolve()
     tmp = src.parent / f"{src.stem}.realesrgan_tmp{src.suffix}"
     if tmp.exists():
         tmp.unlink()
+
+    before_img = _imread_unicode(src)
+    bw = bh = None
+    if before_img is not None:
+        bh, bw = before_img.shape[:2]
 
     cmd = [
         str(_REALESRGAN_EXE),
@@ -76,12 +117,12 @@ def upscale_image(img_path: Path) -> None:
         print(f"[upscale] 调用失败 {src.name}: {e}")
         if tmp.exists():
             tmp.unlink(missing_ok=True)
-        return
+        return False
     except subprocess.TimeoutExpired:
         print(f"[upscale] 超时 {src.name}")
         if tmp.exists():
             tmp.unlink(missing_ok=True)
-        return
+        return False
 
     if r.returncode != 0:
         err = (r.stderr or r.stdout or "").strip()
@@ -89,28 +130,42 @@ def upscale_image(img_path: Path) -> None:
         print(f"[upscale] {src.name} 失败 (code={r.returncode}): {tail}")
         if tmp.exists():
             tmp.unlink(missing_ok=True)
-        return
+        return False
 
     if not tmp.is_file() or tmp.stat().st_size < 64:
         print(f"[upscale] {src.name} 输出异常或过小，保留原图")
         if tmp.exists():
             tmp.unlink(missing_ok=True)
-        return
+        return False
 
     try:
         os.replace(tmp, src)
+        after_img = _imread_unicode(src)
+        if after_img is not None and bw and bh:
+            ah, aw = after_img.shape[:2]
+            sx = round(aw / bw, 2) if bw else 0
+            sy = round(ah / bh, 2) if bh else 0
+            print(
+                f"[upscale] {src.name}: {bw}x{bh} -> {aw}x{ah} "
+                f"(≈{sx}x/{sy}x, model={model}, -s {scale})"
+            )
+        elif after_img is not None:
+            ah, aw = after_img.shape[:2]
+            print(f"[upscale] {src.name}: -> {aw}x{ah} (model={model}, -s {scale})")
+        return True
     except OSError as e:
         print(f"[upscale] 覆盖原图失败 {src.name}: {e}")
         if tmp.exists():
             tmp.unlink(missing_ok=True)
+        return False
 
 def process_16_grid(image_path: Path, output_dir: Path, start_idx: int) -> int:
     """
-    将 4x4 宫格图裁切为最多 16 张单图，利用 OpenCV 识别有效轮廓去除白边。
+    将 4x4 宫格图按像素均分为 16 张子图（不做去白边；格子已铺满画布）。
     返回下一个可用的 subshot_id 序号。
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    img = cv2.imread(str(image_path))
+    img = _imread_unicode(image_path)
     if img is None:
         raise ValueError(f"无法读取图片: {image_path}")
 
@@ -125,34 +180,15 @@ def process_16_grid(image_path: Path, output_dir: Path, start_idx: int) -> int:
             y1, y2 = row * cell_h, (row + 1) * cell_h
             x1, x2 = col * cell_w, (col + 1) * cell_w
             cell = img[y1:y2, x1:x2]
-            
-            # 2. 灰度与边缘检测，用于智能去白边
-            gray = cv2.cvtColor(cell, cv2.COLOR_BGR2GRAY)
-            # 假设白边接近 255，反转阈值
-            _, thresh = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY_INV)
-            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            
-            if contours:
-                # 找到面积最大的轮廓（通常是漫画画面的主体边框）
-                c = max(contours, key=cv2.contourArea)
-                x, y, cw, ch = cv2.boundingRect(c)
-                
-                # 适度增加一点内边距，避免裁切过紧
-                pad = 8
-                x = max(0, x - pad)
-                y = max(0, y - pad)
-                cw = min(cell_w - x, cw + 2 * pad)
-                ch = min(cell_h - y, ch + 2 * pad)
-                cropped = cell[y:y+ch, x:x+cw]
-            else:
-                # 如果没找到有效轮廓，原样保留
-                cropped = cell
-                
+
             out_path = output_dir / f"S_{current_idx:03d}.png"
-            cv2.imwrite(str(out_path), cropped)
+            if not _imwrite_unicode(out_path, cell):
+                raise ValueError(f"无法写入切图结果: {out_path}")
             
-            # 3. 触发预留的高清放大器
-            upscale_image(out_path)
+            # Real-ESRGAN 高清：失败则删除该图并中止当前批次，交给 Step2 重试。
+            if not upscale_image(out_path):
+                out_path.unlink(missing_ok=True)
+                raise ValueError(f"高清放大失败: {out_path.name} (model=realesr-animevideov3, scale=3)")
             
             current_idx += 1
             

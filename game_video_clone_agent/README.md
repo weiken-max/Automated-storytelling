@@ -1,109 +1,72 @@
-# 🎬 Automated Storytelling Pipeline
+# 🎬 Automated Storytelling Pipeline（game_video_clone_agent）
 
-这是一个“剧情驱动自动讲故事视频生成”项目，不是素材混剪项目。
-
-当前主链路目标：
-- A/B 两阶段分镜（A 产结构，B 产提示词）
-- 主音轨连续化（DSP：trim + crossfade + loudness normalize）
-- Step3 主音轨驱动时间轴执行
-- 全链路统一 4:3
+工业化「音频先行、物理时间轴锁死、16 宫格生图、绝对卡点装配」的叙事视频管线。**详细原理见** `项目运作原理与执行流程详解.md`；**飞书交互见** `飞书机器人系统说明.md`。
 
 ---
 
-## 🚀 运行流程（必须按序）
+## 核心链路（与当前代码一致）
 
-### 1) 剧本规划（Planner）
-运行：
-- `python -m src.story_planner_v6`
+1. **剧本与定妆**：`story_planner_v6` → `full_story_v6.json`；`ref_generator` 等生成定妆与锚点回写。  
+2. **主音轨 + Beat（Step1 / phase2）**：`step1_writer_v6 --phase phase2` → `master_voice.mp3`、`master_srt.json`、`pseudo_srt.json`。  
+3. **分镜与 trigger_time（Step1 / phase3）**：`step1_writer_v6 --phase phase3` → `narrative_v6_final.json`（**每个 Beat 两次 LLM：先打 `<subshot>` 标签，再生成 `visual_prompt`**；带上一 Beat 摘要作前情；失败重试后仍失败则**进程退出**，不静默跳过 Beat）。  
+4. **16 宫格生图（Step2）**：`step2_comic_generator_v6` → `storyboards/grid_batch_*.png`、`S_*.png` + `logs/step2_*.json(l)`。  
+5. **合成（Step3）**：`step3_assembler_v6` → `output/narrative_v6_final_epic.mp4`（默认画面约 **4:3**，如 `1024x768` 类尺寸，由 `step3_assembler_v6` 中 `FRAME_SIZE` 决定）。  
 
-产物：
-- `data/scripts/full_story_v6.json`
-
----
-
-### 2) 分镜结构 + 主音轨先行（Step1）
-运行：
-- `python -m src.step1_writer_v6`
-
-功能：
-- 先生成 `srt_like_timeline.json`（文案语义时间轴）
-- 基于语义段做 TTS，合成为 `master_voice.mp3`，并产出真实 `line_timeline.json`
-- A 阶段只产结构：`beat_id/subshot_count/subshot_id/role/continuity_lock`
-- B 阶段按 A 结构产 prompt，并执行门禁（数量/ID/长度/重复率/连续性/语义相关）
-
-核心产物：
-- `data/scripts/srt_like_timeline.json`
-- `data/audio/master_voice.mp3`
-- `data/scripts/line_timeline.json`
-- `data/scripts/narrative_v6.json`
+Step2 的 16 宫格图源请求为 **16:9、约 2K（如 2560×1440）**；Step3 将单镜缩放并 pad 到成片的固定画幅。
 
 ---
 
-### 3) 容器生图（Step2）
-运行：
-- `python -m src.step2_comic_generator_v6`
+## 🚀 运行流程（须按序；飞书侧通常已串联）
 
-功能：
-- 按 beat 强绑定容器策略生图（1/2/3-4 subshot）
-- 容器请求直接走目标比例（不再固定 16:9）
-- 分镜图统一归一到 4:3
-- 校验 Step1 的主音轨与时间线存在后继续执行
+### Run-ID 隔离
 
-核心产物：
-- `data/storyboards/*.png`（单镜 4:3）
+- 每任务：`data/runs/Run_YYYYMMDD_HHMMSS_xxx/`
+- 当前批次：`data/runs/current_run.json`
+- 飞书：`/switch Run_...` 可切换批次后单步重跑
 
----
+### 命令入口（开发/手工）
 
-### 4) 视频合成（Step3）
-运行：
-- `python -m src.step3_assembler_v6`
-
-功能：
-- 读取 `master_voice.mp3 + line_timeline.json`
-- 按主音轨时间轴切换镜头（仅告警，不改切点）
-- 生成 4:3 成片
-
-产物：
-- `data/output/narrative_v6_final_epic.mp4`
-
----
-
-## 📐 尺寸与容器策略（冻结）
-
-- 最终成片：4:3
-- 1 subshot：单图（4:3 @ 1K）
-- 2 subshot：二宫格容器（2:3 @ 1K，上下切），切分后单镜仍归一为 4:3
-- 3/4 subshot：四宫格（4:3 @ 2K）
+| 步骤 | 命令 | 主要产物 |
+|------|------|----------|
+| 规划 | `python -m src.story_planner_v6` | `scripts/full_story_v6.json` 等 |
+| 定妆 | `python -m src.ref_generator` | `refs/`、锚点回写 |
+| Step1-2 | `python -m src.step1_writer_v6 --phase phase2` | `audio/master_voice.mp3`, `audio/master_srt.json`, `scripts/pseudo_srt.json` |
+| Step1-3 | `python -m src.step1_writer_v6 --phase phase3` | `scripts/narrative_v6_final.json` |
+| Step2 | `python -m src.step2_comic_generator_v6` | `storyboards/`, `logs/step2_report.json` |
+| Step3 | `python -m src.step3_assembler_v6` | `output/narrative_v6_final_epic.mp4` |
 
 ---
 
 ## 🧾 错误与日志
 
-统一错误模型字段：
-- `task_id`
-- `stage`
-- `beat_id`
-- `subshot_id`
-- `error_code`
-- `error_message`
-- `raw_response_snippet`
-
-日志目录：
-- `data/logs/`
+- Step2：`data/runs/<run_id>/logs/step2_failures.jsonl`、`step2_report.json`  
+- 飞书：`feishu/hub.py` 在 Step2 **进程失败**或 **Step2 门禁未通过**时会推送明确告警，避免静默卡住。  
+- Phase3：`step1_writer_v6` 某 Beat 多次失败后终端打印 `beat_id`、时间范围与阶段并 **非 0 退出**。
 
 ---
 
-## 📦 最小可运行目录（建议保留）
+## ⚙️ 生图相关环境变量（`.env`）
 
-- `src/`（核心代码）
-- `feishu/`（飞书交互与状态管理）
-- `data/scripts/`（运行时脚本与时间轴产物）
-- `data/storyboards/`（分镜帧产物目录，可清空但建议保留目录）
-- `data/audio/`（主音轨目录，可清空但建议保留目录）
-- `data/output/`（成片目录，可清空但建议保留目录）
-- `.env`（本地密钥配置，不提交到 git）
-- `requirements.txt` / 启动脚本（如 `STARTUP_SILENT.bat`）
+与 `src/image_engine.py` 一致（节选）：
 
-说明：
-- 本项目主链路为：`Step1(主音轨+时间轴) -> Step2(仅生图) -> Step3(主音轨驱动合成)`。
-- 历史日志、历史样片、迁移说明等文件不影响主链路运行，可按需清理。
+- `IMAGE_GEN_MAX_CONCURRENCY`：最大并发，默认 `3`  
+- **`IMAGE_GEN_TIMEOUT_SECONDS`：单次生图等待秒数，默认 `180`**（过短易在慢速 16 宫格上误触发重试、浪费配额）  
+- `IMAGE_GEN_MAX_RETRIES`：单请求重试次数，默认 `3`  
+- `IMAGE_GEN_RETRY_BASE_DELAY_SECONDS`：重试退避基数，默认 `1.5`  
+
+---
+
+## 🛠 飞书运维（摘要）
+
+- `/status` / `状态`、 `/switch Run_...`、`/retry step2`、`/retry step3`  
+- 全局 FIFO 队列、状态卡原地刷新、按 Run-ID 精准中止  
+
+全文见 `飞书机器人系统说明.md`。
+
+---
+
+## 📦 仓库中建议保留的目录
+
+- `src/`、`feishu/`、`data/`（含 `runs/` 结构）、`requirements.txt`、启动脚本、`.env`（本地、勿提交）
+
+其他说明见 `项目文件清单与用途说明.md`。

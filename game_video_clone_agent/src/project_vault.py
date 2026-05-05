@@ -84,10 +84,14 @@ def backup(src: Path, vault_subpath: str) -> bool:
         # 没有激活的项目时静默跳过，不阻断正常流程
         return False
 
-    dest = vault / vault_subpath
-    dest.parent.mkdir(parents=True, exist_ok=True)
-
     try:
+        src = Path(src)
+        if not src.exists():
+            print(f"  ⚠️ [Vault] 跳过缺失文件: {src} -> {vault_subpath}")
+            return False
+
+        dest = vault / vault_subpath
+        dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(str(src), str(dest))
         return True
     except Exception as e:

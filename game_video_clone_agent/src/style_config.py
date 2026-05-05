@@ -5,6 +5,7 @@
 """
 
 from pathlib import Path
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 # ================================================================
 #  🔑 三分离 API 配置
@@ -44,7 +45,7 @@ FORBIDDEN_WORDS = ["3D", "realistic", "CGI", "octane render"]
 # ================================================================
 #  📂 路径配置（统一管理）
 # ================================================================
-DATA_DIR          = Path("data")
+DATA_DIR          = BASE_DIR / "data"
 SCRIPT_DIR        = DATA_DIR / "scripts"
 IMG_DIR           = DATA_DIR / "storyboards"  # 分镜图工作台 (临时产区)
 AUDIO_DIR         = DATA_DIR / "audio"        # 音频工作台 (临时产区)
@@ -91,7 +92,15 @@ CHARACTER_REF_MAP = {
 COMBINED_REF_PATH = REFS_PROTAGONIST / "triple_view.png"
 
 # 🎙️ V6.0 语速估算 (中文每分钟约 230 字)
-WORDS_PER_MINUTE  = 230
+WORDS_PER_MINUTE  = 300
+
+# 长文案目标字数：按「目标成片时长(分钟)」粗估（含 TTS 停顿，略高于 WORDS_PER_MINUTE）
+NARRATION_CHARS_PER_MINUTE = 420
+
+# 分段扩写（story_planner）：段数、承接上一段尾字数、单段输出 token 上限系数（≈中文 1 字≈1~2 token）
+NARRATION_SEGMENT_COUNT = 6
+NARRATION_SEGMENT_TAIL_CHARS = 240
+NARRATION_SEGMENT_MAX_TOKEN_FACTOR = 2.6
 
 # 🎬 视频 & 宫格参数（P1 冻结规格）
 # 最终成片固定 4:3，统一避免拉伸。

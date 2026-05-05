@@ -28,7 +28,7 @@ def is_hub_running():
 
 def start_hub():
     """冷启动或重启 hub.py (静默模式, 优先使用 venv)"""
-    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 🚨 正在开启隐身守护...")
+    print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 正在开启隐身守护...")
     try:
         # NEW-BUG-03 修复：psutil 替代 wmic 清理残余进程
         for proc in psutil.process_iter(['pid', 'cmdline']):
@@ -47,13 +47,13 @@ def start_hub():
             
         # 🚀 绝招：CREATE_NO_WINDOW 让小黑窗彻底消失
         subprocess.Popen([python_exe, str(HUB_PATH)], creationflags=0x08000000)
-        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] ✅ 隐身指挥部已上线（使用：{os.path.basename(python_exe)}）")
+        print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] 隐身指挥部已上线（使用：{os.path.basename(python_exe)}）")
     except Exception as e:
         print(f"  -> 重启失败: {e}")
 
 def keep_alive():
     """不眨眼的保安轮询"""
-    print("🛡️ 【离线自愈保安】已上线，正在监控指挥部状态...")
+    print("[离线自愈保安] 已上线，正在监控指挥部状态...")
     while True:
         if not is_hub_running():
             start_hub()

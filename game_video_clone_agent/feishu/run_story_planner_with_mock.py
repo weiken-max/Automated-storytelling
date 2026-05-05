@@ -1,5 +1,6 @@
 import sys
 import json
+import importlib
 from unittest.mock import patch
 from pathlib import Path
 
@@ -21,15 +22,15 @@ def run_mocked():
     parser.add_argument("--duration", type=float, default=1.25)
     args, unknown = parser.parse_known_args()
 
-    # 劫持 generate_synopsis
-    with patch('src.story_planner_v6.generate_synopsis', side_effect=read_mocked_synopsis):
-        import src.story_planner_v6
+    # 先导入模块对象，再 patch.object，避免字符串 patch 在某些环境下解析失败
+    planner = importlib.import_module("src.story_planner_v6")
+    with patch.object(planner, "generate_synopsis", side_effect=read_mocked_synopsis):
         # 把伪装的命令行参数传给主程序
         sys.argv = ["src/story_planner_v6.py", "--topic", args.topic]
         if args.regen_stage:
             sys.argv += ["--regen_stage", args.regen_stage]
         sys.argv += ["--duration", str(args.duration)]
-        src.story_planner_v6.main()
+        planner.main()
 
 if __name__ == "__main__":
     run_mocked()

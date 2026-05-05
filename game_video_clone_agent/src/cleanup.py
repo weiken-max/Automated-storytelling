@@ -10,6 +10,9 @@ import os
 import sys
 from pathlib import Path
 
+# 锁定项目根目录，避免开机自启/非项目 cwd 下路径漂移
+BASE_DIR = Path(__file__).resolve().parent.parent
+
 # ── Windows GBK 终端编码修复 ──────────────────────────────────────
 if hasattr(sys.stdout, "buffer"):
     from io import TextIOWrapper
@@ -17,9 +20,9 @@ if hasattr(sys.stdout, "buffer"):
 
 # --- 🎯 需要清理的目录清单 ---
 TARGET_DIRS = [
-    Path("tmp/"),
-    Path("data/storyboards/candidates/"),
-    Path("data/rw_horizontal/"),  # 之前生成的横屏参考副本也清理掉
+    BASE_DIR / "tmp",
+    BASE_DIR / "data" / "storyboards" / "candidates",
+    BASE_DIR / "data" / "rw_horizontal",  # 之前生成的横屏参考副本也清理掉
 ]
 
 def clean_pycache(root_dir: Path):
@@ -53,11 +56,11 @@ def main():
                     print(f"     [WARN] 无法删除 {f.name}: {e}")
 
     # 2. 清理 __pycache__
-    pycache_count = clean_pycache(Path("."))
+    pycache_count = clean_pycache(BASE_DIR)
     print(f"  └─ ⚙️  清理了 {pycache_count} 个 Python 编译缓存目录 (__pycache__)。")
     
     # 3. 清理旧日志 (保留 markdown 账单，只清理 JSON 原始长日志)
-    billing_dir = Path("data/billing")
+    billing_dir = BASE_DIR / "data" / "billing"
     if billing_dir.exists():
         print(f"  └─ 📜 正在清理历史 JSON 原始日志...")
         for f in billing_dir.glob("log_*.json"):

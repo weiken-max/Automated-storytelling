@@ -8,11 +8,13 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
+BASE_DIR = Path(__file__).resolve().parent.parent
+
 if hasattr(sys.stdout, "buffer"):
     from io import TextIOWrapper
     sys.stdout = TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
-PROGRESS_LOG = Path("data/billing/progress_monitor.txt")
+PROGRESS_LOG = BASE_DIR / "data" / "billing" / "progress_monitor.txt"
 
 def clear():
     os.system("cls" if os.name == "nt" else "clear")

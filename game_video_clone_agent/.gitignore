@@ -55,6 +55,8 @@ data/temp/*
 !data/temp/.gitkeep
 data/cache/*
 !data/cache/.gitkeep
+data/runs/*
+!data/runs/.gitkeep
 
 # Real-ESRGAN ncnn-vulkan (large binaries; add from official Windows release zip, see toolsrealesrgan/高清组块使用指南.md)
 toolsrealesrgan/realesrgan-ncnn-vulkan.exe

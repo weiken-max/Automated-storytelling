@@ -5,7 +5,7 @@
 新增：精准识别余额不足/限流/鉴权错误，立即中文报警。
 """
 
-import os, sys, json, base64, time, asyncio, httpx, requests
+import os, sys, json, base64, time, asyncio, math, httpx, requests
 from pathlib import Path
 from io import BytesIO
 from PIL import Image
@@ -90,6 +90,27 @@ def _check_http_error(status_code: int, response_text: str, vendor_name: str):
 # 1. 冷却锁管理
 # ================================================================
 _last_gen_time = 0
+_MAX_CONCURRENCY = max(1, int(os.getenv("IMAGE_GEN_MAX_CONCURRENCY", IMG_EXTRA_PARAMS.get("max_concurrency", 3))))
+_GEN_TIMEOUT_SECONDS = float(
+    os.getenv("IMAGE_GEN_TIMEOUT_SECONDS", IMG_EXTRA_PARAMS.get("request_timeout", 180))
+)
+_GEN_MAX_RETRIES = max(1, int(os.getenv("IMAGE_GEN_MAX_RETRIES", IMG_EXTRA_PARAMS.get("max_retries", 3))))
+_RETRY_BASE_DELAY_SECONDS = float(os.getenv("IMAGE_GEN_RETRY_BASE_DELAY_SECONDS", IMG_EXTRA_PARAMS.get("retry_base_delay", 1.5)))
+_GEN_SEMAPHORE_BY_LOOP: dict[int, asyncio.Semaphore] = {}
+
+
+def _get_gen_semaphore() -> asyncio.Semaphore:
+    """
+    按当前 running loop 懒初始化并复用并发信号量，避免模块导入阶段创建
+    asyncio 原语带来的 loop 绑定风险。
+    """
+    loop = asyncio.get_running_loop()
+    loop_id = id(loop)
+    sem = _GEN_SEMAPHORE_BY_LOOP.get(loop_id)
+    if sem is None:
+        sem = asyncio.Semaphore(_MAX_CONCURRENCY)
+        _GEN_SEMAPHORE_BY_LOOP[loop_id] = sem
+    return sem
 
 async def _wait_for_cooldown():
     global _last_gen_time
@@ -161,6 +182,73 @@ def wrap_grid_prompt(batch_panels: list, layout_mode: str = "quad") -> str:
 # ================================================================
 # 2. 各厂商具体适配器
 # ================================================================
+
+def _build_gemini_image_config(size: str | None) -> dict:
+    """
+    Gemini 生图需在 generationConfig.imageConfig 中同时指定：
+    - aspectRatio（如 16:9）
+    - imageSize：官方支持 1K / 2K / 4K；缺省时服务端往往只出 ~1K。
+
+    此前仅传了无效的顶层 aspectRatio，导致后台始终落在低清档位。
+    """
+    aspect = "4:3"
+    image_size = "1K"
+    raw = (size or "").strip()
+    if not raw:
+        return {"aspectRatio": aspect, "imageSize": image_size}
+
+    low = raw.lower().replace("*", "x")
+    token = low.strip()
+
+    # Step2 十六宫格等处传入的纯档位（需配合 16:9 分镜页）
+    if token in ("4k", "2k", "1k"):
+        image_size = {"4k": "4K", "2k": "2K", "1k": "1K"}[token]
+        aspect = "16:9"
+        return {"aspectRatio": aspect, "imageSize": image_size}
+
+    # 关键词 + 可选 WxH（例如 "4k 3840x2160"）
+    if "4k" in low:
+        image_size = "4K"
+    elif "2k" in low:
+        image_size = "2K"
+    elif "1k" in low:
+        image_size = "1K"
+
+    if "x" in low:
+        try:
+            w_str, h_str = low.split("x", 1)
+            w, h = int(w_str.strip()), int(h_str.strip())
+            if w == h:
+                aspect = "1:1"
+            elif w * 9 == h * 16:
+                aspect = "16:9"
+            elif w * 16 == h * 9:
+                aspect = "9:16"
+            elif w * 3 == h * 4:
+                aspect = "4:3"
+            elif w * 4 == h * 3:
+                aspect = "3:4"
+            elif w * 2 == h * 3:
+                aspect = "2:3"
+            elif w * 3 == h * 2:
+                aspect = "3:2"
+            else:
+                g = math.gcd(w, h)
+                aspect = f"{w // g}:{h // g}"
+
+            if "4k" not in low and "2k" not in low and "1k" not in low:
+                mx = max(w, h)
+                if mx >= 3200:
+                    image_size = "4K"
+                elif mx >= 1600:
+                    image_size = "2K"
+                else:
+                    image_size = "1K"
+        except Exception:
+            pass
+
+    return {"aspectRatio": aspect, "imageSize": image_size}
+
 
 # --- [适配器 A] 豆包 (Volcengine Ark SDK) ---
 async def _generate_doubao(prompt: str, image_refs: list = None, size: str = None) -> bytes:
@@ -326,28 +414,19 @@ async def _generate_gemini(prompt: str, image_refs: list = None, size: str = Non
         "Content-Type": "application/json"
     }
 
-    def _size_to_aspect(s: str) -> str:
-        try:
-            w_str, h_str = s.lower().replace("*", "x").split("x")
-            w, h = int(w_str), int(h_str)
-            if w * 3 == h * 2:
-                return "2:3"
-            if w * 3 == h * 4:
-                return "4:3"
-        except Exception:
-            pass
-        return "4:3"
-
-    aspect = _size_to_aspect(size or "1024x768")
+    image_cfg = _build_gemini_image_config(size)
+    print(f"  └─ [Gemini] imageConfig: {image_cfg} (size 参数: {size!r})")
     payload = {
         "contents": [{"parts": parts}],
         "generationConfig": {
             "responseModalities": ["TEXT", "IMAGE"],
-            "aspectRatio": aspect
-        }
+            "imageConfig": image_cfg,
+        },
     }
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    # 须大于 generate_image 外层的 asyncio.wait_for（_GEN_TIMEOUT_SECONDS），避免先被客户端掐断。
+    _http_timeout = max(180.0, float(_GEN_TIMEOUT_SECONDS) + 30.0)
+    async with httpx.AsyncClient(timeout=_http_timeout) as client:
         resp = await client.post(url, json=payload, headers=headers)
 
         if resp.status_code == 200:
@@ -454,29 +533,46 @@ async def generate_image(prompt: str,
     else:
         full_prompt = prompt
 
-    result_bytes = None
-
-    if "doubao" in vendor or "seedream" in vendor:
-        result_bytes = await _generate_doubao(full_prompt, final_image_refs, size)
-    elif "aliyun" in vendor or "dashscope" in vendor:
-        result_bytes = await _generate_aliyun(full_prompt, final_image_refs, size)
-    elif "gemini" in vendor or "banana" in vendor or "gribo" in vendor:
-        result_bytes = await _generate_gemini(full_prompt, final_image_refs, size)
-    elif "starflow" in vendor:
-        print("  ⚠️ 星流 (LibLib) 适配器将在后续阶段完善。")
-        result_bytes = None
-    else:
+    async def _dispatch_once() -> bytes:
+        if "doubao" in vendor or "seedream" in vendor:
+            return await _generate_doubao(full_prompt, final_image_refs, size)
+        if "aliyun" in vendor or "dashscope" in vendor:
+            return await _generate_aliyun(full_prompt, final_image_refs, size)
+        if "gemini" in vendor or "banana" in vendor or "gribo" in vendor:
+            return await _generate_gemini(full_prompt, final_image_refs, size)
+        if "starflow" in vendor:
+            print("  ⚠️ 星流 (LibLib) 适配器将在后续阶段完善。")
+            return None
         print(f"  ❌ 未知厂商 [ {vendor} ]，无法分发生图任务。")
+        return None
 
-    if result_bytes:
-        _update_last_gen_time()
+    sem = _get_gen_semaphore()
+    async with sem:
+        for attempt in range(1, _GEN_MAX_RETRIES + 1):
+            try:
+                result_bytes = await asyncio.wait_for(_dispatch_once(), timeout=_GEN_TIMEOUT_SECONDS)
+                if result_bytes:
+                    _update_last_gen_time()
+                    return result_bytes
+                raise RuntimeError("生图接口返回空结果")
+            except (APIQuotaError, APIAuthError):
+                raise
+            except asyncio.TimeoutError:
+                print(f"  └─ ⏱️ [ImageEngine] 生图超时：第 {attempt}/{_GEN_MAX_RETRIES} 次，超时阈值 {_GEN_TIMEOUT_SECONDS}s")
+            except Exception as e:
+                print(f"  └─ ⚠️ [ImageEngine] 生图失败：第 {attempt}/{_GEN_MAX_RETRIES} 次，错误: {e}")
 
-    return result_bytes
+            if attempt < _GEN_MAX_RETRIES:
+                backoff = _RETRY_BASE_DELAY_SECONDS * attempt
+                print(f"  └─ 🔁 [ImageEngine] {backoff:.1f}s 后重试...")
+                await asyncio.sleep(backoff)
+
+    raise RuntimeError(f"生图任务重试 {_GEN_MAX_RETRIES} 次后仍失败（timeout={_GEN_TIMEOUT_SECONDS}s）")
 
 # ================================================================
-# 4. 高层包装器 (供 V6 同步调用)
+# 4. 高层包装器 (供 V6 异步调用)
 # ================================================================
-def generate_grid_image(batch_metadata: list, output_path: Path, layout_mode: str = "auto") -> bool:
+async def generate_grid_image(batch_metadata: list, output_path: Path, layout_mode: str = "auto") -> bool:
     """批量生成容器图并保存 (single / vertical / quad)。"""
     prompts_list = [s.get('visual_prompt', s.get('shot_summary', '')) for s in batch_metadata]
     
@@ -556,29 +652,13 @@ def generate_grid_image(batch_metadata: list, output_path: Path, layout_mode: st
     )
 
     try:
-        # ── 🚨 V6.6 asyncio 并发补丁 ──
-        coro = generate_image(
+        img_bytes = await generate_image(
             full_prompt, 
             image_refs=list(batch_refs), # 🔒 注入物理路径列表
             tags=list(batch_tags), 
             scenes=list(batch_scenes),
             size=requested_size,
         )
-        
-        try:
-            # 尝试获取当前线程已有的事件循环
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # 如果 Loop 正在运行，使用 run_coroutine_threadsafe 或直接 run（取决于环境）
-                # 这里我们采用一种更鲁棒的同步执行方案
-                import nest_asyncio
-                nest_asyncio.apply()
-                img_bytes = loop.run_until_complete(coro)
-            else:
-                img_bytes = loop.run_until_complete(coro)
-        except RuntimeError:
-            # 如果当前线程没 Loop，则创建一个新的
-            img_bytes = asyncio.run(coro)
 
         if img_bytes:
             output_path.write_bytes(img_bytes)
