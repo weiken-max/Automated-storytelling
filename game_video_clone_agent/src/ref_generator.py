@@ -33,18 +33,187 @@ from src.image_engine import generate_image
 from src.project_vault import backup as vault_backup
 from src.run_context import get_paths
 
-SCRIPT_TEMP_SYNOPSIS = config.SCRIPT_DIR / "temp_synopsis.json"
 LEGACY_FEISHU_TEMP_SYNOPSIS = BASE_DIR / "feishu" / "temp_synopsis.json"
 
 ALLOWED_STAGES = frozenset({"child", "youth", "middle", "elderly"})
 MAX_SUPPORTING = 3
 MAX_REF_CHARACTERS = 4
 
+
+def _require_active_paths(create_if_missing: bool = False) -> dict:
+    paths = get_paths(create_if_missing=create_if_missing)
+    if not paths:
+        raise RuntimeError("未检测到激活 Run-ID，请先创建/切换 current_run.json 指向的批次。")
+    return paths
+
+
+def _run_story_path(must_exist: bool = False) -> Path | None:
+    paths = _require_active_paths(create_if_missing=False)
+    p = paths["scripts_dir"] / "full_story_v6.json"
+    if must_exist and not p.exists():
+        return None
+    return p
+
+
+def _run_synopsis_path() -> Path:
+    paths = _require_active_paths(create_if_missing=False)
+    return paths["scripts_dir"] / "temp_synopsis.json"
+
+
+def _run_refs_root(create_if_missing: bool = True) -> Path:
+    paths = _require_active_paths(create_if_missing=create_if_missing)
+    root = paths["refs_dir"]
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def _run_ref_stage_dir(stage: str) -> Path:
+    return _run_refs_root(create_if_missing=True) / f"protagonist_{stage}"
+
+
+def _run_ref_supporting_dir(role_id: str) -> Path:
+    return _run_refs_root(create_if_missing=True) / "supporting" / role_id
+
+
+def _run_ref_other_dir() -> Path:
+    return _run_refs_root(create_if_missing=True) / "other"
+
+
+def _run_ref_archive_root() -> Path:
+    return _run_refs_root(create_if_missing=True) / "_archive"
+
+
+REFS_PROMPT_FILENAME = "refs-prompt.json"
+
+
+def _refs_prompt_path() -> Path:
+    return _require_active_paths(create_if_missing=True)["scripts_dir"] / REFS_PROMPT_FILENAME
+
+
+def _write_refs_prompt_payload(payload: dict) -> Path:
+    p = _refs_prompt_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        vault_backup(p, f"scripts/{REFS_PROMPT_FILENAME}")
+    except Exception:
+        pass
+    print(f"  ✅ [RefsPrompt] 已写入 {p.name}")
+    return p
+
+
+def write_refs_prompt_cast_from_synopsis(topic: str, synopsis: dict, plan: dict) -> Path:
+    """梗概驱动 Cast 成功后，将实际用于生图的提示词落盘供审阅与 Phase3 读取。"""
+    payload = {
+        "schema_version": 1,
+        "source": "cast_from_synopsis",
+        "topic": topic,
+        "synopsis": synopsis,
+        "protagonist": plan["protagonist"],
+        "supporting": plan["supporting"],
+    }
+    return _write_refs_prompt_payload(payload)
+
+
+def write_refs_prompt_legacy(topic: str, stages: list, stage_prompts: dict, synopsis: dict | None) -> Path:
+    dn = str(topic or "Protagonist").strip()[:32] or "Protagonist"
+    payload = {
+        "schema_version": 1,
+        "source": "legacy_design_character",
+        "topic": topic,
+        "synopsis": synopsis,
+        "protagonist": {
+            "role_id": "protagonist",
+            "display_name_en": dn,
+            "stages": list(stages),
+            "stage_prompts": stage_prompts,
+        },
+        "supporting": [],
+    }
+    return _write_refs_prompt_payload(payload)
+
+
+def merge_refs_prompt_protagonist_stage(topic: str, stage: str, design: dict) -> None:
+    """单阶段主角重画后合并 refs-prompt.json。"""
+    entry = {
+        "english_prompt": str(design.get("english_prompt") or ""),
+        "anchor_description": str(design.get("anchor_description") or ""),
+    }
+    p = _refs_prompt_path()
+    base = {
+        "schema_version": 1,
+        "source": "partial_update",
+        "topic": topic,
+        "synopsis": None,
+        "protagonist": {
+            "role_id": "protagonist",
+            "display_name_en": str(topic or "Protagonist").strip()[:32] or "Protagonist",
+            "stages": [],
+            "stage_prompts": {},
+        },
+        "supporting": [],
+    }
+    data: dict = base
+    if p.exists():
+        try:
+            raw = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                data = raw
+        except Exception:
+            pass
+    pro = data.setdefault("protagonist", {})
+    sp = pro.setdefault("stage_prompts", {})
+    sp[stage] = entry
+    st_list = list(pro.get("stages") or [])
+    if stage not in st_list:
+        st_list.append(stage)
+    order = ["child", "youth", "middle", "elderly"]
+    pro["stages"] = [s for s in order if s in st_list] + [s for s in st_list if s not in order]
+    _write_refs_prompt_payload(data)
+
+
+def merge_refs_prompt_supporting(topic: str, role_id: str, display_name_en: str, design: dict) -> None:
+    """配角重画后更新 refs-prompt.json 中对应条目。"""
+    rid = _normalize_role_id(role_id)
+    entry = {
+        "role_id": rid,
+        "display_name_en": display_name_en,
+        "english_prompt": str(design.get("english_prompt") or ""),
+        "anchor_description": str(design.get("anchor_description") or ""),
+    }
+    p = _refs_prompt_path()
+    base = {
+        "schema_version": 1,
+        "source": "partial_update",
+        "topic": topic,
+        "synopsis": None,
+        "protagonist": {"role_id": "protagonist", "display_name_en": "", "stages": [], "stage_prompts": {}},
+        "supporting": [],
+    }
+    data: dict = base
+    if p.exists():
+        try:
+            raw = json.loads(p.read_text(encoding="utf-8"))
+            if isinstance(raw, dict):
+                data = raw
+        except Exception:
+            pass
+    sup = [
+        x
+        for x in (data.get("supporting") or [])
+        if not (isinstance(x, dict) and _normalize_role_id(str(x.get("role_id") or "")) == rid)
+    ]
+    sup.append(entry)
+    data["supporting"] = sup
+    _write_refs_prompt_payload(data)
+
+
 SUPPORTING_REGEN_SYSTEM = """You write ONE JSON object for a single SUPPORTING character reference sheet (not the protagonist).
-Style: Cyanide and Happiness comic — round bean head, dot eyes, stick-figure limbs, bold black outlines, flat 2D colors.
-Must include: character design sheet, triple view front side back, full body, pure white background, no environment/props.
-english_prompt: 80–120 English words.
-anchor_description: one short Chinese phrase (20–40 chars) for human readers.
+Content rules for english_prompt (identity-first, NOT a micro-appearance inventory):
+- Give ROLE / IDENTITY + optional ERA & TONE in concise English (about 35–70 words).
+- FORBIDDEN: listing lapels, buttons, stitches, hairline, fabric folds, jewelry details, or facial feature catalog.
+- The image pipeline will add the sheet layout and minimal Cyanide-style art direction; you only supply who they are and the broad vibe.
+anchor_description: one short Chinese phrase (20–40 chars) for human readers only (not sent to the image model as the main block).
 
 Output ONLY: {"english_prompt":"...","anchor_description":"..."}"""
 
@@ -77,7 +246,7 @@ def llm_regen_supporting_prompt(
         data = json.loads(raw)
         ep = str(data.get("english_prompt") or "").strip()
         ad = str(data.get("anchor_description") or "").strip()
-        if len(ep) < 40:
+        if len(ep) < 28:
             return None
         return {"english_prompt": ep, "anchor_description": ad or f"配角{display_name_en}"}
     except Exception as e:
@@ -94,7 +263,7 @@ HARD RULES:
 2. protagonist.stages: choose only from ["child","youth","middle","elderly"], based on life span that actually appears in the story. Do NOT output a stage that the story does not need.
 3. Each supporting role must have role_id: lowercase snake_case ASCII (letters, digits, underscores only), e.g. elder_patriarch, sheriff_kane.
 4. display_name_en: short English name or epithet for on-screen prompts (e.g. Jack, Elder, Sheriff).
-5. Every english_prompt MUST be usable as a character design sheet prompt: Cyanide and Happiness style, round bean head, dot eyes, stick-figure limbs, bold black outlines, flat 2D colors, triple view front side back, full body, pure white background, no props/environment. About 80–120 English words. Also include anchor_description: one short Chinese phrase (20–40 chars) for humans.
+5. Every english_prompt is IDENTITY + ERA/TONE ONLY for the character (about 35–70 English words): role in the story, social station, era, attitude. Do NOT write tailor-level clothing detail, lapels, buttons, hair micro-features, or face geometry lists. The renderer adds sheet layout and minimal Cyanide-style direction. Also include anchor_description: one short Chinese phrase (20–40 chars) for humans only.
 6. stage_prompts must contain one entry per stage listed in protagonist.stages with matching keys.
 7. Omit supporting characters who barely appear or do not need a consistent face.
 
@@ -121,7 +290,14 @@ Output ONE JSON object only:
 
 
 def _load_synopsis_dict() -> dict | None:
-    for p in (SCRIPT_TEMP_SYNOPSIS, LEGACY_FEISHU_TEMP_SYNOPSIS):
+    run_synopsis = None
+    try:
+        run_synopsis = _run_synopsis_path()
+    except Exception:
+        run_synopsis = None
+    for p in (run_synopsis, LEGACY_FEISHU_TEMP_SYNOPSIS):
+        if p is None:
+            continue
         if p.exists():
             try:
                 return json.loads(p.read_text(encoding="utf-8"))
@@ -164,17 +340,16 @@ def _validate_and_trim_cast(plan: dict) -> dict | None:
     for st in ordered_stages:
         if st not in sprompts or not isinstance(sprompts.get(st), dict):
             sprompts[st] = {
-                "english_prompt": f"Cyanide and Happiness style, flat 2D, bean head, dot eyes, stick limbs, bold outlines, "
-                f"triple view front side back, full body, white background, protagonist at {st} life stage.",
+                "english_prompt": f"Protagonist of this story at the {st} life stage; same narrative identity across ages—"
+                f"broad social role and tone only, flat iconic silhouette (no fine tailoring or facial catalog).",
                 "anchor_description": f"主角{st}阶段立绘",
             }
         else:
             ep = str(sprompts[st].get("english_prompt") or "").strip()
-            if len(ep) < 40:
+            if len(ep) < 28:
                 sprompts[st]["english_prompt"] = (
-                    f"Cyanide and Happiness comic style, flat illustration, bean head, dot eyes, stick-figure limbs, "
-                    f"bold black outlines, character design sheet, triple view front side back, full body, white background, "
-                    f"protagonist life stage {st}."
+                    f"Same story’s protagonist in the {st} stage: identity and attitude only—era-appropriate status "
+                    f"and mood in short phrases; avoid costume micro-detail."
                 )
     pro["stage_prompts"] = sprompts
 
@@ -196,10 +371,10 @@ def _validate_and_trim_cast(plan: dict) -> dict | None:
         used_ids.add(rid)
         dn = str(item.get("display_name_en") or rid).strip() or rid
         ep = str(item.get("english_prompt") or "").strip()
-        if len(ep) < 40:
+        if len(ep) < 28:
             ep = (
-                f"Cyanide and Happiness comic style, flat 2D, bean head, dot eyes, stick limbs, bold outlines, "
-                f"character design sheet, triple view front side back, full body, white background, supporting character {dn}."
+                f"Supporting character ({dn}): role and moral alignment in the story, era-appropriate station "
+                f"and attitude—broad strokes only, no outfit sewing-level detail."
             )
         cleaned.append(
             {
@@ -287,12 +462,14 @@ def get_needed_stages(topic: str):
         meta = {k: syn.get(k) for k in ("era", "identity", "duration") if syn.get(k)}
         if meta:
             text_to_analyze = text_to_analyze + "\n" + json.dumps(meta, ensure_ascii=False)
-    if not text_to_analyze and config.FULL_STORY_V6_PATH.exists():
-        try:
-            story_data = json.loads(config.FULL_STORY_V6_PATH.read_text(encoding="utf-8"))
-            text_to_analyze = (story_data.get("master_design", {}).get("full_narration", "") or "").strip()
-        except Exception:
-            pass
+    if not text_to_analyze:
+        full_story = _run_story_path(must_exist=True)
+        if full_story is not None:
+            try:
+                story_data = json.loads(full_story.read_text(encoding="utf-8"))
+                text_to_analyze = (story_data.get("master_design", {}).get("full_narration", "") or "").strip()
+            except Exception:
+                pass
     if not text_to_analyze:
         return ["middle"]
     client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL.rstrip("/"))
@@ -329,25 +506,19 @@ def design_character(topic: str, role_tag: str, stage: str = "middle"):
     print(f"  🧠 [Design] 正在构思角色: {role_tag} (阶段: {stage_name_cn})...")
     client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL.rstrip("/"))
 
-    system_prompt = f"""你是“角色定妆提示词压缩器（Prompt Compressor）”。
-目标：为“快乐氰化物 / Cyanide and Happiness 美漫风”输出可直接用于人物三视图定妆照的英文提示词。
+    system_prompt = f"""你是「角色定妆 · 身份语义压缩器」。
+目标：只输出**身份 + 时代/气质**英文描述，供极简氰化物风三视图定妆使用（画布与画风由下游模板注入）。
 
 【当前角色阶段】：{stage_name_cn} ({stage})
 
-硬性风格约束（必须全部体现）：
-- Cyanide and Happiness comic style, round bean head, dot eyes, stick-figure limbs, bold black outlines,
-  flat vibrant colors, pure 2D flat cartoon
-- no realistic anatomy, no 3D, no CGI, no photorealistic, no texture details
+english_prompt 规则（约 35–70 个英文词）：
+1) 用「在社会结构里的角色 / 立场」+「该人生阶段的处境与气质」表达人物；可含粗粒度配色倾向（如 dark suit vs bright tee），但禁止缝纫级服饰描写。
+2) 严禁罗列：lapels, buttons, seams, hairline, pores, 五官拼图式描写、珠宝刻面、西装褶皱纹理等。
+3) 不要重复「triple view / white background / character sheet」等构图句——下游会统一加。
 
-定妆照构图约束（必须写入 english_prompt）：
-- character design sheet, triple view: front, side, back, full body, centered, pure white background,
-  no environment, no props, no shadow
+anchor_description：给人类看的一句中文（20~40 字），可与身份摘要同义；**不**自动进入生图主 prompt。
 
-人物信息写法约束：
-1) 身份辨识核心 + 年龄阶段 + 1~2 服饰锚点
-2) english_prompt 控制在 80~120 个英文词
-
-输出格式（仅输出 JSON）:
+输出格式（仅 JSON）:
 {{ "english_prompt": "...", "anchor_description": "中文一句话，20~40字" }}"""
 
     user_prompt = f"请为【{topic}】设计角色类型为 {role_tag} 的【{stage_name_cn}】形象。"
@@ -373,19 +544,19 @@ def _archive_and_clean_category(category: str, target_stage: str = None):
     target_dirs = []
     if category == "protagonist":
         if target_stage:
-            target_dirs = [config.CHARACTER_REF_MAP.get(target_stage, config.REFS_PROTAGONIST_MIDDLE)]
+            target_dirs = [_run_ref_stage_dir(target_stage)]
         else:
             target_dirs = [
-                config.REFS_PROTAGONIST_CHILD,
-                config.REFS_PROTAGONIST_YOUTH,
-                config.REFS_PROTAGONIST_MIDDLE,
-                config.REFS_PROTAGONIST_ELDERLY,
-                config.REFS_DIR / "supporting",
+                _run_ref_stage_dir("child"),
+                _run_ref_stage_dir("youth"),
+                _run_ref_stage_dir("middle"),
+                _run_ref_stage_dir("elderly"),
+                _run_refs_root(create_if_missing=True) / "supporting",
             ]
     elif category == "supporting":
-        target_dirs = [config.REFS_SUPPORTING]
+        target_dirs = [_run_refs_root(create_if_missing=True) / "supporting"]
     elif category == "other":
-        target_dirs = [config.REFS_OTHER]
+        target_dirs = [_run_ref_other_dir()]
 
     for target_dir in target_dirs:
         if not target_dir or not target_dir.exists():
@@ -396,7 +567,7 @@ def _archive_and_clean_category(category: str, target_stage: str = None):
         import datetime
 
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = config.REFS_BACKUP_DIR / f"{timestamp}_{target_dir.name}"
+        backup_path = _run_ref_archive_root() / f"{timestamp}_{target_dir.name}"
         backup_path.mkdir(parents=True, exist_ok=True)
         for f in files:
             try:
@@ -407,7 +578,7 @@ def _archive_and_clean_category(category: str, target_stage: str = None):
 
 
 def _archive_supporting_subdir(role_id: str):
-    d = config.REFS_DIR / "supporting" / role_id
+    d = _run_ref_supporting_dir(role_id)
     if not d.exists():
         return
     files = list(d.glob("*"))
@@ -416,7 +587,7 @@ def _archive_supporting_subdir(role_id: str):
     import datetime
 
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = config.REFS_BACKUP_DIR / f"{timestamp}_supporting_{role_id}"
+    backup_path = _run_ref_archive_root() / f"{timestamp}_supporting_{role_id}"
     backup_path.mkdir(parents=True, exist_ok=True)
     for f in files:
         try:
@@ -432,16 +603,31 @@ async def generate_ref_sheet_at(out_dir: Path, english_prompt: str, ref_image_pa
     label = out_dir.name
     print(f"  🎨 [Generate] 定妆输出 {label} (参考: {ref_image_path.name if ref_image_path else 'None'})...")
 
-    full_prompt = (
-        "Background: PURE FLAT WHITE #FFFFFF BACKGROUND, NO ENVIRONMENT, NO shadows. "
-        f"CHARACTER DESIGN SHEET, {config.STYLE_ANCHOR} "
-        "SAME character from 3 angles: 1. FRONT view. 2. SIDE profile. 3. BACK view. "
-        f"Character appearance: {english_prompt}"
+    lines = [
+        "Background: flat pure white #FFFFFF only — no scenery, no floor, no horizon, no props.",
+        "Lighting: flat even cartoon lighting — no dramatic cast shadows, rim light, or studio volumetrics.",
+        "Layout: CHARACTER DESIGN SHEET — one identical character in three orthographic full-body views: "
+        "(1) front (2) side profile (3) back; same height, same outfit silhouette across views.",
+        f"Style: {config.REF_STYLE_ANCHOR}",
+    ]
+    if ref_image_path:
+        lines.append(
+            "Reference continuity: preserve the same face identity and character read as the reference image; "
+            "apply only age regression or progression for this stage — no new face, no unrelated redesign."
+        )
+    lines.append(
+        f"Character identity, era, and tone (brief — no micro-detail inventory): {english_prompt}"
     )
+    full_prompt = "\n".join(lines)
 
     try:
         img_refs = [str(ref_image_path)] if ref_image_path else None
-        img_bytes = await generate_image(prompt=full_prompt, size="2k", image_refs=img_refs)
+        img_bytes = await generate_image(
+            prompt=full_prompt,
+            size="2k",
+            image_refs=img_refs,
+            standalone_prompt=True,
+        )
         if img_bytes:
             out_path.write_bytes(img_bytes)
             rel = str(out_path.relative_to(BASE_DIR)).replace("\\", "/")
@@ -456,9 +642,9 @@ async def generate_ref_sheet_at(out_dir: Path, english_prompt: str, ref_image_pa
 async def generate_ref_sheet(category: str, english_prompt: str, stage: str = "middle", ref_image_path: Path = None):
     """兼容旧 API：主角阶段目录。"""
     if category == "protagonist":
-        target_dir = config.CHARACTER_REF_MAP.get(stage, config.REFS_PROTAGONIST_MIDDLE)
+        target_dir = _run_ref_stage_dir(stage)
     else:
-        target_dir = config.CHARACTER_REF_MAP.get(category, config.REFS_OTHER)
+        target_dir = _run_ref_other_dir()
     return await generate_ref_sheet_at(target_dir, english_prompt, ref_image_path)
 
 
@@ -549,6 +735,11 @@ async def _run_synopsis_driven_protagonist_pipeline(topic: str):
         await _run_legacy_protagonist_only(topic, target_stage=None)
         return
 
+    try:
+        write_refs_prompt_cast_from_synopsis(topic, syn, plan)
+    except Exception as e:
+        print(f"  ⚠️ [RefsPrompt] 写入失败（不影响生图）: {e}")
+
     cast_registry = {
         "protagonist": {
             "role_id": "protagonist",
@@ -565,7 +756,7 @@ async def _run_synopsis_driven_protagonist_pipeline(topic: str):
     anchor_ref_path: Path | None = None
     for st in stages:
         design = stage_prompts[st]
-        tdir = config.CHARACTER_REF_MAP.get(st, config.REFS_PROTAGONIST_MIDDLE)
+        tdir = _run_ref_stage_dir(st)
         gen_path = await generate_ref_sheet_at(tdir, design["english_prompt"], anchor_ref_path)
         if gen_path:
             desc_f = gen_path.parent / "description.txt"
@@ -575,7 +766,7 @@ async def _run_synopsis_driven_protagonist_pipeline(topic: str):
 
     for sup in plan["supporting"]:
         rid = sup["role_id"]
-        sdir = config.REFS_DIR / "supporting" / rid
+        sdir = _run_ref_supporting_dir(rid)
         gen_path = await generate_ref_sheet_at(sdir, sup["english_prompt"], None)
         if gen_path:
             desc_f = gen_path.parent / "description.txt"
@@ -584,10 +775,9 @@ async def _run_synopsis_driven_protagonist_pipeline(topic: str):
             physical_anchors[k] = str(gen_path.resolve())
 
     ref_slots = _build_ref_display_slots(cast_registry, physical_anchors)
-    paths = get_paths(create_if_missing=False)
-    run_full = (paths or {}).get("scripts_dir")
-    run_full = (run_full / "full_story_v6.json") if run_full else None
-    target = run_full if (run_full and run_full.exists()) else config.FULL_STORY_V6_PATH
+    target = _run_story_path(must_exist=True)
+    if target is None:
+        raise RuntimeError("当前 run 下缺少 scripts/full_story_v6.json，无法回写定妆信息。")
     _sync_full_story_cast(target, cast_registry, physical_anchors, ref_slots, stages)
     print(f"\n✨ Cast 定妆完成：主角阶段 {stages}，配角 {len(plan['supporting'])} 人。")
 
@@ -597,12 +787,18 @@ async def _run_legacy_protagonist_only(topic: str, target_stage: str | None):
     if target_stage:
         stages = [target_stage]
 
-    middle_ref_path = config.CHARACTER_REF_MAP.get("middle", config.REFS_PROTAGONIST_MIDDLE) / "triple_view.png"
+    middle_ref_path = _run_ref_stage_dir("middle") / "triple_view.png"
     if not middle_ref_path.exists():
         middle_ref_path = None
 
+    stage_prompts: dict = {}
+
     if "middle" in stages:
         design = design_character(topic, "protagonist", "middle")
+        stage_prompts["middle"] = {
+            "english_prompt": design["english_prompt"],
+            "anchor_description": design.get("anchor_description", ""),
+        }
         gen_path = await generate_ref_sheet("protagonist", design["english_prompt"], "middle")
         if gen_path:
             desc_f = gen_path.parent / "description.txt"
@@ -611,25 +807,32 @@ async def _run_legacy_protagonist_only(topic: str, target_stage: str | None):
 
     for stage in [s for s in stages if s != "middle"]:
         design = design_character(topic, "protagonist", stage)
+        stage_prompts[stage] = {
+            "english_prompt": design["english_prompt"],
+            "anchor_description": design.get("anchor_description", ""),
+        }
         result_path = await generate_ref_sheet("protagonist", design["english_prompt"], stage, middle_ref_path)
         if result_path:
             desc_f = result_path.parent / "description.txt"
             desc_f.write_text(design["anchor_description"], encoding="utf-8")
 
-    paths = get_paths(create_if_missing=False)
-    run_full_story_path = (paths or {}).get("scripts_dir")
-    run_full_story_path = (run_full_story_path / "full_story_v6.json") if run_full_story_path else None
-    target_story_path = run_full_story_path if (run_full_story_path and run_full_story_path.exists()) else config.FULL_STORY_V6_PATH
+    try:
+        syn_snap = _load_synopsis_dict()
+        write_refs_prompt_legacy(topic, stages, stage_prompts, syn_snap)
+    except Exception as e:
+        print(f"  ⚠️ [RefsPrompt] legacy 写入失败: {e}")
 
-    if target_story_path.exists():
+    target_story_path = _run_story_path(must_exist=True)
+
+    if target_story_path is not None and target_story_path.exists():
         try:
             story_data = json.loads(target_story_path.read_text(encoding="utf-8"))
             physical_anchors = {}
             for _stage, _dir in [
-                ("child", config.REFS_PROTAGONIST_CHILD),
-                ("youth", config.REFS_PROTAGONIST_YOUTH),
-                ("middle", config.REFS_PROTAGONIST_MIDDLE),
-                ("elderly", config.REFS_PROTAGONIST_ELDERLY),
+                ("child", _run_ref_stage_dir("child")),
+                ("youth", _run_ref_stage_dir("youth")),
+                ("middle", _run_ref_stage_dir("middle")),
+                ("elderly", _run_ref_stage_dir("elderly")),
             ]:
                 _img = _dir / "triple_view.png"
                 if _img.exists():
@@ -666,12 +869,8 @@ async def _run_legacy_protagonist_only(topic: str, target_stage: str | None):
 def _merge_stage_anchor_into_full_story(stage_key: str, abs_img: str | None):
     if not abs_img:
         return
-    paths = get_paths(create_if_missing=False)
-    scripts = (paths or {}).get("scripts_dir")
-    target = (scripts / "full_story_v6.json") if scripts else config.FULL_STORY_V6_PATH
-    if not target.exists():
-        target = config.FULL_STORY_V6_PATH
-    if not target.exists():
+    target = _run_story_path(must_exist=True)
+    if target is None:
         print("  ⚠️ [Sync] 无 full_story，跳过重画回写")
         return
     try:
@@ -692,12 +891,8 @@ def _merge_supporting_anchor_into_full_story(role_id: str, abs_img: str | None):
     if not abs_img or not role_id:
         return
     key = f"supporting_{role_id}"
-    paths = get_paths(create_if_missing=False)
-    scripts = (paths or {}).get("scripts_dir")
-    target = (scripts / "full_story_v6.json") if scripts else config.FULL_STORY_V6_PATH
-    if not target.exists():
-        target = config.FULL_STORY_V6_PATH
-    if not target.exists():
+    target = _run_story_path(must_exist=True)
+    if target is None:
         print("  ⚠️ [Sync] 无 full_story，跳过配角回写")
         return
     try:
@@ -721,12 +916,8 @@ async def run_regen_supporting_character(topic: str, role_id: str) -> int:
     """
     role_id = _normalize_role_id(role_id)
     print(f"\n🔄 [Supporting Regen] 重画配角 role_id={role_id} …")
-    paths = get_paths(create_if_missing=False)
-    scripts = (paths or {}).get("scripts_dir")
-    target = (scripts / "full_story_v6.json") if scripts else config.FULL_STORY_V6_PATH
-    if not target.exists():
-        target = config.FULL_STORY_V6_PATH
-    if not target.exists():
+    target = _run_story_path(must_exist=True)
+    if target is None:
         print("  ❌ 找不到 full_story_v6.json")
         return 1
     try:
@@ -750,7 +941,7 @@ async def run_regen_supporting_character(topic: str, role_id: str) -> int:
     syn = _load_synopsis_dict() or {}
 
     _archive_supporting_subdir(role_id)
-    sdir = config.REFS_DIR / "supporting" / role_id
+    sdir = _run_ref_supporting_dir(role_id)
     sdir.mkdir(parents=True, exist_ok=True)
 
     design = llm_regen_supporting_prompt(topic, syn, role_id, display_name_en)
@@ -768,6 +959,10 @@ async def run_regen_supporting_character(topic: str, role_id: str) -> int:
     desc_f.write_text(str(design.get("anchor_description", "")), encoding="utf-8")
 
     _merge_supporting_anchor_into_full_story(role_id, str(gen_path.resolve()))
+    try:
+        merge_refs_prompt_supporting(topic, role_id, display_name_en, design)
+    except Exception as e:
+        print(f"  ⚠️ [RefsPrompt] 配角条目更新失败: {e}")
     print(f"\n✨ 配角 [{display_name_en}] (`{role_id}`) 重画完成。")
     return 0
 
@@ -783,9 +978,9 @@ async def run_ref_process(topic: str, category: str, target_stage: str = None):
             full_p = f"WIDE ANGLE CINEMATIC BACKGROUND, {config.STYLE_ANCHOR}, No characters, {prompt}"
             img_b = await generate_image(prompt=full_p, size="2k")
             if img_b:
-                p = config.REFS_OTHER / f"{name}.png"
+                p = _run_ref_other_dir() / f"{name}.png"
                 p.write_bytes(img_b)
-                d_p = config.REFS_OTHER / f"description_{name}.txt"
+                d_p = _run_ref_other_dir() / f"description_{name}.txt"
                 d_p.write_text(desc, encoding="utf-8")
                 vault_backup(p, f"refs/other/{name}.png")
                 vault_backup(d_p, f"refs/other/description_{name}.txt")
@@ -795,13 +990,17 @@ async def run_ref_process(topic: str, category: str, target_stage: str = None):
     if category == "protagonist":
         if target_stage:
             design = design_character(topic, "protagonist", target_stage)
-            tdir = config.CHARACTER_REF_MAP.get(target_stage, config.REFS_PROTAGONIST_MIDDLE)
-            mid = config.REFS_PROTAGONIST_MIDDLE / "triple_view.png"
+            tdir = _run_ref_stage_dir(target_stage)
+            mid = _run_ref_stage_dir("middle") / "triple_view.png"
             refp = mid if mid.exists() else None
             gen_path = await generate_ref_sheet_at(tdir, design["english_prompt"], refp)
             if gen_path:
                 (gen_path.parent / "description.txt").write_text(design["anchor_description"], encoding="utf-8")
                 _merge_stage_anchor_into_full_story(target_stage, str(gen_path.resolve()))
+                try:
+                    merge_refs_prompt_protagonist_stage(topic, target_stage, design)
+                except Exception as e:
+                    print(f"  ⚠️ [RefsPrompt] 单阶段合并失败: {e}")
             print("\n✨ 单阶段重画完成并已同步剧本。")
             return
         await _run_synopsis_driven_protagonist_pipeline(topic)

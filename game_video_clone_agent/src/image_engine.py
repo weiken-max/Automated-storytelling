@@ -474,9 +474,11 @@ async def generate_image(prompt: str,
                          tags: list = None,
                          scenes: list = None,
                          size: str = None,
-                         vendor_key: str = None) -> bytes:
+                         vendor_key: str = None,
+                         standalone_prompt: bool = False) -> bytes:
     """
     通用生图接口。
+    standalone_prompt=True：prompt 已包含完整风格与指令（如人物定妆纸），不再前置 Style: STYLE_ANCHOR，也不注入 crowd-suppression 段落。
     遇到余额/鉴权错误会抛出 APIQuotaError / APIAuthError，让调用方知道需要人工介入。
     """
     await _wait_for_cooldown()
@@ -522,13 +524,19 @@ async def generate_image(prompt: str,
 
     # ── 🚩 V6.6 核心一致性协议：视觉隔离 (Crowd Suppression) ──
     # 如果完全没有主角标签，则向 Prompt 注入高权重的负向压制，防止路人撞脸
-    if not any(t in ["child", "youth", "middle", "elderly", "protagonist"] for t in (tags or [])):
+    # standalone_prompt：定妆纸等已自带完整指令，跳过压制与全局 Style 前缀（见 ref_generator）。
+    if (
+        not standalone_prompt
+        and not any(t in ["child", "youth", "middle", "elderly", "protagonist"] for t in (tags or []))
+    ):
         # 强制注入高权重负向词（模拟 Stable Diffusion 权重语法，某些 VLM 能识别此类强调）
         CROWD_SUPPRESSION = "\n[NEGATIVE CONSTRAINT: AVOID THE FOLLOWING CHARACTER FEATURES AT ALL COSTS: (red jacket:1.5), (black messy hair:1.5)]"
         prompt += CROWD_SUPPRESSION
         print(f"      🛡️  [CrowdSuppression] 已注入主角特征压制协议。")
 
-    if STYLE_ANCHOR not in prompt:
+    if standalone_prompt:
+        full_prompt = prompt
+    elif STYLE_ANCHOR not in prompt:
         full_prompt = f"Style: {STYLE_ANCHOR}\nAction: {prompt}"
     else:
         full_prompt = prompt

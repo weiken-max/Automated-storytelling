@@ -24,19 +24,28 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
 from src.run_context import get_paths, get_current_run_id
+from src.style_config import FONT_PATH, SUBTITLE_SIZE, SUBTITLE_Y_FRAC
 NARRATIVE_FINAL_PATH = None
 STORYBOARDS_DIR = None
 AUDIO_DIR = None
 OUTPUT_DIR = None
 LOGS_DIR = None
+RUN_DIR = None
 FPS = 24
-FRAME_SIZE = "1024x768"
+FRAME_SIZE = "1280x720"
 FRAME_W, FRAME_H = FRAME_SIZE.split("x")
 # 首条 trigger 晚于 0 时，片头补镜；与音轨对齐容差（秒）
 _HEAD_GAP_EPS = 0.05
 _DURATION_ALIGN_EPS = 0.12
-# 成片整体变速（1.0=原速；>1 为「更快」即更短时长）。可用环境变量 STEP3_PLAYBACK_SPEED 覆盖。
-_DEFAULT_PLAYBACK_SPEED = 1.1
+# Step3 主合成阶段保持 1.0，确保字幕与原始音轨严格对齐。
+_DEFAULT_PLAYBACK_SPEED = 1.0
+# 主合成完成后再做整片后置变速（默认 1.1x）。
+_DEFAULT_POST_PLAYBACK_SPEED = 1.1
+_SUBTITLE_TARGET_CHARS = 14
+_SUBTITLE_MIN_SEG_SEC = 0.25
+_SUBTITLE_SIZE_SCALE = 0.56
+_SUBTITLE_MARGIN_V = 36
+_SUBTITLE_TIME_EPS = 0.02
 
 
 def _ffprobe_duration(path: Path) -> float:
@@ -142,6 +151,197 @@ def _run_ffmpeg(cmd: list[str], stage: str):
         if detail:
             print(detail[-4000:])
         raise RuntimeError(f"{stage} 失败")
+
+
+def _seconds_to_srt_timestamp(seconds: float) -> str:
+    s = max(0.0, float(seconds))
+    h = int(s // 3600)
+    m = int((s % 3600) // 60)
+    sec = int(s % 60)
+    ms = int(round((s - int(s)) * 1000))
+    if ms >= 1000:
+        ms -= 1000
+        sec += 1
+        if sec >= 60:
+            sec = 0
+            m += 1
+            if m >= 60:
+                m = 0
+                h += 1
+    return f"{h:02d}:{m:02d}:{sec:02d},{ms:03d}"
+
+
+def _write_temp_srt_from_master_json(master_srt_json_path: Path, out_srt_path: Path) -> None:
+    """
+    将 audio/master_srt.json（start_time/end_time/text）转换为标准 .srt。
+    """
+    if not master_srt_json_path.exists():
+        raise FileNotFoundError(f"找不到字幕源文件: {master_srt_json_path}")
+    payload = json.loads(master_srt_json_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        raise ValueError(f"字幕源格式异常（期望 list）: {master_srt_json_path}")
+
+    def _split_text_for_subtitles(text: str) -> list[str]:
+        raw = (text or "").strip()
+        if not raw:
+            return []
+
+        # 仅按标点断句：先句末标点，再次级停顿标点；不做按字数硬切，避免“代/理律师”被拆词。
+        major_parts: list[str] = []
+        start = 0
+        for i, ch in enumerate(raw):
+            if ch in "。！？；!?;":
+                part = raw[start : i + 1].strip()
+                if part:
+                    major_parts.append(part)
+                start = i + 1
+        tail = raw[start:].strip()
+        if tail:
+            major_parts.append(tail)
+        if not major_parts:
+            major_parts = [raw]
+
+        fine_parts: list[str] = []
+        for part in major_parts:
+            tmp = ""
+            for ch in part:
+                tmp += ch
+                if ch in "，、,:：":
+                    if len(tmp.strip()) >= 4:
+                        fine_parts.append(tmp.strip())
+                        tmp = ""
+            if tmp.strip():
+                fine_parts.append(tmp.strip())
+
+        return [x for x in fine_parts if x]
+
+    def _wrap_long_subtitle_line(text: str, max_chars: int = 22) -> str:
+        """
+        仅做显示换行，不改变时间轴与字幕条目数量。
+        优先在中点附近的逗号类标点换行；找不到再在中点硬换行。
+        """
+        t = (text or "").strip()
+        if len(t) <= max_chars:
+            return t
+        mid = len(t) // 2
+        best = -1
+        for i, ch in enumerate(t):
+            if ch in "，、,:：":
+                if best < 0 or abs(i - mid) < abs(best - mid):
+                    best = i
+        if best >= 0:
+            return t[: best + 1].rstrip() + "\n" + t[best + 1 :].lstrip()
+        return t[:mid].rstrip() + "\n" + t[mid:].lstrip()
+
+    # 先做单调化修正，消除源字幕重叠，避免“前一句没说完就被下一句顶掉”。
+    norm_rows: list[dict] = []
+    prev_end = 0.0
+    for row in payload:
+        if not isinstance(row, dict):
+            continue
+        st = float(row.get("start_time", 0.0) or 0.0)
+        et = float(row.get("end_time", st) or st)
+        text = str(row.get("text", "") or "").strip()
+        if not text:
+            continue
+        st = max(st, prev_end + _SUBTITLE_TIME_EPS)
+        if et <= st:
+            et = st + _SUBTITLE_MIN_SEG_SEC
+        prev_end = et
+        norm_rows.append({"start_time": st, "end_time": et, "text": text})
+
+    lines: list[str] = []
+    idx = 1
+    for row in norm_rows:
+        st = float(row["start_time"])
+        et = float(row["end_time"])
+        text = str(row["text"]).strip()
+
+        chunks = _split_text_for_subtitles(text)
+        if not chunks:
+            continue
+
+        # 断句后按字数权重分配时长，避免固定最小时长挤爆导致的“晚出现/提前消失”。
+        total_span = max(_SUBTITLE_MIN_SEG_SEC, et - st)
+        weights = [max(1, len(c.strip())) for c in chunks]
+        weight_sum = max(1, sum(weights))
+        dur_list = [total_span * (w / weight_sum) for w in weights]
+
+        # 软下限：不足最小时长的段从“富余段”借时长，保证总时长不变。
+        need = 0.0
+        for i, d in enumerate(dur_list):
+            if d < _SUBTITLE_MIN_SEG_SEC:
+                need += (_SUBTITLE_MIN_SEG_SEC - d)
+                dur_list[i] = _SUBTITLE_MIN_SEG_SEC
+        if need > 1e-9:
+            donors = [max(0.0, d - _SUBTITLE_MIN_SEG_SEC) for d in dur_list]
+            donor_sum = sum(donors)
+            if donor_sum > 1e-9:
+                scale = min(1.0, need / donor_sum)
+                for i in range(len(dur_list)):
+                    if donors[i] > 0:
+                        take = donors[i] * scale
+                        dur_list[i] -= take
+                        need -= take
+
+        # 漂移修正：最后一段吃掉误差，确保总和严格等于原句时间窗。
+        drift = total_span - sum(dur_list)
+        dur_list[-1] = max(_SUBTITLE_MIN_SEG_SEC, dur_list[-1] + drift)
+
+        cursor = st
+        for i, chunk in enumerate(chunks):
+            seg_st = cursor
+            if i == len(chunks) - 1:
+                seg_et = et
+            else:
+                seg_et = min(et, seg_st + dur_list[i])
+            if seg_et <= seg_st:
+                seg_et = seg_st + _SUBTITLE_MIN_SEG_SEC
+            lines.append(str(idx))
+            lines.append(f"{_seconds_to_srt_timestamp(seg_st)} --> {_seconds_to_srt_timestamp(seg_et)}")
+            wrapped = _wrap_long_subtitle_line(chunk)
+            lines.append(wrapped.replace("\r\n", "\n").replace("\r", "\n"))
+            lines.append("")
+            idx += 1
+            cursor = seg_et
+
+    if idx == 1:
+        raise ValueError("master_srt.json 中没有可用字幕条目。")
+    out_srt_path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _escape_path_for_ffmpeg_subtitles(path: Path) -> str:
+    """
+    Windows 路径转义给 subtitles 滤镜：
+    - 统一 / 分隔符
+    - 盘符冒号转义（C\\:/...）
+    - 转义单引号，避免破坏滤镜参数字符串
+    """
+    p = str(path.resolve()).replace("\\", "/")
+    if len(p) >= 2 and p[1] == ":":
+        p = p[0] + "\\:" + p[2:]
+    p = p.replace("'", "\\'")
+    return p
+
+
+def _build_subtitle_force_style() -> str:
+    # 字号缩小到更接近剪映“小字”观感，并固定更贴底的 MarginV。
+    font_size = max(16, int(round(float(SUBTITLE_SIZE) * _SUBTITLE_SIZE_SCALE)))
+    margin_v = max(20, int(_SUBTITLE_MARGIN_V))
+    # FONT_PATH 作为字体资产配置锚点；滤镜中字体名按需求固定为 Microsoft YaHei
+    _ = FONT_PATH
+    _ = SUBTITLE_Y_FRAC
+    return (
+        f"Fontname=Microsoft YaHei,"
+        f"Fontsize={font_size},"
+        "PrimaryColour=&H00FFFFFF,"
+        "OutlineColour=&H00000000,"
+        "BorderStyle=1,"
+        "Outline=2,"
+        "Shadow=0,"
+        "Alignment=2,"
+        f"MarginV={margin_v}"
+    )
 
 
 def _timeline_to_segments(timeline: list, total_audio_duration: float):
@@ -260,6 +460,7 @@ def assemble_final_video_ffmpeg(
     master_audio_path: Path,
     out_file: Path,
     expected_audio_duration: float,
+    subtitle_srt_path: Path | None = None,
 ):
     print("  [Assemble] 正在无损拼接无声长视频...")
     cmd_concat = [
@@ -284,25 +485,44 @@ def assemble_final_video_ffmpeg(
         speed = _DEFAULT_PLAYBACK_SPEED
 
     print(f"  [Render] 正在混音输出最终成片: {out_file.name} (请稍候...)")
+    subtitle_filter = ""
+    if subtitle_srt_path:
+        escaped_sub_path = _escape_path_for_ffmpeg_subtitles(subtitle_srt_path)
+        style = _build_subtitle_force_style()
+        subtitle_filter = f"subtitles='{escaped_sub_path}':force_style='{style}'"
+
     if abs(speed - 1.0) < 1e-6:
-        # 原速：视频流 copy + 按音轨长度裁剪
+        # 原速：有字幕则走 -vf 烧录（需重编码视频）；无字幕保持 copy 提速。
         cmd_mux = [
             "ffmpeg", "-y",
             "-i", str(silent_video_path),
             "-i", str(master_audio_path),
             "-t", f"{expected_audio_duration:.6f}",
-            "-c:v", "copy",
-            "-c:a", "aac",
-            str(out_file),
         ]
+        if subtitle_filter:
+            cmd_mux.extend([
+                "-vf", subtitle_filter,
+                "-c:v", "libx264",
+                "-preset", "veryfast",
+                "-pix_fmt", "yuv420p",
+            ])
+        else:
+            cmd_mux.extend(["-c:v", "copy"])
+        cmd_mux.extend(["-c:a", "aac", str(out_file)])
         _run_ffmpeg(cmd_mux, "混音导出最终成片")
     else:
-        # 音画同比变速（如 1.1×）：setpts + atempo，需重编码视频
+        # 音画同比变速（如 1.1×）：setpts + atempo；若有字幕，拼入同一个 filter_complex。
         inv = 1.0 / speed
-        fc = (
-            f"[0:v]setpts=PTS*{inv}[v];"
-            f"[1:a]atempo={speed}[a]"
-        )
+        if subtitle_filter:
+            fc = (
+                f"[0:v]{subtitle_filter},setpts=PTS*{inv}[v];"
+                f"[1:a]atempo={speed}[a]"
+            )
+        else:
+            fc = (
+                f"[0:v]setpts=PTS*{inv}[v];"
+                f"[1:a]atempo={speed}[a]"
+            )
         print(f"  [Speed] 成片播放速率 ×{speed:.3f}（STEP3_PLAYBACK_SPEED）")
         cmd_mux = [
             "ffmpeg", "-y",
@@ -320,8 +540,35 @@ def assemble_final_video_ffmpeg(
         ]
         _run_ffmpeg(cmd_mux, "变速混音导出最终成片")
 
+
+def _apply_post_playback_speed(out_file: Path, speed: float) -> None:
+    """
+    在主合成完成后做整片后置变速，避免影响前序字幕轴分配逻辑。
+    """
+    if speed <= 0 or abs(speed - 1.0) < 1e-6:
+        return
+    inv = 1.0 / speed
+    tmp_out = out_file.with_name(f"{out_file.stem}.speedtmp{out_file.suffix}")
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(out_file),
+        "-filter_complex", f"[0:v]setpts=PTS*{inv}[v];[0:a]atempo={speed}[a]",
+        "-map", "[v]",
+        "-map", "[a]",
+        "-shortest",
+        "-c:v", "libx264",
+        "-preset", "veryfast",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac",
+        str(tmp_out),
+    ]
+    print(f"  [PostSpeed] 主合成完成，开始后置变速 ×{speed:.3f}...")
+    _run_ffmpeg(cmd, "后置整片变速")
+    os.replace(tmp_out, out_file)
+    print(f"  [PostSpeed] 后置变速完成：{out_file.name}")
+
 def main():
-    global NARRATIVE_FINAL_PATH, STORYBOARDS_DIR, AUDIO_DIR, OUTPUT_DIR, LOGS_DIR
+    global NARRATIVE_FINAL_PATH, STORYBOARDS_DIR, AUDIO_DIR, OUTPUT_DIR, LOGS_DIR, RUN_DIR
     paths = get_paths(create_if_missing=False)
     if not paths:
         print("[ERROR] 未检测到当前 Run-ID。请先执行 story_planner/step1 初始化运行批次。")
@@ -331,6 +578,7 @@ def main():
     AUDIO_DIR = paths["audio_dir"]
     OUTPUT_DIR = paths["output_dir"]
     LOGS_DIR = paths["logs_dir"]
+    RUN_DIR = paths["run_dir"]
 
     print("\n=======================================================")
     print("[Phase 4-B] 绝对时间轴视频装配台")
@@ -369,7 +617,12 @@ def main():
     _write_step3_progress(0, 0)
 
     temp_dir, concat_list_path, silent_video_path = setup_temp_env(OUTPUT_DIR)
+    temp_subs_srt_path = RUN_DIR / "temp_subs.srt"
     try:
+        master_srt_json_path = AUDIO_DIR / "master_srt.json"
+        _write_temp_srt_from_master_json(master_srt_json_path, temp_subs_srt_path)
+        print(f"  [Subtitle] 已生成临时字幕文件: {temp_subs_srt_path}")
+
         print("  [Audio] 正在读取主音轨长度...")
         probe_cmd = [
             "ffprobe",
@@ -401,14 +654,29 @@ def main():
         clip_paths = generate_silent_clips_via_ffmpeg(segments, temp_dir)
         create_concat_list(clip_paths, concat_list_path)
         assemble_final_video_ffmpeg(
-            concat_list_path, silent_video_path, master_audio_path, out_file, total_audio_duration
+            concat_list_path,
+            silent_video_path,
+            master_audio_path,
+            out_file,
+            total_audio_duration,
+            subtitle_srt_path=temp_subs_srt_path,
         )
+        post_speed = float(
+            os.getenv("STEP3_POST_PLAYBACK_SPEED", str(_DEFAULT_POST_PLAYBACK_SPEED))
+        )
+        _apply_post_playback_speed(out_file, post_speed)
     except Exception as e:
         err_msg = f"{type(e).__name__}: {e}"
         print(f"[ERROR] Step3 异常终止: {err_msg}")
         _write_step3_error(err_msg)
         raise
     finally:
+        try:
+            if temp_subs_srt_path.exists():
+                temp_subs_srt_path.unlink(missing_ok=True)
+                print(f"  [Cleanup] 已清理临时字幕: {temp_subs_srt_path}")
+        except Exception as sub_clean_err:
+            print(f"  [WARN] 清理临时字幕失败: {sub_clean_err}")
         cleanup_temp_env(temp_dir)
         _clear_step3_progress()
 

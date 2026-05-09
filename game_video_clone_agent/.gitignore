@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.feishu.example
 
 # IDE and system files
 .cursor/
@@ -31,6 +32,9 @@ __pycache__/
 feishu/state.db
 feishu/last_error_context.json
 feishu/temp_*.json
+feishu/hub.pid
+feishu/run_pid_registry.json
+feishu/last_operator_open_id.json
 
 # data/: 仅提交各子目录下的 .gitkeep 占位；运行时素材与生成物不入库
 data/audio/*

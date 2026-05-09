@@ -56,6 +56,25 @@ class FeishuManager:
             return resp.data.message_id
         return None
 
+    def send_image_message(self, receive_id: str, receive_id_type: str, image_path: str) -> Optional[str]:
+        """发送单张图片消息（先上传再投递），用于单批宫格预览等轻量场景。"""
+        image_key = self.upload_image(image_path)
+        if not image_key:
+            return None
+        message_content = json.dumps({"image_key": image_key}, ensure_ascii=False)
+        request = CreateMessageRequest.builder() \
+            .receive_id_type(receive_id_type) \
+            .request_body(CreateMessageRequestBody.builder()
+                          .receive_id(receive_id)
+                          .msg_type("image")
+                          .content(message_content)
+                          .build()) \
+            .build()
+        resp = self._with_retry(self.client.im.v1.message.create, request)
+        if resp and resp.success() and resp.data:
+            return resp.data.message_id
+        return None
+
     def update_card(self, message_id: str, card_content: dict) -> bool:
         """原地更新已有卡片消息（patch），避免刷新时重新发一张新卡片"""
         try:

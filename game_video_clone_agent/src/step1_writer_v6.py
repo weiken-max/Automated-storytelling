@@ -1,8 +1,8 @@
 """
 🎞️ 剧情解构与物理时间轴底座 (src/step1_writer_v6.py)
 ==========================================================
-阶段二 (Phase 2)：读取纯净长文案 -> 生成音频/SRT -> 临时行号切分 Beat -> 产出 pseudo_srt.json
-阶段三 (Phase 3)：切分 text_segment -> 线性插值计算绝对 trigger_time -> 产出 narrative_v6_final.json
+阶段二 (Phase 2)：读取纯净长文案 -> 生成音频/SRT -> LLM 按行号切 Beat（默认 6–10 段，硬上限 10）-> 产出 pseudo_srt.json
+阶段三 (Phase 3)：LLM 打 <subshot> + visual_prompt（默认可并行最多 3 路 Beat，环境变量 PHASE3_MAX_WORKERS）-> 线性插值 trigger_time -> 产出 narrative_v6_final.json
 """
 
 import json
@@ -12,6 +12,8 @@ import sys
 import argparse
 import subprocess
 import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -23,7 +25,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 DATA_DIR = BASE_DIR / "data"
 
-from src.style_config import LLM_API_KEY, LLM_BASE_URL, MODEL_LLM
+from src.style_config import LLM_API_KEY, LLM_BASE_URL, MODEL_LLM, VOICE_ROLE, VOICE_RATE
 from src.project_vault import backup as vault_backup
 from src.run_context import get_paths, get_current_run_id
 from src.visual_era_context import build_writer_era_section
@@ -33,21 +35,77 @@ MODEL_WRITER = MODEL_LLM
 _paths = get_paths(create_if_missing=True)
 SCRIPTS_DIR = _paths["scripts_dir"]
 AUDIO_DIR = _paths["audio_dir"]
+LOGS_DIR = _paths["logs_dir"]
 FULL_STORY_V6_PATH = SCRIPTS_DIR / "full_story_v6.json"
+REFS_PROMPT_PATH = SCRIPTS_DIR / "refs-prompt.json"
 PSEUDO_SRT_PATH = SCRIPTS_DIR / "pseudo_srt.json"
 MASTER_SRT_PATH = AUDIO_DIR / "master_srt.json"
 NARRATIVE_FINAL_PATH = SCRIPTS_DIR / "narrative_v6_final.json"
 
 # Edge-TTS 单次合成常见硬上限约 600s（10min），长旁白需分块拼接音轨与字幕
 TTS_CHUNK_MAX_CHARS = 2200
+TTS_NETWORK_MAX_RETRIES = 4
+TTS_NETWORK_RETRY_BASE_SEC = 1.5
 
 
 def get_client():
     return OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
 
 
+# ── Phase 2 Beat 数量（影响 Phase 3 的 LLM 往返次数：每 Beat 约 2 次调用）────────
+MIN_BEATS_PHASE2 = 6
+MAX_BEATS_PHASE2 = 10
+
 # ── Phase 3 专用常量与异常 ──────────────────────────────────────────────────
-MAX_VISION_LLM_RETRIES = 3  # 每个 Beat 最多重试次数（两步各自计入同一轮）
+MAX_VISION_LLM_RETRIES = 5  # 每个 Beat 最多重试次数（两步各自计入同一轮）
+# Phase 3 并行：同时处理的 Beat 数上限（单 Beat 内部仍为 tag→prompt 串行）。设为 1 即退回串行。
+PHASE3_MAX_WORKERS_DEFAULT = 3
+
+
+def _phase3_pool_workers(n_beats: int) -> int:
+    raw = os.environ.get("PHASE3_MAX_WORKERS", str(PHASE3_MAX_WORKERS_DEFAULT))
+    try:
+        w = int(raw.strip())
+    except ValueError:
+        w = PHASE3_MAX_WORKERS_DEFAULT
+    if n_beats <= 0:
+        return 1
+    return max(1, min(w, n_beats))
+
+
+def _phase3_text_anchors_from_refs_prompt(refs_path: Path) -> dict:
+    """将 scripts/refs-prompt.json 转为 Phase3「角色外观语义锚点」扁平 dict（键与 physical_char_anchors 逻辑键对齐）。"""
+    if not refs_path.is_file():
+        return {}
+    try:
+        data = json.loads(refs_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    out: dict[str, dict] = {}
+    pro = data.get("protagonist")
+    if isinstance(pro, dict):
+        for st, d in (pro.get("stage_prompts") or {}).items():
+            if isinstance(d, dict):
+                block = {k: d[k] for k in ("english_prompt", "anchor_description") if d.get(k)}
+                if block:
+                    out[str(st)] = block
+    for x in data.get("supporting") or []:
+        if not isinstance(x, dict):
+            continue
+        rid = str(x.get("role_id") or "").strip()
+        if not rid:
+            continue
+        key = f"supporting_{rid}"
+        block = {}
+        for k in ("english_prompt", "anchor_description", "display_name_en"):
+            v = x.get(k)
+            if v is not None and str(v).strip():
+                block[k] = v
+        if block:
+            out[key] = block
+    return out
 
 
 class Phase3BeatError(Exception):
@@ -59,6 +117,52 @@ class Phase3BeatError(Exception):
         self.detail = detail
         self.beat_time_range = beat_time_range
         super().__init__(f"[{beat_id}][{stage}] {detail}")
+
+
+def _extract_json_object(raw: str) -> dict | None:
+    t = (raw or "").strip()
+    if not t:
+        return None
+    try:
+        data = json.loads(t)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        pass
+
+    if t.startswith("```"):
+        lines = t.splitlines()
+        if lines:
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        t = "\n".join(lines).strip()
+        try:
+            data = json.loads(t)
+            return data if isinstance(data, dict) else None
+        except Exception:
+            pass
+
+    start = t.find("{")
+    end = t.rfind("}")
+    if start >= 0 and end > start:
+        body = t[start : end + 1]
+        try:
+            data = json.loads(body)
+            return data if isinstance(data, dict) else None
+        except Exception:
+            return None
+    return None
+
+
+def _dump_phase3_llm_raw(stage: str, beat_id: str, attempt: int, raw: str, meta: str = "") -> None:
+    try:
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        safe_beat = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in (beat_id or "unknown"))
+        path = LOGS_DIR / f"phase3_{stage}_{safe_beat}_attempt{attempt}.log"
+        payload = f"[meta]\n{meta}\n\n[raw]\n{raw or ''}\n"
+        path.write_text(payload, encoding="utf-8")
+    except Exception:
+        pass
 
 
 def parse_vtt_time(vtt_time_str: str) -> float:
@@ -163,25 +267,71 @@ def _split_text_for_edge_tts(text: str, max_chars: int = TTS_CHUNK_MAX_CHARS) ->
 def _run_edge_tts_to_files(text: str, audio_path: Path, vtt_path: Path) -> None:
     temp_txt = audio_path.with_suffix(".txt")
     temp_txt.write_text(text, encoding="utf-8")
-    cmd = [
-        "edge-tts",
-        "-f", str(temp_txt),
-        "--write-media", str(audio_path),
-        "--write-subtitles", str(vtt_path),
-        "--voice", "zh-CN-YunxiNeural",
-        "--rate", "+10%",
+    cmd_candidates = [
+        [
+            "edge-tts",
+            "-f", str(temp_txt),
+            "--write-media", str(audio_path),
+            "--write-subtitles", str(vtt_path),
+            "--voice", str(VOICE_ROLE),
+            "--rate", str(VOICE_RATE),
+        ],
+        [
+            sys.executable,
+            "-m",
+            "edge_tts",
+            "-f", str(temp_txt),
+            "--write-media", str(audio_path),
+            "--write-subtitles", str(vtt_path),
+            "--voice", str(VOICE_ROLE),
+            "--rate", str(VOICE_RATE),
+        ],
     ]
     try:
-        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        for idx, cmd in enumerate(cmd_candidates, start=1):
+            try:
+                for attempt in range(1, TTS_NETWORK_MAX_RETRIES + 1):
+                    try:
+                        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        return
+                    except subprocess.CalledProcessError as e:
+                        raw_err = e.stderr if e.stderr is not None else e.output
+                        if isinstance(raw_err, bytes):
+                            err_text = raw_err.decode("utf-8", errors="ignore")
+                        else:
+                            err_text = str(raw_err or "")
+                        transient = any(
+                            key in err_text
+                            for key in (
+                                "ClientConnectorError",
+                                "ConnectionResetError",
+                                "Cannot connect to host",
+                                "TimeoutError",
+                                "ServerDisconnectedError",
+                            )
+                        )
+                        if transient and attempt < TTS_NETWORK_MAX_RETRIES:
+                            backoff = TTS_NETWORK_RETRY_BASE_SEC * (2 ** (attempt - 1))
+                            print(
+                                f"  ⚠️ [TTS] 网络抖动（命令候选 {idx}）第 {attempt}/{TTS_NETWORK_MAX_RETRIES} 次失败，"
+                                f"{backoff:.1f}s 后重试..."
+                            )
+                            time.sleep(backoff)
+                            continue
+                        raise RuntimeError(err_text)
+            except FileNotFoundError:
+                if idx == len(cmd_candidates):
+                    raise
+                continue
+        raise FileNotFoundError("edge-tts command/module not found")
     except FileNotFoundError:
-        temp_txt.unlink(missing_ok=True)
         print("❌ [FATAL] 找不到 edge-tts 命令。请在终端运行: pip install edge-tts")
         sys.exit(1)
-    except subprocess.CalledProcessError as e:
-        temp_txt.unlink(missing_ok=True)
-        print(f"❌ [TTS] 音频生成失败: {e.stderr.decode('utf-8', errors='ignore')}")
+    except RuntimeError as e:
+        print(f"❌ [TTS] 音频生成失败: {e}")
         sys.exit(1)
-    temp_txt.unlink(missing_ok=True)
+    finally:
+        temp_txt.unlink(missing_ok=True)
 
 
 def _concat_mp3_files(part_paths: list[Path], out_path: Path) -> None:
@@ -311,7 +461,7 @@ def chunk_beats_by_llm(srt_data: list) -> list:
     text_payload = "\n".join(numbered_lines)
     
     system_prompt = f"""你是一个顶级的电影剪辑指导。
-任务：将我提供的【带行号的连续旁白】，按照叙事起伏划分为 6-12 个连续的剧情节拍 (Beat)。
+任务：将我提供的【带行号的连续旁白】，按照叙事起伏划分为 {MIN_BEATS_PHASE2}-{MAX_BEATS_PHASE2} 个连续的剧情节拍 (Beat)。
 
 【钢铁纪律】：
 1. 完整覆盖：必须从行号 [0] 开始，一直覆盖到最大行号 [{len(srt_data)-1}]，绝不允许遗漏任何一句话。
@@ -343,6 +493,12 @@ def chunk_beats_by_llm(srt_data: list) -> list:
         n_cues = len(srt_data)
         merged = _merge_overlapping_beat_ranges(beats_plan, n_cues)
         repaired = _repair_beat_ranges_full_coverage(merged, n_cues)
+        if len(repaired) > MAX_BEATS_PHASE2:
+            print(
+                f"  ⚠️ [Beat] 修复后共 {len(repaired)} 个 Beat，超过上限 {MAX_BEATS_PHASE2}，"
+                f"将合并最短的相邻节拍以控制 Phase 3 调用量。"
+            )
+            repaired = _cap_beat_ranges(repaired, MAX_BEATS_PHASE2)
 
         pseudo_srt = []
         for bi, r in enumerate(repaired):
@@ -534,6 +690,30 @@ def _repair_beat_ranges_full_coverage(ranges: list[dict], n_cues: int) -> list[d
     return out
 
 
+def _cap_beat_ranges(ranges: list[dict], max_beats: int) -> list[dict]:
+    """
+    当修复后的 Beat 数超过上限时，反复合并「相邻 pair 中 cue 跨度最短」的一对，
+    直至数量 <= max_beats，保持 [0, n_cues-1] 完整覆盖且区间连续。
+    """
+    if max_beats <= 0 or len(ranges) <= max_beats:
+        return ranges
+    out: list[dict] = [dict(r) for r in ranges]
+    while len(out) > max_beats:
+        best_i = 0
+        best_span = None
+        for i in range(len(out) - 1):
+            a, b = out[i], out[i + 1]
+            span = (a["e"] - a["s"] + 1) + (b["e"] - b["s"] + 1)
+            if best_span is None or span < best_span:
+                best_span = span
+                best_i = i
+        a, b = out[best_i], out[best_i + 1]
+        merged_summary = f"{a.get('summary', '')}；{b.get('summary', '')}".strip("；")[:80] or "情节推进"
+        merged = {"s": int(a["s"]), "e": int(b["e"]), "summary": merged_summary}
+        out[best_i : best_i + 2] = [merged]
+    return out
+
+
 def _enforce_subshot_segment_density(
     beat_text: str,
     text_segments: list[str],
@@ -634,12 +814,25 @@ def _enforce_subshot_segment_density(
     return segs, prompts
 
 
-def _is_stage_map_too_coarse(stage_map: list) -> bool:
+def _is_stage_map_too_coarse(stage_map: list, beats: list = None) -> bool:
     if not isinstance(stage_map, list) or not stage_map:
         return True
     if len(stage_map) == 1:
         item = stage_map[0] if isinstance(stage_map[0], dict) else {}
         return int(item.get("start_shot", 0) or 0) <= 1 and int(item.get("end_shot", 0) or 0) >= 999
+
+    # 多阶段 map，但首阶段区间过宽：所有实际镜头可能都落在第一阶段
+    # 用 beats 文本预估算出总镜数下限，若首阶段 end_shot 超过预估总量 2 倍则判为过粗
+    if beats:
+        estimated_total = sum(
+            _estimate_min_subshots_for_text((b.get("text", "") or ""))
+            for b in beats
+        )
+        first_stage = stage_map[0] if isinstance(stage_map[0], dict) else {}
+        first_end = int(first_stage.get("end_shot", 0) or 999999)
+        if first_end >= estimated_total * 2:
+            return True
+
     return False
 
 
@@ -737,7 +930,7 @@ def _auto_stage_map_by_llm(beats: list, detected_stages: list[str]) -> list:
 #  [Phase 3] 解耦 LLM 调用：第一次打标签 / 第二次生成提示词
 # ==============================================================================
 
-def _tag_subshots_only(beat: dict) -> list[str]:
+def _tag_subshots_only(beat: dict, attempt: int = 0) -> list[str]:
     """
     【第一次 LLM 调用】
     只在 beat 原文中插入 <subshot> 标签，返回切分好的 text_segments 列表。
@@ -780,7 +973,22 @@ def _tag_subshots_only(beat: dict) -> list[str]:
             response_format={"type": "json_object"},
             temperature=0.3,
         )
-        result = json.loads(response.choices[0].message.content)
+        choice = response.choices[0] if response.choices else None
+        msg = choice.message if choice else None
+        raw = (msg.content if msg else "") or ""
+        result = _extract_json_object(raw)
+        if result is None:
+            finish_reason = getattr(choice, "finish_reason", None)
+            refusal = getattr(msg, "refusal", None) if msg else None
+            _dump_phase3_llm_raw(
+                stage="tagging",
+                beat_id=str(beat.get("beat_id", "unknown")),
+                attempt=max(1, int(attempt or 1)),
+                raw=raw,
+                meta=f"finish_reason={finish_reason}\nrefusal={refusal}",
+            )
+            print("    ⚠️ [Tagging] LLM 返回非 JSON，已写入 logs/phase3_tagging_* 诊断文件。")
+            return []
         tagged_text = (result.get("tagged_text") or "").strip()
         segments = _extract_segments_from_tagged_text(tagged_text)
 
@@ -844,6 +1052,7 @@ def _normalize_per_shot_ref_keys(
 def _generate_visual_prompts(
     text_segments: list[str],
     beat: dict,
+    attempt: int,
     prev_beat_summary: str,
     text_anchors: dict,
     physical_anchors: dict,
@@ -899,9 +1108,13 @@ def _generate_visual_prompts(
         "【提示词生成规则】：\n"
         f"1. 必须为每个分镜生成一条 visual_prompt，数量必须恰好是 {n} 条，顺序严格对应输入。\n"
         "2. 每条 visual_prompt 必须包含：\n"
-        "   - 画风控制：Cyanide and Happiness comic style, flat illustration, simple line art, pure 2D, solid colors.\n"
+        "   - 画风控制：Cyanide and Happiness comic style, flat illustration, simple line art, pure 2D.\n"
         "   - 人生阶段（已在输入的 stage 字段中标明，主角外观须与此一致）。\n"
-        "   - 可执行镜头信息：景别、主体动作、情绪状态、环境要素与构图焦点。\n"
+        "   - 可执行镜头信息：景别、主体动作、环境要素与构图焦点。\n"
+        "   - 面部表情（必填，写在同一条 visual_prompt 的英文里）：对每个出现在画面中的已定案角色，"
+        "必须用 cast_registry 的 display_name_en 点名，并写出氰化物式极简面部——dot eyes、mouth line/shape、eyebrow angle；"
+        "例如 grinning mouth line、frowning angled eyebrows、neutral flat mouth、surprised wide dot eyes、single tear line。"
+        "禁止仅用笼统词如 sad/happy/angry 而不写眉/嘴/眼；若本镜以脸为主，须写明 close-up on face。\n"
         "3. 前后章节转折时（尤其第一镜），注意与上一章节视觉风格的衔接。\n"
         "4. 避免空泛表述；谁在画面上必须使用 cast_registry 中的英文 display_name_en。\n"
         f"5. 同时输出 per_shot_ref_keys：与 visual_prompts 等长的二维数组。"
@@ -929,7 +1142,22 @@ def _generate_visual_prompts(
             response_format={"type": "json_object"},
             temperature=0.5,
         )
-        result = json.loads(response.choices[0].message.content)
+        choice = response.choices[0] if response.choices else None
+        msg = choice.message if choice else None
+        raw = (msg.content if msg else "") or ""
+        result = _extract_json_object(raw)
+        if result is None:
+            finish_reason = getattr(choice, "finish_reason", None)
+            refusal = getattr(msg, "refusal", None) if msg else None
+            _dump_phase3_llm_raw(
+                stage="prompts",
+                beat_id=str(beat.get("beat_id", "unknown")),
+                attempt=max(1, int(attempt or 1)),
+                raw=raw,
+                meta=f"finish_reason={finish_reason}\nrefusal={refusal}",
+            )
+            print("    ⚠️ [Prompts] LLM 返回非 JSON，已写入 logs/phase3_prompts_* 诊断文件。")
+            return [], []
         prompts = result.get("visual_prompts", [])
 
         if not isinstance(prompts, list) or len(prompts) != n:
@@ -949,23 +1177,15 @@ def _generate_visual_prompts(
         return [], []
 
 
-def generate_visual_subshots(
+def _phase3_resolve_segments(
     beat: dict,
-    prev_beat_summary: str,
     text_anchors: dict,
     physical_anchors: dict,
-    stage_map: list,
-    beat_start_subshot_id: int,
     max_retries: int = MAX_VISION_LLM_RETRIES,
-    era_raw: str | None = None,
-    cast_registry: dict | None = None,
-) -> list:
+) -> list[str]:
     """
-    Phase 3 核心函数（已解耦为两次独立 LLM 调用）：
-      第一次：_tag_subshots_only   → text_segments
-      中间层：_enforce_subshot_segment_density（密度与合法性校验）
-      第二次：_generate_visual_prompts → visual_prompts（带前文 summary 上下文）
-    整轮最多重试 max_retries 次；三次全失则抛 Phase3BeatError，禁止静默跳过。
+    Phase 3 第一波：仅打 <subshot> 标签 + 密度校验，产出最终 text_segments。
+    （用于并行编排：先并行求各 Beat 镜数，再算全局 S_ 起始编号。）
     """
     beat_id = beat.get("beat_id", "unknown")
     beat_text = beat["text"]
@@ -981,37 +1201,67 @@ def generate_visual_subshots(
             "缺少角色锚点（text_anchors/physical_anchors 均为空），拒绝继续生成 visual_prompt。"
         )
 
-    print(f"  🎬 [Vision] 解构 Beat [{beat_id}]: {beat_summary} ({beat_time})")
+    print(f"  🎬 [Vision] [{beat_id}] 分段标签: {beat_summary} ({beat_time})")
 
     last_fail_tag = ""
-    last_fail_prompt = ""
 
     for attempt in range(1, max_retries + 1):
         suffix = "继续重试" if attempt < max_retries else "已达上限，准备报错"
-        print(f"    🔁 [attempt {attempt}/{max_retries}]")
+        print(f"    🔁 [{beat_id}] [segment try {attempt}/{max_retries}]")
 
-        # ── 第一步：打标签 ─────────────────────────────────────────────────
-        text_segments = _tag_subshots_only(beat)
+        text_segments = _tag_subshots_only(beat, attempt=attempt)
         if not text_segments:
             last_fail_tag = f"第 {attempt} 次：_tag_subshots_only 返回空列表"
-            print(f"    ❌ [Tagging] 第 {attempt} 次失败，{suffix}。")
+            print(f"    ❌ [{beat_id}] [Tagging] 第 {attempt} 次失败，{suffix}。")
             continue
 
-        # ── 中间层：密度校验（用占位符保持签名，第二步会生成真实 prompts）─
         placeholder = ["__placeholder__"] * len(text_segments)
         enforced_segs, _ = _enforce_subshot_segment_density(
             beat_text, text_segments, placeholder
         )
         if "".join(enforced_segs) != beat_text:
             last_fail_tag = f"第 {attempt} 次：enforce 后拼接仍不一致"
-            print(f"    ❌ [Enforce] 第 {attempt} 次失败，{suffix}。")
+            print(f"    ❌ [{beat_id}] [Enforce] 第 {attempt} 次失败，{suffix}。")
             continue
-        text_segments = enforced_segs
 
-        # ── 第二步：生成提示词 ─────────────────────────────────────────────
+        return enforced_segs
+
+    raise Phase3BeatError(
+        beat_id=beat_id,
+        stage="tagging",
+        detail=last_fail_tag or f"连续 {max_retries} 次分段失败（无详细原因记录）",
+        beat_time_range=beat_time,
+    )
+
+
+def _phase3_prompts_and_pack(
+    beat: dict,
+    text_segments: list[str],
+    beat_start_subshot_id: int,
+    prev_beat_summary: str,
+    text_anchors: dict,
+    physical_anchors: dict,
+    stage_map: list,
+    era_raw: str | None,
+    cast_registry: dict | None,
+    max_retries: int = MAX_VISION_LLM_RETRIES,
+) -> list:
+    """
+    Phase 3 第二波：对已锁定的 text_segments 生成 visual_prompt，并组装 trigger_time 等。
+    提示词阶段单独重试（分段已在第一波定稿）。
+    """
+    beat_id = beat.get("beat_id", "unknown")
+    beat_time = f"{beat.get('start_time', '?')}s ~ {beat.get('end_time', '?')}s"
+    last_fail_prompt = ""
+
+    for attempt in range(1, max_retries + 1):
+        suffix = "继续重试" if attempt < max_retries else "已达上限，准备报错"
+        print(f"    🔁 [{beat_id}] [prompt try {attempt}/{max_retries}]")
+
         visual_prompts, per_shot_ref_keys = _generate_visual_prompts(
             text_segments=text_segments,
             beat=beat,
+            attempt=attempt,
             prev_beat_summary=prev_beat_summary,
             text_anchors=text_anchors,
             physical_anchors=physical_anchors,
@@ -1026,10 +1276,9 @@ def generate_visual_subshots(
                 f"{len(visual_prompts) if isinstance(visual_prompts, list) else '非列表'}，"
                 f"期望 {len(text_segments)}"
             )
-            print(f"    ❌ [Prompts] 第 {attempt} 次失败，{suffix}。")
+            print(f"    ❌ [{beat_id}] [Prompts] 第 {attempt} 次失败，{suffix}。")
             continue
 
-        # ── 两步均成功：组装带时间戳的 subshot 列表 ───────────────────────
         current_char_idx = 0
         subshots_with_time = []
         for i, t_segment in enumerate(text_segments):
@@ -1056,20 +1305,46 @@ def generate_visual_subshots(
             )
             current_char_idx += len(t_segment)
 
-        print(f"    ✅ [Vision] {beat_id} 完成，共 {len(subshots_with_time)} 个分镜。")
+        print(f"    ✅ [Vision] [{beat_id}] 完成，共 {len(subshots_with_time)} 个分镜。")
         return subshots_with_time
 
-    # 所有重试耗尽，汇总失败原因，抛出硬错误
-    fail_parts = []
-    if last_fail_tag:
-        fail_parts.append(f"标签阶段: {last_fail_tag}")
-    if last_fail_prompt:
-        fail_parts.append(f"提示词阶段: {last_fail_prompt}")
     raise Phase3BeatError(
         beat_id=beat_id,
-        stage="tagging+prompts",
-        detail=" | ".join(fail_parts) or f"连续 {max_retries} 次均失败（无详细原因记录）",
+        stage="prompts",
+        detail=last_fail_prompt or f"连续 {max_retries} 次提示词失败（无详细原因记录）",
         beat_time_range=beat_time,
+    )
+
+
+def generate_visual_subshots(
+    beat: dict,
+    prev_beat_summary: str,
+    text_anchors: dict,
+    physical_anchors: dict,
+    stage_map: list,
+    beat_start_subshot_id: int,
+    max_retries: int = MAX_VISION_LLM_RETRIES,
+    era_raw: str | None = None,
+    cast_registry: dict | None = None,
+) -> list:
+    """
+    Phase 3 串行封装：先分段再生成提示词（供单测或其它调用方使用）。
+    主流程 phase3 使用两波并行编排以缩短墙钟时间。
+    """
+    segments = _phase3_resolve_segments(
+        beat, text_anchors, physical_anchors, max_retries=max_retries
+    )
+    return _phase3_prompts_and_pack(
+        beat,
+        segments,
+        beat_start_subshot_id,
+        prev_beat_summary,
+        text_anchors,
+        physical_anchors,
+        stage_map,
+        era_raw,
+        cast_registry,
+        max_retries=max_retries,
     )
 
 
@@ -1128,7 +1403,15 @@ def main():
         
         beats = pseudo_data.get("pseudo_srt", [])
         master_design = story_data.get("master_design", {})
-        text_anchors = master_design.get("character_anchors", {})
+        from_refs = _phase3_text_anchors_from_refs_prompt(REFS_PROMPT_PATH)
+        if from_refs:
+            text_anchors = from_refs
+            print("  📎 [Phase3] 角色语义锚点：scripts/refs-prompt.json")
+        elif master_design.get("character_anchors"):
+            text_anchors = master_design.get("character_anchors") or {}
+            print("  📎 [Phase3] 角色语义锚点：full_story.character_anchors（旧版兼容）")
+        else:
+            text_anchors = {}
         physical_anchors = master_design.get("physical_char_anchors", {})
         stage_map = master_design.get("stage_map", [])
         detected_stages = master_design.get("detected_life_stages", [])
@@ -1136,7 +1419,7 @@ def main():
             (pseudo_data.get("metadata") or {}).get("era")
         )
 
-        if _is_stage_map_too_coarse(stage_map):
+        if _is_stage_map_too_coarse(stage_map, beats):
             print("  ⚠️ [StageMap] 检测到阶段区间过粗，正在自动重建 stage_map...")
             stage_map = _auto_stage_map_by_llm(beats, detected_stages)
             master_design["stage_map"] = stage_map
@@ -1150,41 +1433,72 @@ def main():
         cast_registry = master_design.get("cast_registry") or {}
 
         if not text_anchors and not physical_anchors:
-            print("❌ [Phase3] 未检测到任何角色锚点：character_anchors 与 physical_char_anchors 均为空。")
-            print("   请先确保阶段一已成功生成并回写定妆锚点。")
+            print(
+                "❌ [Phase3] 未检测到任何角色锚点：scripts/refs-prompt.json（或旧版 master_design.character_anchors）"
+                " 与 physical_char_anchors 均为空。"
+            )
+            print("   请先完成定妆流水线并成功回写 physical_char_anchors。")
             sys.exit(1)
-        
+
+        workers = _phase3_pool_workers(len(beats))
+        print(
+            f"  ⚙️ [Phase3] Beat 并行度: {workers} "
+            f"（环境变量 PHASE3_MAX_WORKERS，默认 {PHASE3_MAX_WORKERS_DEFAULT}；设为 1 即串行）"
+        )
+
+        try:
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                segment_lists = list(
+                    ex.map(
+                        lambda b: _phase3_resolve_segments(
+                            b, text_anchors, physical_anchors, MAX_VISION_LLM_RETRIES
+                        ),
+                        beats,
+                    )
+                )
+
+            beat_starts: list[int] = []
+            cur_id = 1
+            for bi in range(len(beats)):
+                beat_starts.append(cur_id)
+                cur_id += len(segment_lists[bi])
+
+            def _wave2_one(i: int) -> list:
+                beat = beats[i]
+                prev_summary = beats[i - 1].get("summary", "") if i > 0 else ""
+                return _phase3_prompts_and_pack(
+                    beat,
+                    segment_lists[i],
+                    beat_starts[i],
+                    prev_summary,
+                    text_anchors,
+                    physical_anchors,
+                    stage_map,
+                    era_raw,
+                    cast_registry,
+                    MAX_VISION_LLM_RETRIES,
+                )
+
+            with ThreadPoolExecutor(max_workers=workers) as ex:
+                packed_lists = list(ex.map(_wave2_one, range(len(beats))))
+        except Phase3BeatError as e:
+            print(f"\n{'=' * 60}")
+            print(f"❌ [Phase 3 FATAL] Beat 分镜生成失败，已中止 Phase 3。")
+            print(f"   Beat ID   : {e.beat_id}")
+            print(f"   时间范围  : {e.beat_time_range}")
+            print(f"   失败阶段  : {e.stage}")
+            print(f"   失败详情  : {e.detail}")
+            print(f"   说明      : narrative_v6_final.json 未写盘（两波并行中任一 Beat 失败即中止）")
+            print(f"{'=' * 60}")
+            sys.exit(1)
+        except ValueError as e:
+            print(f"❌ [Phase3] 输入验收失败: {e}")
+            sys.exit(1)
+
         final_narrative = []
         global_subshot_id = 1
-
         for i, beat in enumerate(beats):
-            prev_summary = beats[i - 1].get("summary", "") if i > 0 else ""
-            try:
-                subshots = generate_visual_subshots(
-                    beat=beat,
-                    prev_beat_summary=prev_summary,
-                    text_anchors=text_anchors,
-                    physical_anchors=physical_anchors,
-                    stage_map=stage_map,
-                    beat_start_subshot_id=global_subshot_id,
-                    era_raw=era_raw,
-                    cast_registry=cast_registry,
-                )
-            except Phase3BeatError as e:
-                print(f"\n{'=' * 60}")
-                print(f"❌ [Phase 3 FATAL] Beat 分镜生成失败，已中止 Phase 3。")
-                print(f"   Beat ID   : {e.beat_id}")
-                print(f"   时间范围  : {e.beat_time_range}")
-                print(f"   失败阶段  : {e.stage}")
-                print(f"   失败详情  : {e.detail}")
-                print(f"   已生成分镜: {len(final_narrative)} 条（narrative_v6_final.json 未写盘）")
-                print(f"{'=' * 60}")
-                sys.exit(1)
-            except ValueError as e:
-                print(f"❌ [Phase3] 输入验收失败: {e}")
-                sys.exit(1)
-
-            for s in subshots:
+            for s in packed_lists[i]:
                 final_narrative.append(
                     {
                         "subshot_id": f"S_{global_subshot_id:03d}",
@@ -1199,7 +1513,7 @@ def main():
                     }
                 )
                 global_subshot_id += 1
-                
+
         output_data = {
             "metadata": pseudo_data.get("metadata", {}),
             "timeline": final_narrative

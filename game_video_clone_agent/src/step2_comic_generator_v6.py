@@ -1,7 +1,20 @@
 """
 🎨 16 宫格爆兵流水线 (src/step2_comic_generator_v6.py)
 读取 final narrative，每次聚合 16 个 prompt，生成 4x4 宫格，并调用切图脚手架落盘
+
+支持三种运行模式：
+  --phase grid-only      仅生成全部 16 宫格大图，不做裁切/高清（供飞书人工审核）
+  --phase slice-only     对已有 grid_batch_*.png 执行裁切 + Real-ESRGAN 高清
+  --phase single-batch:N 仅重新生成第 N 批次（1-indexed），供打回重画使用
+  （无参数）             完整流水线：生图 → 裁切 → 高清（向后兼容）
+
+飞书「宫格→卡片→打回/通过」链路说明：
+  • grid-only / single-batch 默认跳过自动宫格线布局校验（GRID_SKIP_LAYOUT_VALIDATE），
+    由你在卡片上终审；打回则重画该批并刷新卡片；「全部通过」后再 slice-only 机械裁切。
+  • 完整流水线（无 --phase）默认仍做布局校验，便于无人值守跑通。
+  • 可用环境变量 GRID_SKIP_LAYOUT_VALIDATE=0 强制在预览阶段也跑校验。
 """
+import argparse
 import json
 import os
 import sys
@@ -14,6 +27,7 @@ import numpy as np
 from datetime import datetime
 from io import BytesIO
 from PIL import Image
+import re
 
 # ── Windows GBK 终端编码修复 ──
 if hasattr(sys.stdout, "buffer"):
@@ -35,8 +49,19 @@ from src.visual_era_context import build_image_global_prefix
 NARRATIVE_FINAL_PATH = None
 STORYBOARDS_DIR = None
 LOGS_DIR = None
-MAX_BATCH_RETRIES = 3
+MAX_BATCH_RETRIES = max(1, int(os.getenv("STEP2_MAX_BATCH_RETRIES", "5")))
 RUN_ID = "unknown"
+
+
+def _skip_grid_layout_validate() -> bool:
+    """为 True 时不调用 validate_grid_comic_layout（飞书人工审后再裁切）。"""
+    return os.getenv("GRID_SKIP_LAYOUT_VALIDATE", "0").strip().lower() in ("1", "true", "yes")
+
+
+def _apply_storyboard_preview_validate_defaults() -> None:
+    """grid-only / single-batch：未显式配置时默认跳过自动线格校验，避免机器替你驳回预览图。"""
+    if "GRID_SKIP_LAYOUT_VALIDATE" not in os.environ:
+        os.environ["GRID_SKIP_LAYOUT_VALIDATE"] = "1"
 
 
 def _chain_step3() -> None:
@@ -195,6 +220,23 @@ def _build_global_ref_mapping_sentence(
     )
 
 
+def _strip_redundant_style_prefix(visual_prompt: str) -> str:
+    """
+    去掉每个 panel 内重复的风格前缀，避免与全局风格声明重复堆叠。
+    仅清理开头的固定模板，不改动后续镜头语义内容。
+    """
+    s = str(visual_prompt or "").strip()
+    if not s:
+        return s
+    s = re.sub(
+        r"^\s*Cyanide and Happiness comic style,\s*flat illustration,\s*simple line art,\s*(?:pure\s*)?2D,\s*solid colors\.\s*",
+        "",
+        s,
+        flags=re.IGNORECASE,
+    )
+    return s.strip()
+
+
 def _save_valid_grid_image(img_bytes: bytes, grid_path: Path) -> tuple[bool, str]:
     """
     对生图返回做解码校验后再落盘，避免写入损坏字节导致后续 OpenCV 读取崩溃。
@@ -244,23 +286,24 @@ async def generate_grid_batch(
     # 构建聚合 Prompt（前置时代锁 + 参考图序说明 + 宫格硬约束）
     combined_prompt = (global_era_prefix or "") + global_ref_txt + (
         "Generate ONE single 16:9 landscape canvas comic page. "
-        "Strict 4×4 grid only: exactly 16 EQUAL rectangular panels; NO merged cells; NO 5×3 or irregular layouts. "
-        "Panel order is HARD RULE: left-to-right, top-to-bottom, Panel 1…16. "
-        "Do not shuffle or mirror. "
+        "Strict 4×4 grid only: exactly 16 EQUAL rectangular panels; NO merged cells. "
         "Cyanide and Happiness comic style, flat illustration, pure 2D. "
     )
     combined_prompt += "The grid contains the following sequential scenes:\n"
 
     batch_refs: list[str] = list(ordered_paths)
     for i, shot in enumerate(batch_shots):
-        combined_prompt += f"Panel {i+1}: {shot['visual_prompt']}\n"
+        panel_prompt = _strip_redundant_style_prefix(shot.get("visual_prompt", ""))
+        combined_prompt += f"Panel {i+1}: {panel_prompt}\n"
 
-    # 尾批不足 16 时强制补齐空面板，保持“16:9 + 4x4 + Panel 1..16”硬约束不变形。
+    # 尾批不足 16 时补齐占位格：纯白板易被模型画乱布局；改为「白底 + 居中英文标题」占位，利于维持 4×4。
     if len(batch_shots) < 16:
         for panel_idx in range(len(batch_shots) + 1, 17):
             combined_prompt += (
-                f"Panel {panel_idx}: EMPTY PANEL. "
-                "Pure white background, no character, no object, no text.\n"
+                f"Panel {panel_idx}: PLACEHOLDER PANEL. "
+                "Flat white or very light gray fill filling the entire cell. "
+                "Center of the panel: bold English text reading \"Cyanide & Happiness\" "
+                "in simple flat comic lettering (black outlines, no characters, no scenery, no props).\n"
             )
         
     # 生图 API：Gemini 在 imageConfig 中传档位；使用 2560x1440 对应 16:9 + 2K（见 _build_gemini_image_config）。
@@ -290,18 +333,25 @@ async def generate_grid_batch(
     if detail == "pillow-fallback":
         print(f"  ⚠️ 第 {batch_index} 批次使用 Pillow 兜底解码成功（OpenCV 不兼容该返回格式）。")
 
-    try:
-        validate_grid_comic_layout(grid_path)
-    except ValueError as ve:
-        raise Step2StageError(
-            "GRID_VALIDATION",
-            f"第 {batch_index} 批次宫格图未通过布局校验（将重试）：{ve}",
-            error_code="GRID_LAYOUT_INVALID",
-            raw_response_snippet=str(ve)[:200],
+    if _skip_grid_layout_validate():
+        print(
+            "  ℹ️ 已跳过自动宫格布局校验（GRID_SKIP_LAYOUT_VALIDATE=1）。"
+            "请在飞书卡片上审核；通过后再执行裁切。若宫格严重不齐，裁切/高清可能不理想。"
         )
+    else:
+        try:
+            validate_grid_comic_layout(grid_path)
+        except ValueError as ve:
+            raise Step2StageError(
+                "GRID_VALIDATION",
+                f"第 {batch_index} 批次宫格图未通过布局校验（将重试）：{ve}",
+                error_code="GRID_LAYOUT_INVALID",
+                raw_response_snippet=str(ve)[:200],
+            )
     return grid_path
 
-async def main():
+def _load_pipeline_context():
+    """加载流水线共享上下文：路径、蓝图、时代前缀、角色锚点。返回 (timeline, global_era_prefix, physical_flat, cast_reg, total_shots)"""
     global NARRATIVE_FINAL_PATH, STORYBOARDS_DIR, LOGS_DIR, RUN_ID
     paths = get_paths(create_if_missing=False)
     if not paths:
@@ -312,18 +362,12 @@ async def main():
     LOGS_DIR = paths["logs_dir"]
     RUN_ID = get_current_run_id() or "unknown"
 
-    print("\n=======================================================")
-    print("[Phase 4-A] 16 宫格生成与智能裁切")
-    print(f"[Run] 当前批次: {RUN_ID}")
-    print("=======================================================")
-    
     if not NARRATIVE_FINAL_PATH.exists():
         print("❌ 找不到叙事蓝图 narrative_v6_final.json，请先执行 Phase 3。")
         sys.exit(1)
-        
+
     data = json.loads(NARRATIVE_FINAL_PATH.read_text(encoding="utf-8"))
     timeline = data.get("timeline", [])
-    
     if not timeline:
         print("❌ 蓝图 timeline 为空。")
         sys.exit(1)
@@ -345,14 +389,205 @@ async def main():
                 global_era_prefix = build_image_global_prefix(era_raw)
         except Exception:
             pass
-        
+
     STORYBOARDS_DIR.mkdir(parents=True, exist_ok=True)
-    
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    return timeline, global_era_prefix, physical_flat, cast_reg, len(timeline)
+
+
+async def main_grid_only():
+    """Phase 2A：仅生成全部 16 宫格大图，不做裁切与高清。"""
+    _apply_storyboard_preview_validate_defaults()
+    timeline, global_era_prefix, physical_flat, cast_reg, total_shots = _load_pipeline_context()
+
+    print("\n=======================================================")
+    print("[Phase 2A] 16 宫格生成（仅生图，待人工审核）")
+    print(f"[Run] 当前批次: {RUN_ID}")
+    print(f"[Shots] 总分镜数: {total_shots}")
+    print("=======================================================")
+
+    # 清理旧宫格图（仅清理 grid_batch_*.png，不动 S_*.png）
+    for f in STORYBOARDS_DIR.glob("grid_batch_*.png"):
+        f.unlink()
+
+    batches = list(chunk_list(timeline, 16))
+    total_batches = len(batches)
+    successful_batches = 0
+    failed_batches = 0
+
+    for i, batch in enumerate(batches, 1):
+        batch_start = (i - 1) * 16 + 1
+        batch_end = min(batch_start + len(batch) - 1, total_shots)
+        batch_ok = False
+
+        for attempt in range(1, MAX_BATCH_RETRIES + 1):
+            try:
+                grid_path = await generate_grid_batch(
+                    batch, i, total_batches,
+                    global_era_prefix=global_era_prefix,
+                    physical_anchors=physical_flat,
+                    cast_registry=cast_reg,
+                )
+                vault_backup(grid_path, f"storyboards/{grid_path.name}")
+                successful_batches += 1
+                batch_ok = True
+                print(f"  ✅ 第 {i}/{total_batches} 批次宫格图已生成（attempt {attempt}/{MAX_BATCH_RETRIES}）。")
+                break
+            except Exception as e:
+                _log_failure(RUN_ID, i, total_batches, batch_start, batch_end, attempt, e)
+                print(f"  ❌ 第 {i} 批次失败（attempt {attempt}/{MAX_BATCH_RETRIES}）: {e}")
+                if attempt >= MAX_BATCH_RETRIES:
+                    failed_batches += 1
+
+    generated_grids = sorted(STORYBOARDS_DIR.glob("grid_batch_*.png"))
+    report = {
+        "ok": failed_batches == 0,
+        "run_id": RUN_ID,
+        "phase": "grid-only",
+        "total_batches": total_batches,
+        "successful_batches": successful_batches,
+        "failed_batches": failed_batches,
+        "total_shots": total_shots,
+        "grid_files": [str(g.name) for g in generated_grids],
+    }
+    _write_report(report)
+    print(f"\n[DONE] 宫格生图阶段完成！")
+    print(f"[Report] batches={successful_batches}/{total_batches} | grids={len(generated_grids)} | report={LOGS_DIR / 'step2_report.json'}")
+
+    if failed_batches > 0:
+        print(f"⚠️ 有 {failed_batches} 个批次生成失败，请人工检查。")
+        sys.exit(2)
+
+
+async def main_slice_only():
+    """Phase 2B：对已有 grid_batch_*.png 执行裁切 + Real-ESRGAN 高清。"""
+    timeline, global_era_prefix, physical_flat, cast_reg, total_shots = _load_pipeline_context()
+
+    print("\n=======================================================")
+    print("[Phase 2B] 宫格裁切与 Real-ESRGAN 高清")
+    print(f"[Run] 当前批次: {RUN_ID}")
+    print(f"[Shots] 总分镜数: {total_shots}")
+    print("=======================================================")
+
+    grid_files = sorted(STORYBOARDS_DIR.glob("grid_batch_*.png"))
+    if not grid_files:
+        print("❌ 未找到任何 grid_batch_*.png 文件，请先执行 --phase grid-only。")
+        sys.exit(1)
+
+    # 清理旧 S_*.png（避免新旧混杂）
+    for f in STORYBOARDS_DIR.glob("S_*.png"):
+        f.unlink()
+
+    total_batches = len(grid_files)
+    current_subshot_idx = 1
+    successful_batches = 0
+    failed_batches = 0
+
+    for i, grid_path in enumerate(grid_files, 1):
+        batch_ok = False
+        for attempt in range(1, MAX_BATCH_RETRIES + 1):
+            try:
+                print(f"  [Process] 正在切分 + 高清处理: {grid_path.name} ...")
+                next_idx = process_16_grid(grid_path, STORYBOARDS_DIR, current_subshot_idx)
+                current_subshot_idx = next_idx
+                successful_batches += 1
+                batch_ok = True
+                print(f"  ✅ 第 {i}/{total_batches} 批次裁切/高清完成。")
+                break
+            except Exception as e:
+                print(f"  ❌ 第 {i} 批次裁切/高清失败（attempt {attempt}/{MAX_BATCH_RETRIES}）: {e}")
+                if attempt >= MAX_BATCH_RETRIES:
+                    failed_batches += 1
+                    print(f"  ⛔ 第 {i} 批次连续 {MAX_BATCH_RETRIES} 次失败，已跳过。")
+
+    # 清理超出总分镜数的冗余 S_*.png
+    for f in STORYBOARDS_DIR.glob("S_*.png"):
+        try:
+            idx_str = f.stem.split('_')[1]
+            if int(idx_str) > total_shots:
+                f.unlink()
+        except (IndexError, ValueError):
+            pass
+
+    generated_shots = len(list(STORYBOARDS_DIR.glob("S_*.png")))
+    report = {
+        "ok": failed_batches == 0,
+        "run_id": RUN_ID,
+        "phase": "slice-only",
+        "total_batches": total_batches,
+        "successful_batches": successful_batches,
+        "failed_batches": failed_batches,
+        "total_shots": total_shots,
+        "generated_shots": generated_shots,
+    }
+    _write_report(report)
+    print(f"\n[DONE] 裁切高清阶段完成！")
+    print(f"[Report] batches={successful_batches}/{total_batches} | shots={generated_shots}/{total_shots}")
+
+    if os.environ.get("CHAIN_STEP3") == "1" and failed_batches == 0:
+        _chain_step3()
+
+
+async def main_single_batch(batch_index: int):
+    """重新生成单个批次（1-indexed），覆盖已有的 grid_batch_{batch_index:03d}.png。"""
+    _apply_storyboard_preview_validate_defaults()
+    timeline, global_era_prefix, physical_flat, cast_reg, total_shots = _load_pipeline_context()
+
+    batches = list(chunk_list(timeline, 16))
+    total_batches = len(batches)
+
+    if batch_index < 1 or batch_index > total_batches:
+        print(f"❌ 批次号 {batch_index} 超出范围（1~{total_batches}）。")
+        sys.exit(1)
+
+    batch = batches[batch_index - 1]
+    batch_start = (batch_index - 1) * 16 + 1
+    batch_end = min(batch_start + len(batch) - 1, total_shots)
+
+    print("\n=======================================================")
+    print(f"[Phase 2A-Regen] 单批次重画：第 {batch_index}/{total_batches} 批次")
+    print(f"[Run] {RUN_ID} | 分镜范围: S_{batch_start:03d}~S_{batch_end:03d}")
+    print("=======================================================")
+
+    for attempt in range(1, MAX_BATCH_RETRIES + 1):
+        try:
+            grid_path = await generate_grid_batch(
+                batch, batch_index, total_batches,
+                global_era_prefix=global_era_prefix,
+                physical_anchors=physical_flat,
+                cast_registry=cast_reg,
+            )
+            vault_backup(grid_path, f"storyboards/{grid_path.name}")
+            print(f"  ✅ 第 {batch_index} 批次重画成功（attempt {attempt}/{MAX_BATCH_RETRIES}）。")
+            # 写成功标记
+            (LOGS_DIR / "step2_single_batch_ok.json").write_text(
+                json.dumps({"ok": True, "batch_index": batch_index, "grid_file": str(grid_path.name)}, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            return
+        except Exception as e:
+            _log_failure(RUN_ID, batch_index, total_batches, batch_start, batch_end, attempt, e)
+            print(f"  ❌ 第 {batch_index} 批次重画失败（attempt {attempt}/{MAX_BATCH_RETRIES}）: {e}")
+
+    print(f"⛔ 第 {batch_index} 批次连续 {MAX_BATCH_RETRIES} 次重画失败。")
+    sys.exit(2)
+
+
+async def main_full():
+    """完整流水线：生图 → 裁切 → 高清（向后兼容旧行为）。"""
+    # 无人值守全量跑：强制做宫格线校验（可被用户在 shell 中 GRID_SKIP_LAYOUT_VALIDATE=1 覆盖）
+    os.environ["GRID_SKIP_LAYOUT_VALIDATE"] = "0"
+    timeline, global_era_prefix, physical_flat, cast_reg, total_shots = _load_pipeline_context()
+
+    print("\n=======================================================")
+    print("[Phase 4-A] 16 宫格生成与智能裁切（完整模式）")
+    print(f"[Run] 当前批次: {RUN_ID}")
+    print("=======================================================")
+
     # 清理旧数据
     for f in STORYBOARDS_DIR.glob("*.png"):
         f.unlink()
-        
-    # 按 16 个一组分批
+
     batches = list(chunk_list(timeline, 16))
     total_batches = len(batches)
     current_subshot_idx = 1
@@ -367,9 +602,7 @@ async def main():
         for attempt in range(1, MAX_BATCH_RETRIES + 1):
             try:
                 grid_path = await generate_grid_batch(
-                    batch,
-                    i,
-                    total_batches,
+                    batch, i, total_batches,
                     global_era_prefix=global_era_prefix,
                     physical_anchors=physical_flat,
                     cast_registry=cast_reg,
@@ -393,11 +626,8 @@ async def main():
                 if attempt >= MAX_BATCH_RETRIES:
                     failed_batches += 1
                     report = {
-                        "ok": False,
-                        "run_id": RUN_ID,
-                        "total_batches": total_batches,
-                        "successful_batches": successful_batches,
-                        "failed_batches": failed_batches,
+                        "ok": False, "run_id": RUN_ID, "total_batches": total_batches,
+                        "successful_batches": successful_batches, "failed_batches": failed_batches,
                         "total_shots": len(timeline),
                         "generated_shots": len(list(STORYBOARDS_DIR.glob('S_*.png'))),
                         "blocking_batch": i,
@@ -411,36 +641,44 @@ async def main():
                     )
 
         if not batch_ok:
-            # 理论上不会到这里；到这里意味着已在上方抛错中止。
             break
-            
-    # 因为存在尾部批次不满 16 个的情况，多切出来的冗余纯白/黑图可以在这里清理（这里保留简单实现）
-    # 实际所需总分镜数就是 len(timeline)
+
     for f in STORYBOARDS_DIR.glob("S_*.png"):
         idx_str = f.stem.split('_')[1]
         if int(idx_str) > len(timeline):
             f.unlink()
-            
+
     generated_shots = len(list(STORYBOARDS_DIR.glob("S_*.png")))
     report = {
-        "ok": True,
-        "run_id": RUN_ID,
-        "total_batches": total_batches,
-        "successful_batches": successful_batches,
-        "failed_batches": failed_batches,
-        "total_shots": len(timeline),
-        "generated_shots": generated_shots,
+        "ok": True, "run_id": RUN_ID, "total_batches": total_batches,
+        "successful_batches": successful_batches, "failed_batches": failed_batches,
+        "total_shots": len(timeline), "generated_shots": generated_shots,
     }
     _write_report(report)
     print(f"\n[DONE] 所有分镜图像生成并裁切完成！单镜图已落盘至 {STORYBOARDS_DIR}")
-    print(
-        f"[Report] batches={successful_batches}/{total_batches} | "
-        f"shots={generated_shots}/{len(timeline)} | report={LOGS_DIR / 'step2_report.json'}"
-    )
+    print(f"[Report] batches={successful_batches}/{total_batches} | shots={generated_shots}/{len(timeline)}")
 
-    # 链式 Step3：仅当 Hub 注入 CHAIN_STEP3=1 时执行
     if os.environ.get("CHAIN_STEP3") == "1":
         _chain_step3()
+
+
+async def main():
+    parser = argparse.ArgumentParser(description="Step2 16宫格生图流水线")
+    parser.add_argument("--phase", type=str, default=None,
+                        choices=["grid-only", "slice-only"],
+                        help="运行模式：grid-only(仅生图) / slice-only(仅裁切高清) / 不传则完整流水线")
+    parser.add_argument("--single-batch", type=int, default=None,
+                        help="仅重新生成指定批次（1-indexed），覆盖已有宫格图")
+    args = parser.parse_args()
+
+    if args.single_batch is not None:
+        await main_single_batch(args.single_batch)
+    elif args.phase == "grid-only":
+        await main_grid_only()
+    elif args.phase == "slice-only":
+        await main_slice_only()
+    else:
+        await main_full()
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -33,6 +33,13 @@ STYLE_ANCHOR = (
     "Character proportions: stick figure limbs, round bean heads."
 )
 
+# 仅用于人物三视图定妆纸（ref_generator.generate_ref_sheet_at）：极简氰化物向，避免与分镜/场景共用 STYLE_ANCHOR 导致过度细化。
+REF_STYLE_ANCHOR = (
+    "Cyanide-and-Happiness–inspired minimal character sheet: thick black outlines, flat color fills, "
+    "round bean head, dot eyes, stick limbs, pure 2D. Almost no shading—no cel-shading, rim light, or volumetric light. "
+    "Do not render fabric folds, stitching, lapels, buttons, hair strands, or facial volume highlights."
+)
+
 NEGATIVE_PROMPT = (
     "multiple characters, crowded, overlapping characters, "
     "hair, fur, skin texture, 3d, realistic, cgi, shading, gradient, "
@@ -94,8 +101,8 @@ COMBINED_REF_PATH = REFS_PROTAGONIST / "triple_view.png"
 # 🎙️ V6.0 语速估算 (中文每分钟约 230 字)
 WORDS_PER_MINUTE  = 300
 
-# 长文案目标字数：按「目标成片时长(分钟)」粗估（含 TTS 停顿，略高于 WORDS_PER_MINUTE）
-NARRATION_CHARS_PER_MINUTE = 420
+# 长文案目标字数：按「目标成片时长(分钟)」粗估（基于当前 TTS 实测语速校准）
+NARRATION_CHARS_PER_MINUTE = 250
 
 # 分段扩写（story_planner）：段数、承接上一段尾字数、单段输出 token 上限系数（≈中文 1 字≈1~2 token）
 NARRATION_SEGMENT_COUNT = 6
