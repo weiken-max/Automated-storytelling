@@ -10,10 +10,11 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from config import (
-    STATUS,
     ALLOWED_TRANSITIONS,
-    DURATION_SEC_MIN,
+    DEFAULT_DURATION_SECONDS,
     DURATION_SEC_MAX,
+    DURATION_SEC_MIN,
+    STATUS,
 )
 
 
@@ -113,8 +114,8 @@ class Session:
         return self.context_json.get(key, default)
 
     def get_duration_seconds(self) -> int:
-        """从上下文读成片时长（秒），默认 75 秒 (1.25 分钟)"""
-        sec = self.get_context("duration_seconds", 75)
+        """从上下文读成片时长（秒），默认与 feishu.config.DEFAULT_DURATION_SECONDS 一致"""
+        sec = self.get_context("duration_seconds", DEFAULT_DURATION_SECONDS)
         try:
             sec = int(sec)
         except (TypeError, ValueError):

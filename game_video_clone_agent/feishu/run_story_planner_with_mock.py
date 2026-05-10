@@ -7,6 +7,8 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(str(BASE_DIR))
 
+from src.style_config import DEFAULT_STORY_DURATION_MINUTES
+
 # 这个函数会劫持 V6 原有的大纲生成机制，直接返回我们在飞书上审批过的大纲！
 def read_mocked_synopsis(topic):
     synopsis_path = BASE_DIR / "feishu" / "temp_synopsis.json"
@@ -19,7 +21,7 @@ def run_mocked():
     parser = argparse.ArgumentParser()
     parser.add_argument("--topic", type=str, required=True)
     parser.add_argument("--regen_stage", type=str, default=None)
-    parser.add_argument("--duration", type=float, default=1.25)
+    parser.add_argument("--duration", type=float, default=DEFAULT_STORY_DURATION_MINUTES)
     args, unknown = parser.parse_known_args()
 
     # 先导入模块对象，再 patch.object，避免字符串 patch 在某些环境下解析失败

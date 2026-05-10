@@ -5,8 +5,11 @@ import json
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
-from feishu.config import DURATION_SEC_MIN, DURATION_SEC_MAX
-from feishu.synopsis_duration_sync import persist_synopsis_duration_seconds
+from feishu.config import DEFAULT_DURATION_SECONDS, DURATION_SEC_MAX, DURATION_SEC_MIN
+from feishu.synopsis_duration_sync import (
+    persist_synopsis_duration_seconds,
+    save_synopsis_duration_draft,
+)
 
 
 def _clamp(sec: int) -> int:
@@ -24,7 +27,7 @@ def _format_duration_cn(sec: int) -> str:
 def _load_draft(session) -> int:
     """从 session.context_json 读取时长草稿"""
     ctx = getattr(session, "context_json", {}) or {}
-    return _clamp(ctx.get("duration_seconds", 75))
+    return _clamp(ctx.get("duration_seconds", DEFAULT_DURATION_SECONDS))
 
 
 def _save_draft(session, sec: int):
@@ -45,6 +48,9 @@ class SynopsisDurationDeltaAction:
         sec = _clamp(sec + delta)
         _save_draft(session, sec)
         persist_synopsis_duration_seconds(sec)
+        t = (data.get("topic", "") or "").strip() or getattr(session, "topic", "")
+        if getattr(session, "open_id", None) and t:
+            save_synopsis_duration_draft(session.open_id, t, sec)
 
         # 尝试原地刷新大纲卡片
         card_id = getattr(session, "card_id", "") or ""
@@ -74,6 +80,9 @@ class SynopsisDurationPresetAction:
         sec = _clamp(int(round(minutes * 60)))
         _save_draft(session, sec)
         persist_synopsis_duration_seconds(sec)
+        t = (data.get("topic", "") or "").strip() or getattr(session, "topic", "")
+        if getattr(session, "open_id", None) and t:
+            save_synopsis_duration_draft(session.open_id, t, sec)
 
         card_id = getattr(session, "card_id", "") or ""
         if card_id:

@@ -81,7 +81,17 @@ class RetryFailedStageAction:
             return {"toast": {"type": "error", "content": "缺少项目主题，请重新发起项目。"}}
 
         if failed_stage in ["GENERATING_SYNOPSIS", "WAITING_SYNOPSIS_APPROVAL"]:
-            enqueue(open_id, f"重试大纲: {retry_topic}", run_synopsis, retry_topic, open_id, "", 1.25)
+            from feishu.config import DEFAULT_SYNOPSIS_DURATION_MINUTES
+
+            enqueue(
+                open_id,
+                f"重试大纲: {retry_topic}",
+                run_synopsis,
+                retry_topic,
+                open_id,
+                "",
+                DEFAULT_SYNOPSIS_DURATION_MINUTES,
+            )
         elif failed_stage in ["GENERATING_VISUALS", "WAITING_CHARACTER_APPROVAL"]:
             enqueue(open_id, f"重试定妆照: {retry_topic}", run_visual, retry_topic, open_id)
         elif failed_stage in ["POST_APPROVAL_SLICE", "POST_APPROVAL_STEP3"]:

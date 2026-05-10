@@ -35,7 +35,17 @@ class ConfirmNewProjectAction:
             set_status("IDLE", "")
 
         if new_topic and enqueue and run_synopsis:
-            enqueue(open_id, f"新项目大纲: {new_topic}", run_synopsis, new_topic, open_id, "", 1.25)
+            from feishu.config import DEFAULT_SYNOPSIS_DURATION_MINUTES
+
+            enqueue(
+                open_id,
+                f"新项目大纲: {new_topic}",
+                run_synopsis,
+                new_topic,
+                open_id,
+                "",
+                DEFAULT_SYNOPSIS_DURATION_MINUTES,
+            )
 
         return {"toast": {"type": "success", "content": f"已放弃旧项目，正在为「{new_topic}」生成大纲..."}}
 

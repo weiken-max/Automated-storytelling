@@ -30,7 +30,7 @@ def _run_dir_from_id(run_id: str) -> Path:
 
 
 def _ensure_run_dirs(run_dir: Path):
-    for sub in ("scripts", "storyboards", "audio", "output", "refs", "logs"):
+    for sub in ("scripts", "storyboards", "audio", "output", "refs", "logs", "后台"):
         (run_dir / sub).mkdir(parents=True, exist_ok=True)
 
 

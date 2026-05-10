@@ -29,6 +29,7 @@ if str(BASE_DIR / "src") not in sys.path:
     sys.path.insert(0, str(BASE_DIR / "src"))
 
 import src.style_config as config
+from src.api_audit import PHASE_CASTING, log_event, log_llm_chat
 from src.image_engine import generate_image
 from src.project_vault import backup as vault_backup
 from src.run_context import get_paths
@@ -38,6 +39,8 @@ LEGACY_FEISHU_TEMP_SYNOPSIS = BASE_DIR / "feishu" / "temp_synopsis.json"
 ALLOWED_STAGES = frozenset({"child", "youth", "middle", "elderly"})
 MAX_SUPPORTING = 3
 MAX_REF_CHARACTERS = 4
+# 配角三视图生图并发上限（与 MAX_SUPPORTING 一致，最多 3 人同时请求）
+MAX_SUPPORTING_REF_CONCURRENCY = 3
 
 
 def _require_active_paths(create_if_missing: bool = False) -> dict:
@@ -209,11 +212,19 @@ def merge_refs_prompt_supporting(topic: str, role_id: str, display_name_en: str,
 
 
 SUPPORTING_REGEN_SYSTEM = """You write ONE JSON object for a single SUPPORTING character reference sheet (not the protagonist).
-Content rules for english_prompt (identity-first, NOT a micro-appearance inventory):
-- Give ROLE / IDENTITY + optional ERA & TONE in concise English (about 35–70 words).
-- FORBIDDEN: listing lapels, buttons, stitches, hairline, fabric folds, jewelry details, or facial feature catalog.
-- The image pipeline will add the sheet layout and minimal Cyanide-style art direction; you only supply who they are and the broad vibe.
-anchor_description: one short Chinese phrase (20–40 chars) for human readers only (not sent to the image model as the main block).
+
+english_prompt: ONE English paragraph, 60–95 words, flowing prose (no bullet lists). Include:
+(1) Role + plot function + social station in the synopsis for this character.
+(2) Life-stage / age-band read appropriate to the story.
+(3) Iconic costume or prop as SIMPLE SHAPE LANGUAGE (blocks/rectangles/loops)—NO buttons, lapels, stitching, logos, lace, jewelry close-ups, hair strands, pores, or face measurements.
+(4) Up to three flat palette anchors (two main colors + one accent).
+(5) One short clause for posture or expression vibe (cartoon-simple).
+
+Do NOT restate: triple view, white background, bean head, dot eyes, stick limbs—the renderer template already locks those.
+FORBIDDEN: photorealism, 3D/CGI, cinematic lighting vocabulary, runway fashion, long facial-feature lists, gore, brand names.
+If any phrase implies realistic muscled limbs or detailed shoes, rewrite to attitude + simple prop silhouettes.
+
+anchor_description: one short Chinese phrase (20–40 chars) for human readers only.
 
 Output ONLY: {"english_prompt":"...","anchor_description":"..."}"""
 
@@ -232,21 +243,26 @@ def llm_regen_supporting_prompt(
         ensure_ascii=False,
     )
     try:
-        response = client.chat.completions.create(
-            model=config.MODEL_LLM,
-            messages=[
-                {"role": "system", "content": SUPPORTING_REGEN_SYSTEM},
-                {"role": "user", "content": user},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.45,
-            max_tokens=2048,
+        response = log_llm_chat(
+            PHASE_CASTING,
+            f"supporting_regen/{role_id}",
+            config.MODEL_LLM,
+            lambda: client.chat.completions.create(
+                model=config.MODEL_LLM,
+                messages=[
+                    {"role": "system", "content": SUPPORTING_REGEN_SYSTEM},
+                    {"role": "user", "content": user},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.45,
+                max_tokens=2048,
+            ),
         )
         raw = (response.choices[0].message.content or "").strip()
         data = json.loads(raw)
         ep = str(data.get("english_prompt") or "").strip()
         ad = str(data.get("anchor_description") or "").strip()
-        if len(ep) < 28:
+        if len(ep) < 45:
             return None
         return {"english_prompt": ep, "anchor_description": ad or f"配角{display_name_en}"}
     except Exception as e:
@@ -263,9 +279,19 @@ HARD RULES:
 2. protagonist.stages: choose only from ["child","youth","middle","elderly"], based on life span that actually appears in the story. Do NOT output a stage that the story does not need.
 3. Each supporting role must have role_id: lowercase snake_case ASCII (letters, digits, underscores only), e.g. elder_patriarch, sheriff_kane.
 4. display_name_en: short English name or epithet for on-screen prompts (e.g. Jack, Elder, Sheriff).
-5. Every english_prompt is IDENTITY + ERA/TONE ONLY for the character (about 35–70 English words): role in the story, social station, era, attitude. Do NOT write tailor-level clothing detail, lapels, buttons, hair micro-features, or face geometry lists. The renderer adds sheet layout and minimal Cyanide-style direction. Also include anchor_description: one short Chinese phrase (20–40 chars) for humans only.
+5. english_prompt (protagonist every stage + each supporting): ONE English paragraph per character entry, 60–95 words, flowing prose (no bullet lists). Each MUST include:
+   (1) Role + plot function + social station in THIS synopsis.
+   (2) Life-stage read matching the stage key (child/youth/middle/elderly).
+   (3) Iconic costume or prop as SIMPLE SHAPE LANGUAGE (blocks/rectangles/loops)—NO buttons, lapels, stitching, logos, lace, jewelry close-ups, hair strands, pores, or face measurements.
+   (4) Up to three flat palette anchors (two main colors + one accent).
+   (5) One short clause for posture or expression vibe (cartoon-simple).
+   Do NOT restate: triple view, pure white background, bean head, dot eyes, stick limbs—the downstream renderer locks those.
+   FORBIDDEN: photorealism, 3D/CGI, cinematic lighting vocabulary, runway fashion, long facial-feature lists, gore, brand names.
+   If wording implies realistic muscled limbs or detailed shoes, rewrite to attitude + simple prop silhouettes.
+   Also include anchor_description: one short Chinese phrase (20–40 chars) for humans only.
 6. stage_prompts must contain one entry per stage listed in protagonist.stages with matching keys.
 7. Omit supporting characters who barely appear or do not need a consistent face.
+8. VISUAL IDENTITY LOCK: The protagonist MUST maintain ONE hyper-consistent visual anchor across ALL life stages to ensure viewer recognition. You must force the exact same core color palette (e.g., "always wears a signature cyan shirt") OR the same specific accessory (e.g., "always wears square red glasses" or "has a star birthmark") into the english_prompt of EVERY stage. Do not change their signature color as they age!
 
 Output ONE JSON object only:
 {
@@ -340,16 +366,20 @@ def _validate_and_trim_cast(plan: dict) -> dict | None:
     for st in ordered_stages:
         if st not in sprompts or not isinstance(sprompts.get(st), dict):
             sprompts[st] = {
-                "english_prompt": f"Protagonist of this story at the {st} life stage; same narrative identity across ages—"
-                f"broad social role and tone only, flat iconic silhouette (no fine tailoring or facial catalog).",
+                "english_prompt": (
+                    f"Protagonist of this story at the {st} life stage; same narrative identity across the plot. "
+                    f"Summarize social role, era-appropriate status, and moral attitude in plain words. "
+                    f"Add one iconic costume read as simple flat shapes (blocks, rectangles)—no buttons, seams, or face catalogs. "
+                    f"Suggest two flat main colors plus one accent; one clause for posture or expression (cartoon-simple)."
+                ),
                 "anchor_description": f"主角{st}阶段立绘",
             }
         else:
             ep = str(sprompts[st].get("english_prompt") or "").strip()
-            if len(ep) < 28:
+            if len(ep) < 45:
                 sprompts[st]["english_prompt"] = (
-                    f"Same story’s protagonist in the {st} stage: identity and attitude only—era-appropriate status "
-                    f"and mood in short phrases; avoid costume micro-detail."
+                    f"Same story’s protagonist in the {st} stage: plot role, era-appropriate station, and attitude in plain prose; "
+                    f"one simple silhouette prop or outfit block (no micro-detail); two flat colors plus accent; cartoon-simple stance."
                 )
     pro["stage_prompts"] = sprompts
 
@@ -371,10 +401,10 @@ def _validate_and_trim_cast(plan: dict) -> dict | None:
         used_ids.add(rid)
         dn = str(item.get("display_name_en") or rid).strip() or rid
         ep = str(item.get("english_prompt") or "").strip()
-        if len(ep) < 28:
+        if len(ep) < 45:
             ep = (
-                f"Supporting character ({dn}): role and moral alignment in the story, era-appropriate station "
-                f"and attitude—broad strokes only, no outfit sewing-level detail."
+                f"Supporting character ({dn}): plot role and moral alignment; era-appropriate station and attitude; "
+                f"one iconic costume or prop as simple flat shapes; two main colors plus accent; cartoon-simple posture—no micro-detail."
             )
         cleaned.append(
             {
@@ -396,15 +426,20 @@ def llm_plan_cast_from_synopsis(topic: str, synopsis_payload: dict) -> dict | No
     client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL.rstrip("/"))
     user = json.dumps({"topic": topic, "synopsis_package": synopsis_payload}, ensure_ascii=False)
     try:
-        response = client.chat.completions.create(
-            model=config.MODEL_LLM,
-            messages=[
-                {"role": "system", "content": CAST_PLAN_SYSTEM},
-                {"role": "user", "content": user},
-            ],
-            response_format={"type": "json_object"},
-            temperature=0.35,
-            max_tokens=8192,
+        response = log_llm_chat(
+            PHASE_CASTING,
+            "cast_plan_from_synopsis",
+            config.MODEL_LLM,
+            lambda: client.chat.completions.create(
+                model=config.MODEL_LLM,
+                messages=[
+                    {"role": "system", "content": CAST_PLAN_SYSTEM},
+                    {"role": "user", "content": user},
+                ],
+                response_format={"type": "json_object"},
+                temperature=0.35,
+                max_tokens=8192,
+            ),
         )
         raw = (response.choices[0].message.content or "").strip()
         plan = json.loads(raw)
@@ -439,10 +474,15 @@ def design_environments(topic: str):
     user_prompt = f"请为当前主题【{topic}】构思 4 个核心视觉场景。"
 
     try:
-        response = client.chat.completions.create(
-            model=config.MODEL_LLM,
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-            temperature=0.8,
+        response = log_llm_chat(
+            PHASE_CASTING,
+            "design_environments_list",
+            config.MODEL_LLM,
+            lambda: client.chat.completions.create(
+                model=config.MODEL_LLM,
+                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
+                temperature=0.8,
+            ),
         )
         content = response.choices[0].message.content.strip()
         if content.startswith("```"):
@@ -477,13 +517,18 @@ def get_needed_stages(topic: str):
 根据提供的文本，判定主角在整个故事中具体经历了哪些【人生阶段】。
 可选阶段：child, youth, middle, elderly。只输出 JSON 列表。"""
     try:
-        response = client.chat.completions.create(
-            model=config.MODEL_LLM,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"主题: {topic}\n文本摘要: {text_to_analyze[:2000]}"},
-            ],
-            temperature=0.3,
+        response = log_llm_chat(
+            PHASE_CASTING,
+            "infer_protagonist_stages",
+            config.MODEL_LLM,
+            lambda: client.chat.completions.create(
+                model=config.MODEL_LLM,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"主题: {topic}\n文本摘要: {text_to_analyze[:2000]}"},
+                ],
+                temperature=0.3,
+            ),
         )
         content = response.choices[0].message.content.strip()
         if "```" in content:
@@ -506,28 +551,39 @@ def design_character(topic: str, role_tag: str, stage: str = "middle"):
     print(f"  🧠 [Design] 正在构思角色: {role_tag} (阶段: {stage_name_cn})...")
     client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL.rstrip("/"))
 
-    system_prompt = f"""你是「角色定妆 · 身份语义压缩器」。
-目标：只输出**身份 + 时代/气质**英文描述，供极简氰化物风三视图定妆使用（画布与画风由下游模板注入）。
+    system_prompt = f"""You are the "character ref english_prompt" writer for a Cyanide-and-Happiness–style pipeline.
 
-【当前角色阶段】：{stage_name_cn} ({stage})
+Output ONLY JSON: {{"english_prompt":"...","anchor_description":"..."}}
+- anchor_description: one short Chinese phrase (20–40 chars) for human readers only.
 
-english_prompt 规则（约 35–70 个英文词）：
-1) 用「在社会结构里的角色 / 立场」+「该人生阶段的处境与气质」表达人物；可含粗粒度配色倾向（如 dark suit vs bright tee），但禁止缝纫级服饰描写。
-2) 严禁罗列：lapels, buttons, seams, hairline, pores, 五官拼图式描写、珠宝刻面、西装褶皱纹理等。
-3) 不要重复「triple view / white background / character sheet」等构图句——下游会统一加。
+Current life stage (must match): {stage_name_cn} ({stage})
 
-anchor_description：给人类看的一句中文（20~40 字），可与身份摘要同义；**不**自动进入生图主 prompt。
+english_prompt: ONE English paragraph, 60–95 words, flowing prose (no bullet lists). Include:
+(1) Role + plot function + how this character type fits the topic "{topic}".
+(2) Life-stage / age-band read for stage "{stage}".
+(3) Iconic costume or prop as SIMPLE SHAPE LANGUAGE (blocks/rectangles/loops)—NO buttons, lapels, stitching, logos, lace, jewelry close-ups, hair strands, pores, or face measurements.
+(4) Up to three flat palette anchors (two main colors + one accent).
+(5) One short clause for posture or expression vibe (cartoon-simple).
 
-输出格式（仅 JSON）:
-{{ "english_prompt": "...", "anchor_description": "中文一句话，20~40字" }}"""
+Do NOT restate: triple view, white background, bean head, dot eyes, stick limbs—the renderer locks those.
+FORBIDDEN: photorealism, 3D/CGI, cinematic lighting vocabulary, runway fashion, long facial-feature lists, brand names.
+If any phrase implies realistic muscled limbs or detailed shoes, rewrite to attitude + simple prop silhouettes."""
 
-    user_prompt = f"请为【{topic}】设计角色类型为 {role_tag} 的【{stage_name_cn}】形象。"
+    user_prompt = (
+        f"Topic: 【{topic}】. Role tag: {role_tag}. Stage: 【{stage_name_cn}】.\n"
+        f"Write english_prompt + anchor_description following the rules."
+    )
 
     try:
-        response = client.chat.completions.create(
-            model=config.MODEL_LLM,
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
-            temperature=0.7,
+        response = log_llm_chat(
+            PHASE_CASTING,
+            f"design_character/{role_tag}/{stage}",
+            config.MODEL_LLM,
+            lambda: client.chat.completions.create(
+                model=config.MODEL_LLM,
+                messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": user_prompt}],
+                temperature=0.7,
+            ),
         )
         content = response.choices[0].message.content.strip()
         if "```" in content:
@@ -597,6 +653,17 @@ def _archive_supporting_subdir(role_id: str):
     print(f"  🧹 [Clean] supporting/{role_id} 已归档。")
 
 
+# Layer A：定妆壳（固定英文）+ 与 style_config.REF_STYLE_ANCHOR 摘要一致。
+REF_SHEET_LAYER_A = """Character sheet layout: one character, three orthographic full-body views (front, side, back) on a flat pure white #FFFFFF background only—no floor, horizon, props, or environment.
+
+NON-NEGOTIABLE SILHOUETTE (Cyanide-and-Happiness read):
+- Oversized round / bean head; two tiny dot (pea) eyes—no anime eyes, eyelids, lashes, or detailed facial structure.
+- Arms and legs are PURE STICK / LINE limbs: simple black stroke tubes (matchstick), same width top to bottom; no muscular anatomy, realistic joints, detailed hands or feet (fingers at most as tiny nubs).
+- Torso as a simple block or oval; bold black outlines; flat color fills; no shading, rim light, volumetric light, or fabric micro-folds.
+
+Style mood: 2D vector web-comic, absurdist deadpan humor allowed; keep forms primitive and iconic."""
+
+
 async def generate_ref_sheet_at(out_dir: Path, english_prompt: str, ref_image_path: Path | None = None) -> Path | None:
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "triple_view.png"
@@ -604,20 +671,16 @@ async def generate_ref_sheet_at(out_dir: Path, english_prompt: str, ref_image_pa
     print(f"  🎨 [Generate] 定妆输出 {label} (参考: {ref_image_path.name if ref_image_path else 'None'})...")
 
     lines = [
-        "Background: flat pure white #FFFFFF only — no scenery, no floor, no horizon, no props.",
-        "Lighting: flat even cartoon lighting — no dramatic cast shadows, rim light, or studio volumetrics.",
-        "Layout: CHARACTER DESIGN SHEET — one identical character in three orthographic full-body views: "
-        "(1) front (2) side profile (3) back; same height, same outfit silhouette across views.",
-        f"Style: {config.REF_STYLE_ANCHOR}",
+        REF_SHEET_LAYER_A.strip(),
+        "Lighting: flat even cartoon lighting—no dramatic cast shadows, rim light, or studio volumetrics.",
+        f"Style (summary): {config.REF_STYLE_ANCHOR}",
     ]
     if ref_image_path:
         lines.append(
             "Reference continuity: preserve the same face identity and character read as the reference image; "
             "apply only age regression or progression for this stage — no new face, no unrelated redesign."
         )
-    lines.append(
-        f"Character identity, era, and tone (brief — no micro-detail inventory): {english_prompt}"
-    )
+    lines.append(f"Character (story-specific): {english_prompt}")
     full_prompt = "\n".join(lines)
 
     try:
@@ -627,6 +690,8 @@ async def generate_ref_sheet_at(out_dir: Path, english_prompt: str, ref_image_pa
             size="2k",
             image_refs=img_refs,
             standalone_prompt=True,
+            audit_phase=PHASE_CASTING,
+            audit_step=f"triple_view/{label}",
         )
         if img_bytes:
             out_path.write_bytes(img_bytes)
@@ -753,26 +818,42 @@ async def _run_synopsis_driven_protagonist_pipeline(topic: str):
     stage_prompts = plan["protagonist"]["stage_prompts"]
     physical_anchors: dict = {}
 
-    anchor_ref_path: Path | None = None
-    for st in stages:
+    # 单一参考锚点：首张成功生成的定妆作为 IPAdapter 基准，避免阶段间线性传递导致特征漂移
+    base_anchor_path: Path | None = None
+    sorted_stages = list(stages)
+    if "middle" in sorted_stages:
+        sorted_stages.remove("middle")
+        sorted_stages.insert(0, "middle")
+
+    for st in sorted_stages:
         design = stage_prompts[st]
         tdir = _run_ref_stage_dir(st)
-        gen_path = await generate_ref_sheet_at(tdir, design["english_prompt"], anchor_ref_path)
+        gen_path = await generate_ref_sheet_at(tdir, design["english_prompt"], base_anchor_path)
         if gen_path:
             desc_f = gen_path.parent / "description.txt"
             desc_f.write_text(design.get("anchor_description", ""), encoding="utf-8")
             physical_anchors[st] = str(gen_path.resolve())
-            anchor_ref_path = gen_path
+            if base_anchor_path is None:
+                base_anchor_path = gen_path
 
-    for sup in plan["supporting"]:
-        rid = sup["role_id"]
-        sdir = _run_ref_supporting_dir(rid)
-        gen_path = await generate_ref_sheet_at(sdir, sup["english_prompt"], None)
-        if gen_path:
-            desc_f = gen_path.parent / "description.txt"
-            desc_f.write_text(sup.get("anchor_description", ""), encoding="utf-8")
-            k = f"supporting_{rid}"
-            physical_anchors[k] = str(gen_path.resolve())
+    sup_list = plan["supporting"]
+    if sup_list:
+        sem = asyncio.Semaphore(MAX_SUPPORTING_REF_CONCURRENCY)
+
+        async def _gen_one_supporting(sup: dict) -> tuple[str, Path | None, str]:
+            async with sem:
+                rid = sup["role_id"]
+                sdir = _run_ref_supporting_dir(rid)
+                gen_path = await generate_ref_sheet_at(sdir, sup["english_prompt"], None)
+                desc = sup.get("anchor_description", "") or ""
+                return rid, gen_path, desc
+
+        results = await asyncio.gather(*[_gen_one_supporting(sup) for sup in sup_list])
+        for rid, gen_path, anchor_desc in results:
+            if gen_path:
+                desc_f = gen_path.parent / "description.txt"
+                desc_f.write_text(anchor_desc, encoding="utf-8")
+                physical_anchors[f"supporting_{rid}"] = str(gen_path.resolve())
 
     ref_slots = _build_ref_display_slots(cast_registry, physical_anchors)
     target = _run_story_path(must_exist=True)
@@ -976,7 +1057,12 @@ async def run_ref_process(topic: str, category: str, target_stage: str = None):
         for scene in scenes:
             name, prompt, desc = scene["name"], scene["english_prompt"], scene["anchor_description"]
             full_p = f"WIDE ANGLE CINEMATIC BACKGROUND, {config.STYLE_ANCHOR}, No characters, {prompt}"
-            img_b = await generate_image(prompt=full_p, size="2k")
+            img_b = await generate_image(
+                prompt=full_p,
+                size="2k",
+                audit_phase=PHASE_CASTING,
+                audit_step=f"env_anchor/{name}",
+            )
             if img_b:
                 p = _run_ref_other_dir() / f"{name}.png"
                 p.write_bytes(img_b)

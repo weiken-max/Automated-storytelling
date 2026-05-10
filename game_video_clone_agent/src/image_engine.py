@@ -21,6 +21,7 @@ from src.style_config import (
     STYLE_ANCHOR, NEGATIVE_PROMPT, IMG_SIZE,
     CHARACTER_REF_MAP, REFS_OTHER
 )
+from src.api_audit import PHASE_GRID, log_event
 from src.model_presets import ACTIVE_IMG_VENDOR
 
 # ================================================================
@@ -475,7 +476,9 @@ async def generate_image(prompt: str,
                          scenes: list = None,
                          size: str = None,
                          vendor_key: str = None,
-                         standalone_prompt: bool = False) -> bytes:
+                         standalone_prompt: bool = False,
+                         audit_phase: str | None = None,
+                         audit_step: str | None = None) -> bytes:
     """
     通用生图接口。
     standalone_prompt=True：prompt 已包含完整风格与指令（如人物定妆纸），不再前置 Style: STYLE_ANCHOR，也不注入 crowd-suppression 段落。
@@ -557,17 +560,80 @@ async def generate_image(prompt: str,
     sem = _get_gen_semaphore()
     async with sem:
         for attempt in range(1, _GEN_MAX_RETRIES + 1):
+            t_dispatch = time.perf_counter()
             try:
                 result_bytes = await asyncio.wait_for(_dispatch_once(), timeout=_GEN_TIMEOUT_SECONDS)
+                ms = (time.perf_counter() - t_dispatch) * 1000
                 if result_bytes:
                     _update_last_gen_time()
+                    if audit_phase:
+                        log_event(
+                            audit_phase,
+                            audit_step or "image_generate",
+                            "image_gen",
+                            ok=True,
+                            duration_ms=ms,
+                            model=str(MODEL_IMG),
+                            attempt=attempt,
+                            extra={"vendor": vendor, "size": size or ""},
+                        )
                     return result_bytes
+                if audit_phase:
+                    log_event(
+                        audit_phase,
+                        audit_step or "image_generate",
+                        "image_gen",
+                        ok=False,
+                        duration_ms=ms,
+                        model=str(MODEL_IMG),
+                        attempt=attempt,
+                        error="empty_response",
+                        extra={"vendor": vendor},
+                    )
                 raise RuntimeError("生图接口返回空结果")
-            except (APIQuotaError, APIAuthError):
+            except (APIQuotaError, APIAuthError) as e:
+                if audit_phase:
+                    log_event(
+                        audit_phase,
+                        audit_step or "image_generate",
+                        "image_gen",
+                        ok=False,
+                        duration_ms=(time.perf_counter() - t_dispatch) * 1000,
+                        model=str(MODEL_IMG),
+                        attempt=attempt,
+                        error=str(e),
+                        extra={"vendor": vendor},
+                    )
                 raise
             except asyncio.TimeoutError:
+                ms = (time.perf_counter() - t_dispatch) * 1000
+                if audit_phase:
+                    log_event(
+                        audit_phase,
+                        audit_step or "image_generate",
+                        "image_gen",
+                        ok=False,
+                        duration_ms=ms,
+                        model=str(MODEL_IMG),
+                        attempt=attempt,
+                        error=f"timeout_after_{_GEN_TIMEOUT_SECONDS}s",
+                        extra={"vendor": vendor},
+                    )
                 print(f"  └─ ⏱️ [ImageEngine] 生图超时：第 {attempt}/{_GEN_MAX_RETRIES} 次，超时阈值 {_GEN_TIMEOUT_SECONDS}s")
             except Exception as e:
+                ms = (time.perf_counter() - t_dispatch) * 1000
+                if audit_phase:
+                    log_event(
+                        audit_phase,
+                        audit_step or "image_generate",
+                        "image_gen",
+                        ok=False,
+                        duration_ms=ms,
+                        model=str(MODEL_IMG),
+                        attempt=attempt,
+                        error=str(e),
+                        extra={"vendor": vendor},
+                    )
                 print(f"  └─ ⚠️ [ImageEngine] 生图失败：第 {attempt}/{_GEN_MAX_RETRIES} 次，错误: {e}")
 
             if attempt < _GEN_MAX_RETRIES:
@@ -575,6 +641,18 @@ async def generate_image(prompt: str,
                 print(f"  └─ 🔁 [ImageEngine] {backoff:.1f}s 后重试...")
                 await asyncio.sleep(backoff)
 
+    if audit_phase:
+        log_event(
+            audit_phase,
+            audit_step or "image_generate",
+            "image_gen",
+            ok=False,
+            duration_ms=0.0,
+            model=str(MODEL_IMG),
+            attempt=_GEN_MAX_RETRIES,
+            error="exhausted_retries",
+            extra={"vendor": vendor},
+        )
     raise RuntimeError(f"生图任务重试 {_GEN_MAX_RETRIES} 次后仍失败（timeout={_GEN_TIMEOUT_SECONDS}s）")
 
 # ================================================================
@@ -661,11 +739,13 @@ async def generate_grid_image(batch_metadata: list, output_path: Path, layout_mo
 
     try:
         img_bytes = await generate_image(
-            full_prompt, 
-            image_refs=list(batch_refs), # 🔒 注入物理路径列表
-            tags=list(batch_tags), 
+            full_prompt,
+            image_refs=list(batch_refs),  # 🔒 注入物理路径列表
+            tags=list(batch_tags),
             scenes=list(batch_scenes),
             size=requested_size,
+            audit_phase=PHASE_GRID,
+            audit_step=f"grid_container_{actual_layout}",
         )
 
         if img_bytes:

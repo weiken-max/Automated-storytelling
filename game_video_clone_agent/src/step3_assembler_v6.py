@@ -23,6 +23,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+from src.api_audit import PHASE_ASSEMBLE, log_event
 from src.run_context import get_paths, get_current_run_id
 from src.style_config import FONT_PATH, SUBTITLE_SIZE, SUBTITLE_Y_FRAC
 NARRATIVE_FINAL_PATH = None
@@ -143,7 +144,21 @@ def cleanup_temp_env(temp_dir: Path):
 
 
 def _run_ffmpeg(cmd: list[str], stage: str):
+    t0 = time.perf_counter()
     proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
+    ms = (time.perf_counter() - t0) * 1000
+    ok = proc.returncode == 0
+    try:
+        log_event(
+            PHASE_ASSEMBLE,
+            stage,
+            "ffmpeg_local",
+            ok=ok,
+            duration_ms=ms,
+            extra={"returncode": proc.returncode, "argv0": cmd[0] if cmd else ""},
+        )
+    except Exception:
+        pass
     if proc.returncode != 0:
         print(f"[ERROR] FFmpeg 执行失败: {stage}")
         print(f"[ERROR] 命令: {' '.join(cmd)}")

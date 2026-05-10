@@ -25,6 +25,7 @@ if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 DATA_DIR = BASE_DIR / "data"
 
+from src.api_audit import PHASE_AUDIO_BEATS, PHASE_STORYBOARD, log_event
 from src.style_config import LLM_API_KEY, LLM_BASE_URL, MODEL_LLM, VOICE_ROLE, VOICE_RATE
 from src.project_vault import backup as vault_backup
 from src.run_context import get_paths, get_current_run_id
@@ -292,7 +293,17 @@ def _run_edge_tts_to_files(text: str, audio_path: Path, vtt_path: Path) -> None:
             try:
                 for attempt in range(1, TTS_NETWORK_MAX_RETRIES + 1):
                     try:
+                        t_edge = time.perf_counter()
                         subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        log_event(
+                            PHASE_AUDIO_BEATS,
+                            "edge_tts",
+                            "tts_edge",
+                            ok=True,
+                            duration_ms=(time.perf_counter() - t_edge) * 1000,
+                            attempt=attempt,
+                            extra={"cmd_candidate": idx, "voice": str(VOICE_ROLE)},
+                        )
                         return
                     except subprocess.CalledProcessError as e:
                         raw_err = e.stderr if e.stderr is not None else e.output
@@ -309,6 +320,16 @@ def _run_edge_tts_to_files(text: str, audio_path: Path, vtt_path: Path) -> None:
                                 "TimeoutError",
                                 "ServerDisconnectedError",
                             )
+                        )
+                        log_event(
+                            PHASE_AUDIO_BEATS,
+                            "edge_tts",
+                            "tts_edge",
+                            ok=False,
+                            duration_ms=(time.perf_counter() - t_edge) * 1000,
+                            attempt=attempt,
+                            error=err_text[:400],
+                            extra={"cmd_candidate": idx, "transient": transient},
                         )
                         if transient and attempt < TTS_NETWORK_MAX_RETRIES:
                             backoff = TTS_NETWORK_RETRY_BASE_SEC * (2 ** (attempt - 1))
@@ -479,6 +500,7 @@ def chunk_beats_by_llm(srt_data: list) -> list:
 
     client = get_client()
     try:
+        t0 = time.perf_counter()
         response = client.chat.completions.create(
             model=MODEL_LLM,
             messages=[
@@ -487,6 +509,15 @@ def chunk_beats_by_llm(srt_data: list) -> list:
             ],
             response_format={"type": "json_object"},
             temperature=0.2
+        )
+        log_event(
+            PHASE_AUDIO_BEATS,
+            "beat_chunk_from_srt",
+            "llm_chat",
+            ok=True,
+            duration_ms=(time.perf_counter() - t0) * 1000,
+            model=MODEL_LLM,
+            extra={"cue_lines": len(srt_data)},
         )
         result = json.loads(response.choices[0].message.content)
         beats_plan = result.get("beats", [])
@@ -521,6 +552,18 @@ def chunk_beats_by_llm(srt_data: list) -> list:
         print(f"  ✅ [LLM] Beat 拆解完毕，共切分为 {len(pseudo_srt)} 个节拍！（已修复行号覆盖空洞并重编号 beat_1…）")
         return pseudo_srt
     except Exception as e:
+        try:
+            log_event(
+                PHASE_AUDIO_BEATS,
+                "beat_chunk_from_srt",
+                "llm_chat",
+                ok=False,
+                duration_ms=(time.perf_counter() - t0) * 1000,
+                model=MODEL_LLM,
+                error=str(e),
+            )
+        except Exception:
+            pass
         print(f"❌ [LLM] Beat 划分失败: {e}")
         sys.exit(1)
 
@@ -876,6 +919,7 @@ def _auto_stage_map_by_llm(beats: list, detected_stages: list[str]) -> list:
         },
         ensure_ascii=False,
     )
+    t_map = time.perf_counter()
     try:
         resp = client.chat.completions.create(
             model=MODEL_WRITER,
@@ -885,6 +929,15 @@ def _auto_stage_map_by_llm(beats: list, detected_stages: list[str]) -> list:
             ],
             response_format={"type": "json_object"},
             temperature=0.2,
+        )
+        log_event(
+            PHASE_STORYBOARD,
+            "auto_stage_map",
+            "llm_chat",
+            ok=True,
+            duration_ms=(time.perf_counter() - t_map) * 1000,
+            model=MODEL_WRITER,
+            extra={"beats": len(beats)},
         )
         data = json.loads(resp.choices[0].message.content)
         stage_map = data.get("stage_map", [])
@@ -909,6 +962,15 @@ def _auto_stage_map_by_llm(beats: list, detected_stages: list[str]) -> list:
         norm[-1]["end_shot"] = 999999
         return norm
     except Exception as e:
+        log_event(
+            PHASE_STORYBOARD,
+            "auto_stage_map",
+            "llm_chat",
+            ok=False,
+            duration_ms=(time.perf_counter() - t_map) * 1000,
+            model=MODEL_WRITER,
+            error=str(e),
+        )
         print(f"  ⚠️ [StageMap] 自动生成失败，回退默认分段: {e}")
         if len(allowed) == 1:
             return [{"stage": allowed[0], "start_shot": 1, "end_shot": 999999}]
@@ -958,6 +1020,7 @@ def _tag_subshots_only(beat: dict, attempt: int = 0) -> list[str]:
 
     client = get_client()
     try:
+        t_tag = time.perf_counter()
         response = client.chat.completions.create(
             model=MODEL_WRITER,
             messages=[
@@ -972,6 +1035,16 @@ def _tag_subshots_only(beat: dict, attempt: int = 0) -> list[str]:
             ],
             response_format={"type": "json_object"},
             temperature=0.3,
+        )
+        log_event(
+            PHASE_STORYBOARD,
+            f"phase3_tag_subshots/{beat.get('beat_id', '?')}",
+            "llm_chat",
+            ok=True,
+            duration_ms=(time.perf_counter() - t_tag) * 1000,
+            model=MODEL_WRITER,
+            attempt=attempt + 1,
+            extra={"phase": "tag"},
         )
         choice = response.choices[0] if response.choices else None
         msg = choice.message if choice else None
@@ -1006,6 +1079,17 @@ def _tag_subshots_only(beat: dict, attempt: int = 0) -> list[str]:
 
         return segments
     except Exception as e:
+        log_event(
+            PHASE_STORYBOARD,
+            f"phase3_tag_subshots/{beat.get('beat_id', '?')}",
+            "llm_chat",
+            ok=False,
+            duration_ms=(time.perf_counter() - t_tag) * 1000,
+            model=MODEL_WRITER,
+            attempt=attempt + 1,
+            error=str(e),
+            extra={"phase": "tag"},
+        )
         print(f"    ⚠️ [Tagging] 调用异常: {e}")
         return []
 
@@ -1092,41 +1176,44 @@ def _generate_visual_prompts(
     key_help = ", ".join(legal_keys) if legal_keys else "(无)"
 
     system_prompt = (
-        "你是一个分镜视觉提示词生成器。\n"
-        "任务：为已经切好的分镜文案逐条生成英文 visual_prompt，用于 AI 生图。\n\n"
-        "【叙事上下文】：\n"
+        "你是一位 AI 分镜导演兼英文 prompt 写手。任务：为已切好的每条分镜文案生成一条英文 visual_prompt（用于生图），"
+        "并输出 per_shot_ref_keys。\n\n"
+        "【叙事与场记】\n"
         f"- 上一章节（前情摘要）：{prev_ctx}\n"
-        f"- 当前章节概括：{beat_summary}\n\n"
+        f"- 当前章节概括：{beat_summary}\n"
+        "同一条目列表内须强连贯：环境与光影方向应自然延续；禁止无交代的人物瞬移、场景跳切、光源突变。"
+        "若叙事明确转场，在同一条英文 visual_prompt 中用一两句写清转场依据。\n\n"
         f"{era_section}"
-        "【角色外观语义锚点】：\n"
+        "【强制画风（须写入每条 visual_prompt 的英文正文，可嵌在叙事句中）】\n"
+        "Cyanide and Happiness comic style, 2D vector / flat graphic cartoon, bold black outlines, vivid flat color fills, "
+        "pure 2D, no photoreal skin texture, no 3D/CGI. 允许卡通级光向（key direction, warm/cool, simple hard-edge shadow shapes），"
+        "禁止电影级体积光与写实 subsurface skin。\n"
+        "主角人生阶段必须与输入 JSON 每条 segment 的 stage 一致。\n\n"
+        "【角色外观语义锚点】\n"
         f"{text_anchors_str}\n\n"
-        "【物理定妆锚点路径】（逻辑键 → 磁盘路径）：\n"
+        "【物理定妆锚点路径】（逻辑键 → 磁盘路径）\n"
         f"{physical_anchors_str}\n\n"
-        "【已定案角色注册表 cast_registry】（定妆阶段已锁定英文名；分镜描述必须直接使用 display_name_en 指代对应角色，"
-        "禁止用泛指如 young man / old man / elderly stranger 指代已注册角色）：\n"
+        "【已定案角色注册表 cast_registry】\n"
+        "已注册角色必须用 display_name_en 点名，禁止 young man / old man / elderly stranger 等泛指。\n"
         f"{cast_blob}\n\n"
-        "【提示词生成规则】：\n"
-        f"1. 必须为每个分镜生成一条 visual_prompt，数量必须恰好是 {n} 条，顺序严格对应输入。\n"
-        "2. 每条 visual_prompt 必须包含：\n"
-        "   - 画风控制：Cyanide and Happiness comic style, flat illustration, simple line art, pure 2D.\n"
-        "   - 人生阶段（已在输入的 stage 字段中标明，主角外观须与此一致）。\n"
-        "   - 可执行镜头信息：景别、主体动作、环境要素与构图焦点。\n"
-        "   - 面部表情（必填，写在同一条 visual_prompt 的英文里）：对每个出现在画面中的已定案角色，"
-        "必须用 cast_registry 的 display_name_en 点名，并写出氰化物式极简面部——dot eyes、mouth line/shape、eyebrow angle；"
-        "例如 grinning mouth line、frowning angled eyebrows、neutral flat mouth、surprised wide dot eyes、single tear line。"
-        "禁止仅用笼统词如 sad/happy/angry 而不写眉/嘴/眼；若本镜以脸为主，须写明 close-up on face。\n"
-        "3. 前后章节转折时（尤其第一镜），注意与上一章节视觉风格的衔接。\n"
-        "4. 避免空泛表述；谁在画面上必须使用 cast_registry 中的英文 display_name_en。\n"
-        f"5. 同时输出 per_shot_ref_keys：与 visual_prompts 等长的二维数组。"
-        f"每一行是一个字符串数组，列出本分镜需要绑定「生图参考脸」的逻辑键，必须从下列集合选取：{key_help}。\n"
-        "   - 主角：使用与当条 segment 的 stage 相同的工作键（如 youth、middle）。\n"
-        "   - 已注册配角：使用 supporting_<role_id> 形式（与上面物理锚点 JSON 的键一致）。\n"
-        "   - 仅当某角色本镜需要锁脸时才列入；纯路人不必插入未注册键。\n\n"
-        f'输出严格 JSON 对象：{{"visual_prompts": [ ... 共 {n} 条 ... ], "per_shot_ref_keys": [ ... 共 {n} 行 ... ]}}'
+        "【每条 visual_prompt 的形式与内容】\n"
+        "每条必须是**一段连续英文**（不要用 Subject:/Environment: 等小标题分行），用 3–6 个完整句子自然串联，但必须**隐含覆盖**以下维度（不必按固定顺序）：\n"
+        "主体（谁/何物）；具体环境（须与前情连贯）；构图与景别；客观画面事件；光影连贯；\n"
+        "★ 动态表情与肢体（核心要求：打破参考图的呆滞感！）：必须深度解析当前分镜的故事情节，强制赋予角色强烈且符合情境的情绪反应。\n"
+        "1. 必须采用【核心情绪词 + 氰化物式五官拆解】组合。例如不要只写 mouth line，必须写：terrified expression, sharply angled frowning eyebrows, wide dilated dot eyes, screaming jagged mouth shape.\n"
+        "2. 明确指令：绝不允许角色保持中立或被参考图的默认表情带偏（DO NOT copy the neutral expression from reference）。\n"
+        "3. 肢体辅助：情绪必须配合夸张的肢体动作（如 recoiling in horror, pointing aggressively, slumping in defeat）。\n"
+        "4. 脸部特写：当情绪是当前帧重点时，明确写明 close-up on explicit facial expression。\n\n"
+        "【数量与输出】\n"
+        f"1. visual_prompt 恰好 {n} 条，顺序与输入 segments 一致。\n"
+        f"2. per_shot_ref_keys：与 visual_prompts 等长；每行为字符串数组，键必须从：{key_help} 选取。"
+        "主角键与当条 stage 一致；配角用 supporting_<role_id>；仅锁脸时列入。\n\n"
+        f'输出严格 JSON：{{"visual_prompts": [ ... 共 {n} 条 ... ], "per_shot_ref_keys": [ ... 共 {n} 行 ... ]}}'
     )
 
     client = get_client()
     try:
+        t_vis = time.perf_counter()
         response = client.chat.completions.create(
             model=MODEL_WRITER,
             messages=[
@@ -1141,6 +1228,16 @@ def _generate_visual_prompts(
             ],
             response_format={"type": "json_object"},
             temperature=0.5,
+        )
+        log_event(
+            PHASE_STORYBOARD,
+            f"phase3_visual_prompts/{beat.get('beat_id', '?')}",
+            "llm_chat",
+            ok=True,
+            duration_ms=(time.perf_counter() - t_vis) * 1000,
+            model=MODEL_WRITER,
+            attempt=max(1, int(attempt or 1)),
+            extra={"n_segments": n, "phase": "prompts"},
         )
         choice = response.choices[0] if response.choices else None
         msg = choice.message if choice else None
@@ -1173,6 +1270,17 @@ def _generate_visual_prompts(
         normalized_rows = _normalize_per_shot_ref_keys(per_raw, n, segments_with_meta, physical_anchors)
         return [str(p).strip() for p in prompts], normalized_rows
     except Exception as e:
+        log_event(
+            PHASE_STORYBOARD,
+            f"phase3_visual_prompts/{beat.get('beat_id', '?')}",
+            "llm_chat",
+            ok=False,
+            duration_ms=(time.perf_counter() - t_vis) * 1000,
+            model=MODEL_WRITER,
+            attempt=max(1, int(attempt or 1)),
+            error=str(e),
+            extra={"phase": "prompts"},
+        )
         print(f"    ⚠️ [Prompts] 调用异常: {e}")
         return [], []
 

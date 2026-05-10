@@ -33,11 +33,11 @@ STYLE_ANCHOR = (
     "Character proportions: stick figure limbs, round bean heads."
 )
 
-# 仅用于人物三视图定妆纸（ref_generator.generate_ref_sheet_at）：极简氰化物向，避免与分镜/场景共用 STYLE_ANCHOR 导致过度细化。
+# 仅用于人物三视图定妆（与 ref_generator 内 Layer A 一致摘要；完整壳以 generate_ref_sheet_at 为准）。
 REF_STYLE_ANCHOR = (
-    "Cyanide-and-Happiness–inspired minimal character sheet: thick black outlines, flat color fills, "
-    "round bean head, dot eyes, stick limbs, pure 2D. Almost no shading—no cel-shading, rim light, or volumetric light. "
-    "Do not render fabric folds, stitching, lapels, buttons, hair strands, or facial volume highlights."
+    "Cyanide-and-Happiness web-comic character sheet: 2D vector, oversized round bean head, two dot eyes, "
+    "arms and legs as pure black stick strokes (matchstick limbs, no realistic anatomy), simple torso block, "
+    "bold outlines, flat fills, no shading or fabric micro-detail."
 )
 
 NEGATIVE_PROMPT = (
@@ -101,8 +101,14 @@ COMBINED_REF_PATH = REFS_PROTAGONIST / "triple_view.png"
 # 🎙️ V6.0 语速估算 (中文每分钟约 230 字)
 WORDS_PER_MINUTE  = 300
 
-# 长文案目标字数：按「目标成片时长(分钟)」粗估（基于当前 TTS 实测语速校准）
-NARRATION_CHARS_PER_MINUTE = 250
+# 未指定时长时的默认成片时长（分钟），与飞书大纲卡片主选项「6 分钟」一致
+DEFAULT_STORY_DURATION_MINUTES = 6.0
+
+# 大纲：synopsis（synopsis_acts 拼接全文）最大字符数（汉字+标点），规范化时硬压到此上限内
+SYNOPSIS_BODY_MAX_CHARS = 1500
+
+# 长文案目标字数：按「目标成片时长(分钟)」粗估（对齐中文旁白 TTS 实测，略留余量避免成片短于目标时长）
+NARRATION_CHARS_PER_MINUTE = 300
 
 # 分段扩写（story_planner）：段数、承接上一段尾字数、单段输出 token 上限系数（≈中文 1 字≈1~2 token）
 NARRATION_SEGMENT_COUNT = 6

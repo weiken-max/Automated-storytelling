@@ -129,6 +129,9 @@ def do_card_action(data: P2CardActionTrigger) -> P2CardActionTriggerResponse:
         store.update_status(session.session_id, session.status, session.topic)
         if session.card_id:
             store.update_card_id(session.session_id, session.card_id, getattr(session, "card_type", ""))
+        # 卡片操作可能改写了 context_json（如成片时长），必须落库，否则下次请求仍读到旧默认
+        if getattr(session, "session_id", ""):
+            store.save_context_json(session.session_id, session.context_json)
 
         return P2CardActionTriggerResponse(result)
 

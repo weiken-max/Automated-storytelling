@@ -21,7 +21,10 @@ from state_mgr import FeishuStateMgr
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
+from src.api_audit import PHASE_FEISHU_BOT, PHASE_SYNOPSIS, log_llm_chat
 from src.run_context import get_paths, get_current_run_id, RUNS_ROOT, CURRENT_RUN_FILE
+from feishu.config import DEFAULT_SYNOPSIS_DURATION_MINUTES
+
 PYTHON_BIN = sys.executable
 
 PID_FILE = BASE_DIR / "feishu" / "hub.pid"
@@ -1452,86 +1455,63 @@ def _seconds_to_minutes_float(sec: int) -> float:
 
 
 def _load_synopsis_duration_drafts() -> dict:
-    try:
-        if SYNOPSIS_DURATION_DRAFT_FILE.exists():
-            return json.loads(SYNOPSIS_DURATION_DRAFT_FILE.read_text(encoding="utf-8"))
-    except Exception as e:
-        print(f"  [WARN] 读取 synopsis_duration_draft 失败: {e}")
-    return {"drafts": {}}
+    from feishu.synopsis_duration_sync import load_synopsis_duration_drafts_dict
+
+    return load_synopsis_duration_drafts_dict()
 
 
 def _save_synopsis_duration_draft(open_id: str, topic: str, seconds: int) -> None:
-    seconds = _clamp_duration_seconds(int(seconds))
-    data = _load_synopsis_duration_drafts()
-    drafts = data.setdefault("drafts", {})
-    drafts[open_id] = {"topic": topic, "seconds": seconds, "ts": time.time()}
-    try:
-        SYNOPSIS_DURATION_DRAFT_FILE.parent.mkdir(parents=True, exist_ok=True)
-        SYNOPSIS_DURATION_DRAFT_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-    except Exception as e:
-        print(f"  [WARN] 写入 synopsis_duration_draft 失败: {e}")
+    from feishu.synopsis_duration_sync import save_synopsis_duration_draft
+
+    save_synopsis_duration_draft(open_id, topic, seconds)
 
 
 def _load_synopsis_duration_draft(open_id: str, topic: str, fallback_seconds: int) -> int:
-    data = _load_synopsis_duration_drafts()
-    rec = (data.get("drafts") or {}).get(open_id)
-    if isinstance(rec, dict) and rec.get("topic") == topic and rec.get("seconds") is not None:
-        return _clamp_duration_seconds(int(rec["seconds"]))
-    return _clamp_duration_seconds(int(fallback_seconds))
+    from feishu.synopsis_duration_sync import load_synopsis_duration_draft_seconds
+
+    return load_synopsis_duration_draft_seconds(open_id, topic, fallback_seconds)
 
 
 def _clear_synopsis_duration_draft(open_id: str) -> None:
-    data = _load_synopsis_duration_drafts()
-    drafts = data.setdefault("drafts", {})
-    if open_id in drafts:
-        del drafts[open_id]
-        try:
-            SYNOPSIS_DURATION_DRAFT_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        except Exception:
-            pass
+    from feishu.synopsis_duration_sync import clear_synopsis_duration_draft
 
-
-def _apply_duration_to_temp_synopsis(minutes: float) -> None:
-    path = BASE_DIR / "feishu" / "temp_synopsis.json"
-    if not path.exists():
-        return
-    try:
-        synopsis_data = json.loads(path.read_text(encoding="utf-8"))
-        synopsis_data["duration"] = float(minutes)
-        path.write_text(json.dumps(synopsis_data, ensure_ascii=False), encoding="utf-8")
-    except Exception as e:
-        print(f"  [WARN] 回写 temp_synopsis duration 失败: {e}")
+    clear_synopsis_duration_draft(open_id)
 
 
 def _sync_synopsis_duration_from_draft(open_id: str, topic: str) -> None:
     """将卡片上选的时长写入 temp_synopsis.json（供定妆 / 剧本扩写读取）。"""
-    path = BASE_DIR / "feishu" / "temp_synopsis.json"
-    if not path.exists():
-        return
-    try:
-        synopsis_data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return
-    fb = _initial_seconds_from_minutes(float(synopsis_data.get("duration", 1.25)))
-    sec = _load_synopsis_duration_draft(open_id, topic, fb)
-    _apply_duration_to_temp_synopsis(_seconds_to_minutes_float(sec))
+    from feishu.synopsis_duration_sync import sync_synopsis_duration_from_draft
+
+    sync_synopsis_duration_from_draft(open_id, topic)
 
 
 def build_synopsis_approval_card(topic: str, synopsis_data: dict, duration_sec: int) -> dict:
+    from src.story_planner_v6 import normalize_synopsis_payload
+
     duration_sec = _clamp_duration_seconds(int(duration_sec))
     mo = _seconds_to_minutes_float(duration_sec)
-    industry = synopsis_data.get("industry_rules") or []
+    sd = normalize_synopsis_payload(dict(synopsis_data))
+    industry = sd.get("industry_rules") or []
     industry_md = ""
     if industry:
         bullets = "\n".join(f"- {x}" for x in industry[:24])
         industry_md = f"\n\n**📌 行业潜规则**\n{bullets}"
+    acts = sd.get("synopsis_acts")
+    synopsis_body = sd.get("synopsis", "") or ""
+    if isinstance(acts, list) and len(acts) >= 2 and any(str(a).strip() for a in acts):
+        lines: list[str] = []
+        for i, a in enumerate(acts):
+            t = str(a).strip()
+            if t:
+                lines.append(f"**第{i + 1}幕**\n{t}")
+        synopsis_body = "\n\n".join(lines) if lines else synopsis_body
     return {
         "config": {"wide_screen_mode": True},
         "header": {"title": {"content": f"📖 剧情大纲：{topic}", "tag": "plain_text"}, "template": "purple"},
         "elements": [
-            {"tag": "markdown", "content": f"**🕰️ 时代**：{synopsis_data.get('era')}\n**👤 身份**：{synopsis_data.get('identity')}{industry_md}"},
+            {"tag": "markdown", "content": f"**🕰️ 时代**：{sd.get('era')}\n**👤 身份**：{sd.get('identity')}{industry_md}"},
             {"tag": "hr"},
-            {"tag": "markdown", "content": synopsis_data.get("synopsis", "")},
+            {"tag": "markdown", "content": synopsis_body},
             {"tag": "hr"},
             {"tag": "markdown", "content": (
                 "**⏱️ 成片目标时长**\n"
@@ -1576,10 +1556,14 @@ def _patch_synopsis_approval_card(open_id: str, message_id: str, topic: str) -> 
     if not path.exists() or not message_id:
         return False
     try:
-        synopsis_data = json.loads(path.read_text(encoding="utf-8"))
+        from src.story_planner_v6 import normalize_synopsis_payload
+
+        synopsis_data = normalize_synopsis_payload(
+            json.loads(path.read_text(encoding="utf-8"))
+        )
     except Exception:
         return False
-    fb = _initial_seconds_from_minutes(float(synopsis_data.get("duration", 1.25)))
+    fb = _initial_seconds_from_minutes(float(synopsis_data.get("duration", DEFAULT_SYNOPSIS_DURATION_MINUTES)))
     sec = _load_synopsis_duration_draft(open_id, topic, fb)
     card = build_synopsis_approval_card(topic, synopsis_data, sec)
     return mgr.update_card(message_id, card)
@@ -1824,16 +1808,24 @@ def run_project_pipeline(topic: str, receive_id: str):
         _clear_run_pids(run_id)
         PIPELINE_STOP_FLAGS.pop(run_id, None)
 
-def run_synopsis_setup(topic: str, receive_id: str, feedback: str = "", duration: float = 1.25):
+def run_synopsis_setup(topic: str, receive_id: str, feedback: str = "", duration: float = DEFAULT_SYNOPSIS_DURATION_MINUTES):
     """第一重审批：只生成大纲并推给用户看（不触碰 V6 源代码）"""
     try:
         clear_last_error_context()
         from openai import OpenAI
-        from src.style_config import LLM_API_KEY, LLM_BASE_URL, MODEL_LLM
+        from src.style_config import (
+            LLM_API_KEY,
+            LLM_BASE_URL,
+            MODEL_LLM,
+            NARRATION_SEGMENT_COUNT,
+            SYNOPSIS_BODY_MAX_CHARS,
+        )
+        from src.story_planner_v6 import normalize_synopsis_payload
+
         mgr.send_text(receive_id, "open_id", f"🧠 正在为【{topic}】构思剧情大纲..." if not feedback else f"🔄 收到反馈，正在为您重新修改大纲...")
         state.set_status("GENERATING_SYNOPSIS", topic)
 
-        # 改稿时沿用上一份大纲卡片里确认的成片时长（避免回退成默认 1.25）
+        # 改稿时沿用上一份大纲卡片里确认的成片时长（避免回退成系统默认）
         if feedback:
             try:
                 prev_path = BASE_DIR / "feishu" / "temp_synopsis.json"
@@ -1843,10 +1835,14 @@ def run_synopsis_setup(topic: str, receive_id: str, feedback: str = "", duration
                         duration = float(prev["duration"])
             except Exception:
                 pass
-        
+
+        try:
+            n_act = max(4, min(8, int(NARRATION_SEGMENT_COUNT)))
+        except (TypeError, ValueError):
+            n_act = 6
         client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
         prompt = f"""你是一个极其冷酷的现实主义编剧与行业规则解剖师。
-任务：根据主题设定一个充满【利益算计】、【阶层跃迁】与【人性异化】的第二人称人生副本。
+任务：根据主题设定一个充满【利益算计】、【阶层跃迁】与【人性异化】的第二人称人生副本梗概（供后续旁白按幕扩写，不是旁白正文）。
 主题：{topic}
 {f'**重要修改意见**：{feedback}' if feedback else ''}
 
@@ -1855,18 +1851,24 @@ def run_synopsis_setup(topic: str, receive_id: str, feedback: str = "", duration
 2. **核心科普（潜规则拆解）**：将该行业的核心运作机制、灰产逻辑或权力分配规则，作为主角晋升的关键武器。不要枯燥说教，要通过主角的“具体决定”和“利益交换”来展现。
 3. **数字与代价**：故事推进必须伴随具体的数字（金钱、份额、时间）以及主角为了权力所抛弃的底线。
 4. **结局闭环**：巅峰时刻必须伴随绝对的冷酷与孤独，主角最终要彻底沦为庞大系统的“宿命囚徒”或面临命运的黑色幽默式反噬。
-5. **字数限制**：大约 700 字左右，逻辑必须极其严密。必须以“今天你要体验的人生副本是...”开头。
+5. **分幕结构（硬性）**：必须输出 synopsis_acts 数组，长度**恰好**为 **{n_act}**，每个元素对应一幕的连续叙事；幕内不要用「第X幕」小标题；时间顺序衔接成一条完整故事线。
+6. **总字数**：synopsis 与 synopsis_acts 拼接后的总字符数不得超过 **{SYNOPSIS_BODY_MAX_CHARS}**（汉字+标点），逻辑必须极其严密。
 
-只要一个纯净的 JSON，包含字段: "synopsis" (大纲文本), "era" (时代背景), "identity" (终极身份), "industry_rules" (行业潜规则数组)"""
+只要一个纯净的 JSON，键名固定：synopsis_acts（字符串数组，{n_act} 个）、synopsis（将 synopsis_acts 用两个换行符拼接的全文，与各幕一致）、era、identity、industry_rules（数组）。"""
         
-        completion = client.chat.completions.create(
-            model=MODEL_LLM,
-            messages=[{"role": "user", "content": prompt}]
+        completion = log_llm_chat(
+            PHASE_SYNOPSIS,
+            "feishu_synopsis_setup",
+            MODEL_LLM,
+            lambda: client.chat.completions.create(
+                model=MODEL_LLM,
+                messages=[{"role": "user", "content": prompt}],
+            ),
         )
         content = completion.choices[0].message.content.strip()
         import re
         if content.startswith("```"): content = re.sub(r"^```(?:json)?\n|\n```$", "", content, flags=re.IGNORECASE)
-        synopsis_data = json.loads(content)
+        synopsis_data = normalize_synopsis_payload(json.loads(content))
         synopsis_data["duration"] = duration  # 初始值；老板可在卡片上微调后由「确认」回写
 
         with open(BASE_DIR / "feishu" / "temp_synopsis.json", "w", encoding="utf-8") as f:
@@ -1899,10 +1901,10 @@ def run_visual_setup(topic: str, receive_id: str, regen_stage: str = None, regen
         clear_last_error_context()
         regen_sup = (str(regen_supporting_role_id).strip() if regen_supporting_role_id else "")
         # 尝试还原老板选的时长
-        duration = 1.25
+        duration = DEFAULT_SYNOPSIS_DURATION_MINUTES
         try:
             with open(BASE_DIR / "feishu" / "temp_synopsis.json", "r", encoding="utf-8") as f:
-                duration = json.load(f).get("duration", 1.25)
+                duration = json.load(f).get("duration", DEFAULT_SYNOPSIS_DURATION_MINUTES)
         except: pass
 
         assets = _active_asset_paths()
@@ -2293,7 +2295,7 @@ def do_card_action(data: P2CardActionTrigger) -> P2CardActionTriggerResponse:
                 mgr.send_card(open_id, "open_id", conflict_card)
                 return P2CardActionTriggerResponse({"toast": {"type": "warning", "content": "检测到未完成项目，请在卡片上选择如何处理。"}})
 
-            enqueue_job(open_id, f"生成大纲: {topic}", run_synopsis_setup, topic, open_id, "", 1.25)
+            enqueue_job(open_id, f"生成大纲: {topic}", run_synopsis_setup, topic, open_id, "", DEFAULT_SYNOPSIS_DURATION_MINUTES)
             return P2CardActionTriggerResponse({"toast": {"type": "info", "content": f"已选中：{topic}，正在生成大纲..."}})
 
         elif action_type == "synopsis_duration_delta":
@@ -2311,10 +2313,13 @@ def do_card_action(data: P2CardActionTrigger) -> P2CardActionTriggerResponse:
                 synopsis_data = json.loads(path.read_text(encoding="utf-8"))
             except Exception:
                 return P2CardActionTriggerResponse({"toast": {"type": "error", "content": "大纲文件损坏。"}})
-            fb = _initial_seconds_from_minutes(float(synopsis_data.get("duration", 1.25)))
+            fb = _initial_seconds_from_minutes(float(synopsis_data.get("duration", DEFAULT_SYNOPSIS_DURATION_MINUTES)))
             sec = _load_synopsis_duration_draft(open_id, topic, fb)
             sec = _clamp_duration_seconds(sec + delta)
             _save_synopsis_duration_draft(open_id, topic, sec)
+            from feishu.synopsis_duration_sync import persist_synopsis_duration_seconds
+
+            persist_synopsis_duration_seconds(sec)
             mid = card_message_id or (SYNOPSIS_CARD_MID_FILE.read_text(encoding="utf-8").strip() if SYNOPSIS_CARD_MID_FILE.exists() else "")
             if mid and _patch_synopsis_approval_card(open_id, mid, topic):
                 return P2CardActionTriggerResponse({"toast": {"type": "success", "content": f"已设为 {_format_duration_cn(sec)}"}})
@@ -2330,11 +2335,14 @@ def do_card_action(data: P2CardActionTrigger) -> P2CardActionTriggerResponse:
                 minutes = 6.0
             sec = _snap_seconds_to_step(int(round(minutes * 60)))
             _save_synopsis_duration_draft(open_id, topic, sec)
+            from feishu.synopsis_duration_sync import persist_synopsis_duration_seconds
+
+            persist_synopsis_duration_seconds(sec)
             mid = card_message_id or (SYNOPSIS_CARD_MID_FILE.read_text(encoding="utf-8").strip() if SYNOPSIS_CARD_MID_FILE.exists() else "")
             if mid and _patch_synopsis_approval_card(open_id, mid, topic):
                 return P2CardActionTriggerResponse({"toast": {"type": "success", "content": f"已设为 {_format_duration_cn(sec)}"}})
             return P2CardActionTriggerResponse({"toast": {"type": "success", "content": f"已设为 {_format_duration_cn(sec)}（若卡片未刷新请展开最新消息）"}})
-            
+
         elif action_type == "approve_synopsis":
             if os.path.exists(BASE_DIR / "feishu" / "temp_synopsis.json"):
                 _sync_synopsis_duration_from_draft(open_id, topic)
@@ -2513,7 +2521,7 @@ def do_card_action(data: P2CardActionTrigger) -> P2CardActionTriggerResponse:
             _kill_by_run_id(rid)
             state.set_status("IDLE", "")
             if new_topic:
-                enqueue_job(operator_id, f"新项目大纲: {new_topic}", run_synopsis_setup, new_topic, operator_id, "", 1.25)
+                enqueue_job(operator_id, f"新项目大纲: {new_topic}", run_synopsis_setup, new_topic, operator_id, "", DEFAULT_SYNOPSIS_DURATION_MINUTES)
             return P2CardActionTriggerResponse({"toast": {"type": "success", "content": f"已放弃旧项目，正在为「{new_topic}」生成大纲..."}})
 
         elif action_type == "resume_project":
@@ -2547,7 +2555,7 @@ def do_card_action(data: P2CardActionTrigger) -> P2CardActionTriggerResponse:
                 return P2CardActionTriggerResponse({"toast": {"type": "error", "content": "缺少项目主题，请重新发起项目。"}})
 
             if failed_stage in ["GENERATING_SYNOPSIS", "WAITING_SYNOPSIS_APPROVAL"]:
-                enqueue_job(open_id, f"重试大纲: {retry_topic}", run_synopsis_setup, retry_topic, open_id, "", 1.25)
+                enqueue_job(open_id, f"重试大纲: {retry_topic}", run_synopsis_setup, retry_topic, open_id, "", DEFAULT_SYNOPSIS_DURATION_MINUTES)
             elif failed_stage in ["GENERATING_VISUALS", "WAITING_CHARACTER_APPROVAL"]:
                 enqueue_job(open_id, f"重试定妆照: {retry_topic}", run_visual_setup, retry_topic, open_id)
             elif failed_stage in ["POST_APPROVAL_SLICE", "POST_APPROVAL_STEP3"]:
@@ -3399,7 +3407,7 @@ def _handle_message_logic_async(data: P2ImMessageReceiveV1) -> None:
             instruction_set = """【当前权限：选题与立项】
 老板还没有选定要拍的主题，引导他表达创意或选择题目。
 1. 老板明确说出了要拍的主题（哪怕是一句描述），直接开机：
-   指令模板：[TRIGGER_START: 主题名称, 视频时长分钟] （没提时长默认 1.25）
+   指令模板：[TRIGGER_START: 主题名称, 视频时长分钟] （没提时长默认 6）
 2. 老板想要换一批建议、不知道拍啥、让你出主意：
    指令模板：[TRIGGER_IDEAS]
 ⚠️ 注意：如果老板只是在随便聊聊创意，还没说"拍这个"、"就这个"、"开始"等确认词，不要输出任何指令！"""
@@ -3462,10 +3470,15 @@ def _handle_message_logic_async(data: P2ImMessageReceiveV1) -> None:
         add_to_history(open_id, "user", msg)
         messages = [{"role": "system", "content": system_prompt}] + CHAT_HISTORY.get(open_id, [])
         
-        completion = client.chat.completions.create(
-            model=MODEL_LLM,
-            messages=messages,
-            temperature=0.8
+        completion = log_llm_chat(
+            PHASE_FEISHU_BOT,
+            "feishu_general_chat",
+            MODEL_LLM,
+            lambda m=messages: client.chat.completions.create(
+                model=MODEL_LLM,
+                messages=m,
+                temperature=0.8,
+            ),
         )
         chat_reply = completion.choices[0].message.content.strip()
         
@@ -3527,8 +3540,8 @@ def _handle_message_logic_async(data: P2ImMessageReceiveV1) -> None:
                 # 兼容旧的反推格式/无时长的格式
                 m2 = re.search(r"\[TRIGGER_START: (.*?)\]", chat_reply)
                 topic = m2.group(1).strip() if m2 else ""
-                duration = 1.25
-                
+                duration = DEFAULT_SYNOPSIS_DURATION_MINUTES
+
             if topic:
                 mgr.send_text(open_id, "open_id", f"✅ 立项动作激活：【{topic}】\n📍 生产时长：{duration} 分钟\n正在为您秘密开启这个人生副本...")
                 enqueue_job(open_id, f"立项生成大纲: {topic}", run_synopsis_setup, topic, open_id, "", duration)

@@ -81,8 +81,12 @@ class PipelineBridge:
         """全自动 Step1→Step2→Step3"""
         return self._hub.run_project_pipeline(topic, receive_id)
 
-    def run_synopsis_setup(self, topic: str, receive_id: str, feedback: str = "", duration: float = 1.25):
+    def run_synopsis_setup(self, topic: str, receive_id: str, feedback: str = "", duration: float | None = None):
         """生成大纲并推送审批卡"""
+        if duration is None:
+            from feishu.config import DEFAULT_SYNOPSIS_DURATION_MINUTES
+
+            duration = DEFAULT_SYNOPSIS_DURATION_MINUTES
         return self._hub.run_synopsis_setup(topic, receive_id, feedback, duration)
 
     def run_visual_setup(self, topic: str, receive_id: str, regen_stage: str = None,

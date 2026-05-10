@@ -11,6 +11,7 @@ import sys
 sys.path.insert(0, str(BASE_DIR))
 
 from feishu.config import (
+    DEFAULT_SYNOPSIS_DURATION_MINUTES,
     STATUS,
     APPROVE_PHRASES,
     AMBIGUOUS_APPROVE_PHRASES,
@@ -276,6 +277,7 @@ class MessageRouter:
         """LLM 对话兜底（聊天 + TRIGGER 指令解析）"""
         try:
             from openai import OpenAI
+            from src.api_audit import PHASE_FEISHU_BOT, log_llm_chat
             from src.style_config import LLM_API_KEY, LLM_BASE_URL, MODEL_LLM
 
             client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
@@ -285,10 +287,15 @@ class MessageRouter:
             messages = [{"role": "system", "content": system_prompt},
                         {"role": "user", "content": msg}]
 
-            completion = client.chat.completions.create(
-                model=MODEL_LLM,
-                messages=messages,
-                temperature=0.8,
+            completion = log_llm_chat(
+                PHASE_FEISHU_BOT,
+                "message_router_chat",
+                MODEL_LLM,
+                lambda m=messages: client.chat.completions.create(
+                    model=MODEL_LLM,
+                    messages=m,
+                    temperature=0.8,
+                ),
             )
             chat_reply = completion.choices[0].message.content.strip()
 
@@ -361,7 +368,7 @@ class MessageRouter:
             else:
                 m2 = re.search(r"\[TRIGGER_START: (.*?)\]", chat_reply)
                 topic = m2.group(1).strip() if m2 else ""
-                duration = 1.25
+                duration = DEFAULT_SYNOPSIS_DURATION_MINUTES
             if topic and run_synopsis_setup:
                 mgr.send_text(open_id, "open_id",
                               f"✅ 立项动作激活：【{topic}】\n📍 生产时长：{duration} 分钟\n正在为您秘密开启这个人生副本...")
@@ -373,6 +380,11 @@ class MessageRouter:
             if current_status in ["WAITING_SYNOPSIS_APPROVAL", "ERROR", "IDLE",
                                    "GENERATING_SYNOPSIS", "GENERATING_VISUALS"]:
                 if (BASE_DIR / "feishu" / "temp_synopsis.json").exists() and run_visual_setup:
+                    from feishu.synopsis_duration_sync import sync_synopsis_duration_from_draft
+
+                    top = (current_topic or "").strip()
+                    if top:
+                        sync_synopsis_duration_from_draft(open_id, top)
                     mgr.send_text(open_id, "open_id", "✅ 大纲已确认！正在启动定妆照生成流程...")
                     enqueue_job(open_id, f"生成定妆照: {current_topic}",
                                 run_visual_setup, current_topic, open_id)

@@ -5,6 +5,7 @@
 from feishu.synopsis_duration_sync import (
     persist_synopsis_duration_seconds,
     sync_session_duration_from_feishu_synopsis,
+    sync_synopsis_duration_from_draft,
 )
 
 
@@ -13,9 +14,13 @@ class ConfirmSynopsisAction:
 
     def execute(self, session, data: dict, mgr, **context) -> dict:
         topic = data.get("topic", "") or getattr(session, "topic", "")
+        open_id = getattr(session, "open_id", "")
 
+        # 1) 与 hub_old 一致：把卡片草稿（含旧链路仅写 draft 的情况）合并进 temp_synopsis.json
+        sync_synopsis_duration_from_draft(open_id, topic)
+        # 2) 梗概 JSON 的 duration → Session
         sync_session_duration_from_feishu_synopsis(session)
-        # 飞书卡片时长 → feishu/temp_synopsis.json + 当前 Run 的 scripts/temp_synopsis.json
+        # 3) 再以 Session 为准写回 feishu + 当前 Run 的 temp_synopsis（用户点预设时写入的秒数）
         if hasattr(session, "get_duration_seconds"):
             persist_synopsis_duration_seconds(session.get_duration_seconds())
 

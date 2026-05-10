@@ -41,6 +41,7 @@ if str(BASE_DIR) not in sys.path:
 
 from src.run_context import get_paths, get_current_run_id
 from src.project_vault import backup as vault_backup
+from src.api_audit import PHASE_GRID
 from src.image_engine import generate_image
 from src.image_processor import process_16_grid
 from src.grid_validators import validate_grid_comic_layout
@@ -312,6 +313,8 @@ async def generate_grid_batch(
             prompt=combined_prompt,
             image_refs=batch_refs,
             size="2560x1440",
+            audit_phase=PHASE_GRID,
+            audit_step=f"grid_batch_{batch_index:03d}",
         )
     except Exception as e:
         raise Step2StageError("IMAGE_GEN_API", f"调用生图模型异常: {e}", error_code="IMAGE_GEN_API_EXCEPTION")
