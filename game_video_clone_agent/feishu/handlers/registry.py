@@ -12,7 +12,12 @@ from feishu.handlers.actions.confirm_character import ConfirmCharacterAction
 from feishu.handlers.actions.confirm_storyboard import ConfirmStoryboardAction, RejectStoryboardBatchAction
 from feishu.handlers.actions.cancel_project import CancelProjectAction
 from feishu.handlers.actions.pause_resume import PauseProjectAction, ResumeProjectAction
-from feishu.handlers.actions.refresh_topics import RefreshTopicsAction, RequestIdeasAction
+from feishu.handlers.actions.refresh_topics import (
+    RefreshTopicsAction,
+    RequestIdeasAction,
+    OpenTopicBlindBoxAction,
+)
+from feishu.handlers.actions.feed_script import RequestScriptFeedAction
 from feishu.handlers.actions.revision import RejectVisualsAction, RegenStageAction, RegenAllVisualsAction, RegenSupportingAction
 from feishu.handlers.actions.ops import (
     OpsStatusAction,
@@ -23,7 +28,14 @@ from feishu.handlers.actions.ops import (
     SkipStageAction,
 )
 from feishu.handlers.actions.duration import SynopsisDurationDeltaAction, SynopsisDurationPresetAction
-from feishu.handlers.actions.misc import RestartBackendAction, ConfirmNewProjectAction, ResumeOldProjectAction, StartupResumeDismissAction, DoNothingAction
+from feishu.handlers.actions.misc import (
+    RestartBackendAction,
+    ConfirmNewProjectAction,
+    ResumeOldProjectAction,
+    ResumeLastTaskAction,
+    StartupResumeDismissAction,
+    DoNothingAction,
+)
 
 
 # action_type → 处理器实例 映射
@@ -32,6 +44,9 @@ ACTION_REGISTRY = {
     ACTION["SELECT_TOPIC"]:             None,
     ACTION["REQUEST_IDEAS"]:            RequestIdeasAction(),
     ACTION["REFRESH_TOPICS"]:           RefreshTopicsAction(),
+    ACTION["REQUEST_SCRIPT_FEED"]:      RequestScriptFeedAction(),
+    ACTION["OPEN_TOPIC_BLIND_BOX"]:     OpenTopicBlindBoxAction(),
+    ACTION["RESUME_LAST_TASK"]:         ResumeLastTaskAction(),
     ACTION["CONFIRM_NEW_PROJECT"]:      ConfirmNewProjectAction(),
     ACTION["RESUME_PROJECT"]:           ResumeOldProjectAction(),
     # 大纲审批

@@ -25,9 +25,14 @@ from src.style_config import (
     LLM_BASE_URL,
     MODEL_LLM,
     NARRATION_CHARS_PER_MINUTE,
+    NARRATION_EXPAND_MODE,
     NARRATION_SEGMENT_COUNT,
-    NARRATION_SEGMENT_MAX_TOKEN_FACTOR,
+    NARRATION_SEGMENT_MAX_TOKENS_CHAR_BUFFER,
+    NARRATION_SEGMENT_CH_TO_TOKEN_RATIO,
     NARRATION_SEGMENT_TAIL_CHARS,
+    ONE_SHOT_LENGTH_MAX_ATTEMPTS,
+    ONE_SHOT_NARRATION_HI_RATIO,
+    ONE_SHOT_NARRATION_LO_RATIO,
     SYNOPSIS_BODY_MAX_CHARS,
 )
 from src.api_audit import PHASE_NARRATION, PHASE_SYNOPSIS, log_event, log_llm_chat
@@ -36,7 +41,8 @@ from src.ref_generator import run_ref_process
 from src.run_context import start_new_run, get_paths, get_current_run_id
 
 MODEL_WRITER = MODEL_LLM
-SEGMENT_LENGTH_MAX_RETRIES = 3
+# 单幕旁白：理想字数带内则采纳；否则最多生成这么多次，仍不达标则取「最接近 seg_target 字数」的一条（不采纳极简梗概兜底）
+SEGMENT_LENGTH_MAX_ATTEMPTS = 4
 SEGMENT_NETWORK_MAX_RETRIES = 5
 SEGMENT_NETWORK_RETRY_BASE_SEC = 1.0
 MIN_NARRATION_CHARS_BASE = 1000
@@ -251,22 +257,85 @@ SYNOPSIS_SYSTEM_PROMPT = f"""你是一个极其冷酷的现实主义编剧与行
   "industry_rules": ["（揭露的1-2个行业深层潜规则）"]
 }}"""
 
-MASTER_WRITER_SYSTEM_PROMPT = """你是一个极其冷峻、犀利的短视频旁白文案大师。
-任务：根据提供的故事梗概，将“你”在副本中的这一生扩写为沉浸式纯净长文案。
 
-【写作铁律】：
-1. **唯一合法开头**：必须严格仅包含“今天你要体验的人生副本是，{TOPIC}的一生。”（{TOPIC} 为主题核心名；若选题本身已含「的一生」则勿重复写成「一生的一生」），不许有其他后缀。
-2. **一镜到底的叙事**：绝对禁止使用任何段落小标题（如Level 1、第一阶段等）。必须通过时间流逝（如“三年过去”）、场景升级（如“你搬进了真皮转椅的独立办公室”）和手握筹码的变化来自然过渡剧情。
-3. **第二人称与极简冷峻**：必须全程使用“你”。拒绝一切华丽辞藻、形容词和复杂的心理描写。多用短句，用客观动作、冷冰冰的数字和利益得失来推进剧情。
-4. **纯净无标签文本（核心约束）**：必须是流畅连贯的散文式旁白、<subshot> 或任何形式的分镜标签与格式标记！字数控制在 1700 字左右。
+def _polish_user_script_system_prompt() -> str:
+    n_act = _synopsis_act_target_n()
+    return f"""你是一位专业的资深编剧与剧本医生。
+任务：请阅读用户提供的原始素材（梗概、片段或小说节选均可），在【完全保留用户原始创意、情节走向和核心设定】的前提下，进行专业润色，并补充与盲盒梗概同规格的结构化字段。
 
-【视觉与美术控制】：旁白保持冷峻叙事即可；人物定妆英文提示词由定妆流水线根据梗概生成，并写入当前 run 的 scripts/refs-prompt.json，勿在本 JSON 中输出 character_anchors。
+润色要求：
+1. 语言风格：使文字更具画面感（Visual Thinking），多用具象动词，少用空泛形容词；**禁止**强行套用「阶层跃迁」「利益算计」等固定套路，除非用户原文已包含类似内核。
+2. 节奏与体量：优化起承转合与悬念，整体梗概总长度须符合后续约 1700 字旁白体量的信息密度，且 **synopsis 与 synopsis_acts 拼接总字符数不得超过 {int(SYNOPSIS_BODY_MAX_CHARS)}**（汉字+标点）。
+3. 分幕结构：必须输出 synopsis_acts 数组，长度**恰好**为 **{n_act}**；每幕为连续叙事，幕内不要写「第X幕」小标题，按时间顺序串成一条故事线。
+4. **行业潜规则 industry_rules**：与盲盒大纲一致，输出 1～4 条数组，概括本作可被影像化的矛盾机制或环境张力（非教条）。
 
-请输出 JSON 格式（内部键名固定，不可变更）：
-{
-  "full_narration": "沉浸式旁白全文（绝对纯净文本，约1700字。）..."
-}
-"""
+输出：**仅** JSON（键名固定）：
+{{
+  "synopsis_acts": [共{n_act}个字符串，依次为第1幕…第{n_act}幕],
+  "synopsis": "将 synopsis_acts 用两个换行符拼接的全文，与各幕一致",
+  "short_title": "12字以内的短片标题，用于飞书卡片抬头",
+  "era": "时代背景",
+  "identity": "主角身份或称谓",
+  "industry_rules": ["……"]
+}}"""
+
+
+def polish_user_script_synopsis(
+    raw_user_input: str,
+    *,
+    feedback: str = "",
+    previous_synopsis: dict | None = None,
+) -> dict | None:
+    """
+    投喂剧本润色：返回已通过 normalize_synopsis_payload 前的原始 dict（调用方再 normalize + 打标签）。
+    feedback 非空时应在 previous_synopsis 中带入上一轮梗概以便对照修改。
+    """
+    raw_user_input = (raw_user_input or "").strip()
+    if not raw_user_input and not feedback:
+        return None
+    client = get_client()
+    sys_p = _polish_user_script_system_prompt()
+    parts: list[str] = []
+    if raw_user_input:
+        parts.append(f"【用户原始素材】\n{raw_user_input}")
+    if feedback.strip():
+        parts.append(f"【用户修改意见】\n{feedback.strip()}")
+    if previous_synopsis and feedback.strip():
+        try:
+            slim = {
+                "synopsis": previous_synopsis.get("synopsis"),
+                "synopsis_acts": previous_synopsis.get("synopsis_acts"),
+                "era": previous_synopsis.get("era"),
+                "identity": previous_synopsis.get("identity"),
+                "industry_rules": previous_synopsis.get("industry_rules"),
+            }
+            parts.append(f"【当前润色版梗概（供对照修订）】\n{json.dumps(slim, ensure_ascii=False)}")
+        except Exception:
+            pass
+    user_p = "\n\n".join(parts)
+    if not user_p.strip():
+        return None
+    try:
+        response = log_llm_chat(
+            PHASE_SYNOPSIS,
+            "polish_user_script_synopsis",
+            MODEL_LLM,
+            lambda: client.chat.completions.create(
+                model=MODEL_LLM,
+                messages=[
+                    {"role": "system", "content": sys_p},
+                    {"role": "user", "content": user_p},
+                ],
+                response_format={"type": "json_object"},
+            ),
+        )
+        raw = json.loads(response.choices[0].message.content)
+        if not isinstance(raw, dict):
+            return None
+        return raw
+    except Exception as e:
+        print(f"❌ 剧本润色失败: {e}")
+        return None
 
 
 def get_client():
@@ -287,14 +356,17 @@ def _compute_narration_targets(duration_min: float) -> tuple[int, int]:
     return target, min_chars
 
 
-def _is_pure_narration(text: str, min_chars: int) -> bool:
+def _is_pure_narration(text: str, min_chars: int, max_chars: int | None = None) -> bool:
     if not text:
         return False
     if re.search(r"\[CUT_?\d+\]", text, re.IGNORECASE):
         return False
     if "<subshot>" in text.lower():
         return False
-    if len(text.strip()) < min_chars:
+    s = text.strip()
+    if len(s) < min_chars:
+        return False
+    if max_chars is not None and len(s) > max_chars:
         return False
     return True
 
@@ -347,6 +419,131 @@ def _strip_ai_fences(text: str) -> str:
     return t.strip()
 
 
+def _flatten_assistant_content(msg) -> str:
+    """兼容 content 为 str 或 Chat Completions 的多段 text 块（部分网关/SDK）。"""
+    if msg is None:
+        return ""
+    c = getattr(msg, "content", None)
+    if c is None:
+        return ""
+    if isinstance(c, str):
+        return c
+    if isinstance(c, list):
+        parts: list[str] = []
+        for block in c:
+            if isinstance(block, dict):
+                if block.get("type") == "text":
+                    parts.append(str(block.get("text") or ""))
+                elif "text" in block:
+                    parts.append(str(block.get("text") or ""))
+            elif isinstance(block, str):
+                parts.append(block)
+        return "".join(parts)
+    return str(c)
+
+
+def _parse_json_dict_loose(raw: str) -> dict:
+    """从模型原文中尽量解析出 JSON 对象（去围栏、截取首尾大括号）。"""
+    s = (raw or "").strip().lstrip("\ufeff")
+    if not s:
+        raise ValueError("empty assistant content after strip")
+    candidates: list[str] = []
+    seen: set[str] = set()
+    for cand in (s, _strip_ai_fences(s)):
+        t = cand.strip()
+        if t and t not in seen:
+            candidates.append(t)
+            seen.add(t)
+    lo = s.find("{")
+    hi = s.rfind("}")
+    if lo >= 0 and hi > lo:
+        sub = s[lo : hi + 1].strip()
+        if sub and sub not in seen:
+            candidates.append(sub)
+            seen.add(sub)
+    last_err: Exception | None = None
+    for cand in candidates:
+        try:
+            obj = json.loads(cand)
+            if isinstance(obj, dict):
+                return obj
+        except json.JSONDecodeError as e:
+            last_err = e
+            continue
+    tail = repr(last_err) if last_err else "no JSON candidate"
+    raise ValueError(f"JSON 解析失败: {tail}")
+
+
+def _response_to_full_narration_bundle(resp) -> dict:
+    """
+    从 chat completion 解析 full_narration。
+    返回 {"text": str, "finish_reason": ..., "raw_content_chars": int, "out_chars": int}
+    """
+    choice = resp.choices[0] if resp and resp.choices else None
+    if not choice:
+        raise ValueError("completion 无 choices")
+    msg = choice.message
+    finish_reason = getattr(choice, "finish_reason", None)
+    refusal = getattr(msg, "refusal", None) if msg is not None else None
+    if refusal:
+        rf = str(refusal).strip()
+        raise ValueError(f"模型拒绝(refusal)，前 400 字：{rf[:400]}")
+    raw = _flatten_assistant_content(msg)
+    raw_st = raw.strip()
+    if not raw_st:
+        raise ValueError(f"模型返回空 content（finish_reason={finish_reason!r}）")
+    obj = _parse_json_dict_loose(raw_st)
+    fn = str(obj.get("full_narration") or "").strip()
+    fn = _strip_ai_fences(fn).strip()
+    if not fn:
+        raise ValueError("JSON 内 full_narration 缺失或为空")
+    return {
+        "text": fn,
+        "finish_reason": finish_reason,
+        "raw_content_chars": len(raw_st),
+        "out_chars": len(fn),
+    }
+
+
+def _chat_json_full_narration(
+    client: OpenAI,
+    *,
+    sys_p: str,
+    user_p: str,
+    max_tokens: int,
+    temperature: float,
+) -> dict:
+    """
+    chat.completions + 解析 full_narration。
+    若 json_object 模式下 content 为空，自动去掉 response_format 再请求一次（兼容部分网关）。
+    """
+    common: dict = dict(
+        model=MODEL_WRITER,
+        messages=[
+            {"role": "system", "content": sys_p},
+            {"role": "user", "content": user_p},
+        ],
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+    resp = client.chat.completions.create(
+        **common,
+        response_format={"type": "json_object"},
+    )
+    try:
+        return _response_to_full_narration_bundle(resp)
+    except ValueError as e:
+        err_s = str(e)
+        if "空 content" in err_s or "empty assistant content" in err_s.lower():
+            print(
+                "     ⚠️ response_format=json_object 时 content 为空，"
+                "重试一次（不传 response_format）…"
+            )
+            resp2 = client.chat.completions.create(**common)
+            return _response_to_full_narration_bundle(resp2)
+        raise
+
+
 def _strip_overlap_with_previous(prev: str, curr: str, max_overlap: int = 160) -> str:
     """若当前段开头重复了上一段结尾，去掉重复前缀。"""
     if not prev or not curr:
@@ -361,6 +558,15 @@ def _strip_overlap_with_previous(prev: str, curr: str, max_overlap: int = 160) -
 _RE_OPENING = re.compile(
     r"今天你要体验的人生副本是，[^。\n]{1,80}?的一生。"
 )
+
+
+def _pick_user_opening_line(synopsis_data: dict) -> str:
+    """投喂路径可选：用户指定的首句（没有则空）。"""
+    line = str((synopsis_data or {}).get("opening_line_user") or "").strip()
+    if not line:
+        return ""
+    # 去掉包裹引号，避免模型输出双引号开头
+    return line.strip("“”\"'").strip()
 
 
 def _format_mo_roadmap(labels: list[str]) -> str:
@@ -447,7 +653,7 @@ def _compact_synopsis_json_for_writer(
     """
     分幕写手请求用梗概节选：不传 industry_rules。
     synopsis_excerpt 有值时只写入该段（本幕相关梗概），否则用全文 synopsis（并压到 SYNOPSIS_BODY_MAX_CHARS）。
-    emergency=True 时进一步缩短 excerpt，供灾难重试。
+    emergency=True 时进一步缩短 excerpt（保留供其它调用场景）。
     """
     if synopsis_excerpt is not None:
         syn = synopsis_excerpt.strip()
@@ -471,7 +677,18 @@ def _compact_synopsis_json_for_writer(
     return raw
 
 
-def _segment_system_prompt(seg_target: int) -> str:
+def _segment_system_prompt(seg_target: int, *, neutral: bool = False) -> str:
+    if neutral:
+        return f"""你是一位专业、克制的短视频旁白写手（中性叙事气质）。
+任务：按用户指示写出**一段**沉浸式旁白（不是全文，只是连续叙事中的一段）。
+
+【写作铁律】
+1. **一镜到底**：禁止使用段落小标题。用具体场景、动作与因果推进；语气中性、可读性强，**避免**堆砌冷酷算计话术。
+2. **第二人称**：全程使用「你」，句子长短相间，口语化但忌浮夸。
+3. **纯净文本**：禁止 <subshot>、禁止 [CUT]、禁止任何分镜标签。
+4. **本段体量**：本段目标约 **{seg_target}** 字（允许 ±10%）。
+
+输出要求：**只输出旁白正文**，不要标题、不要 JSON、不要代码围栏、不要解释。"""
     return f"""你是一个极其冷峻、犀利的短视频旁白文案大师。
 任务：按用户指示写出**一段**沉浸式旁白（不是全文，只是连续叙事中的一段）。
 
@@ -482,6 +699,39 @@ def _segment_system_prompt(seg_target: int) -> str:
 4. **本段体量**：本段目标约 **{seg_target}** 字（允许 ±10%）。
 
 输出要求：**只输出旁白正文**，不要标题、不要 JSON、不要代码围栏、不要解释。"""
+
+
+def _segment_length_retry_addon(
+    *,
+    lo: int,
+    hi: int,
+    seg_target: int,
+    prev_ln: int,
+    prev_too_long: bool,
+) -> str:
+    """字数未命中理想带时的追加指令：收紧篇幅但不删情节，少修饰、叙事更直接。"""
+    if prev_too_long:
+        return (
+            f"\n\n【字数修正（重试）】你上一稿约 **{prev_ln}** 字，超出理想上限 **{hi}** 字。"
+            f"请重写本幕正文，使全文汉字数落在 **{lo}～{hi}** 之间（目标约 **{seg_target}** 字）。\n"
+            "**禁止删减情节主干与梗概中的关键事实**；只能压缩篇幅：少用形容词与堆砌修辞，句子写短，叙事更直接，"
+            "不写重复评价句；保持第二人称与开篇格式要求不变。\n"
+            "只输出正文。"
+        )
+    return (
+        f"\n\n【字数修正（重试）】你上一稿约 **{prev_ln}** 字，低于理想下限 **{lo}** 字。"
+        f"请重写本幕正文，使全文汉字数落在 **{lo}～{hi}** 之间（目标约 **{seg_target}** 字）。\n"
+        "在**不编造与梗概矛盾的新剧情**前提下，补足必要的过程与因果；仍须避免灌水重复句。\n"
+        "只输出正文。"
+    )
+
+
+def _pick_closest_segment_candidate(
+    candidates: list[tuple[str, int]], seg_target: int
+) -> str:
+    if not candidates:
+        return ""
+    return min(candidates, key=lambda item: abs(item[1] - seg_target))[0]
 
 
 def _generate_one_segment(
@@ -497,18 +747,21 @@ def _generate_one_segment(
     tail_chars: int,
     all_labels: list[str],
     handoff_brief: str = "",
+    neutral_narration: bool = False,
 ) -> str | None:
-    sys_p = _segment_system_prompt(seg_target)
-    max_tokens = min(
-        16384,
-        max(2048, int(seg_target * float(NARRATION_SEGMENT_MAX_TOKEN_FACTOR))),
+    sys_p = _segment_system_prompt(seg_target, neutral=neutral_narration)
+    # max_tokens：按「目标汉字 + 缓冲」× 字/token 粗估，显著低于旧版 max(2048, seg*2.6)，机械抑制超长输出
+    _tok_est = (seg_target + NARRATION_SEGMENT_MAX_TOKENS_CHAR_BUFFER) * float(
+        NARRATION_SEGMENT_CH_TO_TOKEN_RATIO
     )
+    max_tokens = min(16384, max(128, int(_tok_est)))
     n_mo = len(all_labels)
     mo_road = _format_mo_roadmap(all_labels)
     syn_block = _compact_synopsis_json_for_writer(
         synopsis_data, synopsis_excerpt=synopsis_excerpt
     )
     hard_floor = max(200, int(seg_target * 0.55))
+    opening_line_user = _pick_user_opening_line(synopsis_data)
     base_ctx = (
         f"主题：{topic}\n\n"
         f"【本幕相关梗概节选（JSON）】\n{syn_block}\n\n"
@@ -517,15 +770,35 @@ def _generate_one_segment(
     )
 
     if segment_index == 0:
-        user_p = (
-            base_ctx
-            + f"你只写**第 1 幕**正文。\n"
-            + f"【开篇唯一合法形式】正文第一句必须且仅能是："
-            f"「今天你要体验的人生副本是，{opening_topic_phrase(topic)}。」"
-            f"随后立刻接着写，不要复述主题。\n"
-            f"本幕目标约 {seg_target} 字，须落实梗概里入局阶段的关键事实。\n"
-            f"【硬性】本段须输出不少于 {hard_floor} 个汉字的连贯旁白正文（不是提纲、不是对话、不要 JSON）。\n"
-        )
+        if neutral_narration:
+            if opening_line_user:
+                user_p = (
+                    base_ctx
+                    + f"你只写**第 1 幕**正文。\n"
+                    + f"【开篇固定句（必须逐字一致）】第一句只能是：{opening_line_user}\n"
+                    + "该句输出后，必须从**第二句**开始自然续写，不得改写、扩写或重复第一句。\n"
+                    f"本幕目标约 {seg_target} 字，须落实梗概里开局阶段的关键事实。\n"
+                    f"【硬性】本段须输出不少于 {hard_floor} 个汉字的连贯旁白正文（不是提纲、不是对话、不要 JSON）。\n"
+                )
+            else:
+                user_p = (
+                    base_ctx
+                    + f"你只写**第 1 幕**正文。\n"
+                    + "【开篇】第一句必须是**单独一句**开场钩子（不超过 40 个汉字），紧贴梗概、有画面感，"
+                    "**禁止**使用固定句式「今天你要体验的人生副本是」。写完第一句后立刻展开叙事。\n"
+                    f"本幕目标约 {seg_target} 字，须落实梗概里开局阶段的关键事实。\n"
+                    f"【硬性】本段须输出不少于 {hard_floor} 个汉字的连贯旁白正文（不是提纲、不是对话、不要 JSON）。\n"
+                )
+        else:
+            user_p = (
+                base_ctx
+                + f"你只写**第 1 幕**正文。\n"
+                + f"【开篇唯一合法形式】正文第一句必须且仅能是："
+                f"「今天你要体验的人生副本是，{opening_topic_phrase(topic)}。」"
+                f"随后立刻接着写，不要复述主题。\n"
+                f"本幕目标约 {seg_target} 字，须落实梗概里入局阶段的关键事实。\n"
+                f"【硬性】本段须输出不少于 {hard_floor} 个汉字的连贯旁白正文（不是提纲、不是对话、不要 JSON）。\n"
+            )
     else:
         tail = prev_full_text[-tail_chars:] if len(prev_full_text) > tail_chars else prev_full_text
         hb = (handoff_brief or "").strip()
@@ -542,16 +815,29 @@ def _generate_one_segment(
     length_failures = 0
     network_failures = 0
     attempt = 0
-    used_emergency_synopsis = False
+    length_candidates: list[tuple[str, int]] = []
+    prev_ln: int | None = None
+    prev_too_long: bool | None = None
     while True:
         attempt += 1
         try:
+            user_content = user_p
+            if prev_ln is not None and prev_too_long is not None:
+                lo_hint = int(seg_target * 0.78)
+                hi_hint = int(seg_target * 1.18)
+                user_content = user_p + _segment_length_retry_addon(
+                    lo=lo_hint,
+                    hi=hi_hint,
+                    seg_target=seg_target,
+                    prev_ln=prev_ln,
+                    prev_too_long=prev_too_long,
+                )
             t_req = time.perf_counter()
             response = client.chat.completions.create(
                 model=MODEL_WRITER,
                 messages=[
                     {"role": "system", "content": sys_p},
-                    {"role": "user", "content": user_p},
+                    {"role": "user", "content": user_content},
                 ],
                 max_tokens=max_tokens,
                 temperature=0.35,
@@ -590,65 +876,20 @@ def _generate_one_segment(
                 return text
 
             length_failures += 1
-            if length_failures > SEGMENT_LENGTH_MAX_RETRIES:
-                catastrophic = ln < max(150, int(seg_target * 0.30))
-                if catastrophic and not used_emergency_synopsis:
-                    used_emergency_synopsis = True
-                    length_failures = 0
-                    print(
-                        f"     ⚠️ 第 {segment_index + 1} 段仅 {ln} 字，疑似上下文过长或模型未展开；"
-                        "已切换极简梗概并重试本幕…"
-                    )
-                    syn_block = _compact_synopsis_json_for_writer(
-                        synopsis_data, emergency=True, synopsis_excerpt=synopsis_excerpt
-                    )
-                    base_ctx = (
-                        f"主题：{topic}\n\n"
-                        f"【本幕相关梗概节选（JSON，极简重试）】\n{syn_block}\n\n"
-                        f"【全剧共 {n_mo} 幕（勿跳幕、勿提前写后几幕才发生的事）】\n{mo_road}\n\n"
-                        f"【当前】第 {segment_index + 1}/{n_mo} 幕「{segment_label}」\n"
-                    )
-                    if segment_index == 0:
-                        user_p = (
-                            base_ctx
-                            + f"你只写**第 1 幕**正文。\n"
-                            + f"【开篇唯一合法形式】正文第一句必须且仅能是："
-                            f"「今天你要体验的人生副本是，{opening_topic_phrase(topic)}。」"
-                            f"随后立刻接着写，不要复述主题。\n"
-                            f"本幕目标约 {seg_target} 字，须落实梗概里入局阶段的关键事实。\n"
-                            f"【硬性】本段须输出不少于 {hard_floor} 个汉字的连贯旁白正文（不是提纲、不是对话、不要 JSON）。\n"
-                        )
-                    else:
-                        tail = (
-                            prev_full_text[-tail_chars:]
-                            if len(prev_full_text) > tail_chars
-                            else prev_full_text
-                        )
-                        hb = (handoff_brief or "").strip()
-                        user_p = (
-                            base_ctx
-                            + f"【统筹给本幕的续写指令（须落实，勿与梗概矛盾）】\n{hb}\n\n"
-                            + f"【承接】上一幕结尾（无缝接续，禁止再写开场白「今天你要体验的人生副本是」）：\n"
-                            f"「…{tail}」\n\n"
-                            f"你只写**第 {segment_index + 1} 幕**正文。本幕目标约 {seg_target} 字。"
-                            f"从接续处自然往下写，不要复述已写过的段落。\n"
-                            f"【硬性】本段须输出不少于 {hard_floor} 个汉字的连贯旁白正文（不是提纲、不是对话、不要 JSON）。\n"
-                        )
-                    continue
-                if ln < lo:
-                    print(
-                        f"     ⚠️ 第 {segment_index + 1} 段字数 {ln} 低于理想下限 {lo}，"
-                        "已达字数最大重试仍采纳。"
-                    )
-                else:
-                    print(
-                        f"     ⚠️ 第 {segment_index + 1} 段字数 {ln} 高于理想上限 {hi}，"
-                        "已达字数最大重试仍采纳。"
-                    )
-                return text
+            length_candidates.append((text, ln))
+            prev_ln = ln
+            prev_too_long = ln > hi
+            if length_failures >= SEGMENT_LENGTH_MAX_ATTEMPTS:
+                chosen = _pick_closest_segment_candidate(length_candidates, seg_target)
+                pick_ln = len(chosen)
+                print(
+                    f"     ⚠️ 第 {segment_index + 1} 幕已尝试 {SEGMENT_LENGTH_MAX_ATTEMPTS} 次仍未落入 [{lo},{hi}]；"
+                    f"采纳最接近目标 **{seg_target}** 字的一稿（约 **{pick_ln}** 字）。"
+                )
+                return chosen
             print(
                 f"     🔄 第 {segment_index + 1} 段字数 {ln} 不在 [{lo},{hi}]，"
-                f"字数重试 {length_failures}/{SEGMENT_LENGTH_MAX_RETRIES}"
+                f"字数重试 {length_failures}/{SEGMENT_LENGTH_MAX_ATTEMPTS}"
             )
         except Exception as e:
             log_event(
@@ -686,11 +927,16 @@ def _patch_narration_length(
     need_chars: int,
     *,
     synopsis_excerpt: str | None = None,
+    neutral: bool = False,
 ) -> str | None:
     """全文略低于下限时，仅在尾部做一次扩写补丁。"""
     if need_chars <= 0:
         return text
-    sys_p = """你是旁白写手。在下列正文**末尾**自然续写，保持第二人称与既有冷峻风格，禁止重复开篇句。
+    if neutral:
+        sys_p = """你是旁白写手。在下列正文**末尾**自然续写，保持第二人称与上文中性叙事气质一致，禁止重复开篇句。
+只输出**续写部分**（不要重复已有正文）。"""
+    else:
+        sys_p = """你是旁白写手。在下列正文**末尾**自然续写，保持第二人称与既有冷峻风格，禁止重复开篇句。
 只输出**续写部分**（不要重复已有正文）。"""
     tail = text[-1200:] if len(text) > 1200 else text
     stub = (synopsis_excerpt or "").strip() or _patch_synopsis_excerpt_from_mo(
@@ -786,25 +1032,488 @@ def generate_synopsis(topic: str):
         return None
 
 
+def _build_one_shot_acts_system_prompt(
+    topic: str,
+    synopsis_data: dict,
+    *,
+    target_chars: int,
+    char_lo: int,
+    char_hi: int,
+    n_acts: int,
+    neutral_narration: bool,
+) -> str:
+    """一次性按 synopsis_acts 顺序扩写全文的系统提示（与分段路径的开篇/气质对齐）。"""
+    opening_user = _pick_user_opening_line(synopsis_data)
+    op = opening_topic_phrase(topic)
+
+    plot_lock = f"""【剧情锁（必须遵守）】
+- 你必须严格按照用户消息中的【分幕梗概】从第 1 幕依次写到第 {n_acts} 幕；不得跳幕、不得合并两幕、不得调换顺序。
+- 每一幕只扩写该幕梗概内的情节与因果；不得引入与任一幕梗概矛盾的重大设定；不得用「第X幕」等小标题分段。
+- 幕与幕之间仅用时间流逝、场景升级、状态与数字变化自然衔接；禁止 Level/阶段 类小标题。"""
+
+    size_rule = f"""【字数】全文汉字与标点总字符数必须落在 **{char_lo}～{char_hi}** 之间，**目标约 {target_chars} 字**（与成片时长预设一致）。"""
+
+    person_rule = (
+        "3. **第二人称**：全程使用「你」；极简冷峻，少用形容词，多用短句、动作、数字与利益推进。"
+        if not neutral_narration
+        else "3. **第二人称**：全程使用「你」。"
+    )
+    common_tail = f"""{plot_lock}
+
+【写作铁律】
+2. **一镜到底**：用具体场景、动作与因果推进；禁止段落小标题。
+{person_rule}
+4. **纯净文本**：禁止 <subshot>、禁止 [CUT]、禁止任何分镜标签；只输出 JSON 中的正文。
+5. {size_rule}
+
+【输出】仅 JSON（键名固定）：
+{{
+  "full_narration": "逐幕扩写后的完整旁白（纯净文本，无小标题）"
+}}"""
+
+    if neutral_narration:
+        if opening_user:
+            rule1 = (
+                f"1. **开篇固定句**：正文第一句必须逐字为：{opening_user}\n"
+                "   输出该句后从第二句起续写，不得改写、扩写或重复第一句。"
+            )
+            tone = "语气中性、克制、可读性强，避免堆砌冷酷算计话术。"
+        else:
+            rule1 = (
+                "1. **开篇**：第一句必须是**单独一句**开场钩子（不超过 40 个汉字），紧贴梗概、有画面感，"
+                "**禁止**使用固定句式「今天你要体验的人生副本是」。第二句起立刻展开叙事。"
+            )
+            tone = "语气中性、克制、可读性强，避免堆砌冷酷算计话术。"
+        return f"""你是一位专业、克制的短视频旁白写手（中性叙事气质）。
+任务：根据用户消息中的【分幕梗概】，将故事扩写为**一篇**沉浸式旁白，并输出 JSON。
+
+{tone}
+
+{rule1}
+{common_tail}"""
+
+    rule1 = (
+        "1. **唯一合法开头**：正文第一句必须且仅能是："
+        f"「今天你要体验的人生副本是，{op}。」"
+        "不许有其他前缀或后缀；随后立刻接着写，不要复述主题。"
+    )
+    return f"""你是一个极其冷峻、犀利的短视频旁白文案大师。
+任务：根据用户消息中的【分幕梗概】，将「你」在副本中的这一生扩写为**一篇**沉浸式纯净长文案，并输出 JSON。
+
+{rule1}
+
+{common_tail}
+
+【视觉与美术】人物定妆英文提示词由定妆流水线写入 scripts/refs-prompt.json；勿在 JSON 中输出 character_anchors。"""
+
+
+def _build_user_content_one_shot_acts(
+    topic: str,
+    synopsis_data: dict,
+    acts_norm: list[str],
+    *,
+    char_lo: int,
+    char_hi: int,
+    target_chars: int,
+) -> str:
+    lines = [f"第{i}幕梗概：{act}" for i, act in enumerate(acts_norm, start=1)]
+    acts_block = "\n".join(lines)
+    slim = {
+        "era": synopsis_data.get("era"),
+        "identity": synopsis_data.get("identity"),
+        "duration": synopsis_data.get("duration"),
+    }
+    slim_s = json.dumps(slim, ensure_ascii=False)
+    n = len(acts_norm)
+    return (
+        f"主题：{topic}\n\n"
+        f"【结构化辅助信息】\n{slim_s}\n\n"
+        f"【分幕梗概】（共 {n} 幕，请严格按第 1 幕→第 {n} 幕顺序逐幕扩写为**一篇连贯旁白**，"
+        f"不得跳幕或合并；全文总字符数须在 {char_lo}～{char_hi} 之间，目标约 {target_chars} 字）\n"
+        f"{acts_block}\n\n"
+        "请输出 JSON（仅含 full_narration）。"
+    )
+
+
+def _one_shot_length_retry_addon(
+    *,
+    prev_ln: int,
+    char_lo: int,
+    char_hi: int,
+    target_chars: int,
+    prev_too_long: bool,
+) -> str:
+    if prev_too_long:
+        return (
+            f"\n\n【字数修正（重试）】上一稿约 {prev_ln} 字，超过上限 {char_hi}。"
+            f"请重写 JSON，使 full_narration 总字符数落在 **{char_lo}～{char_hi}**（目标约 **{target_chars}** 字）。\n"
+            "**禁止删减或改写分幕梗概中的剧情主干与关键事实**；只能删繁就简、压缩修辞与重复句；逐幕顺序与开篇铁律不变。\n"
+            "只输出 JSON。"
+        )
+    return (
+        f"\n\n【字数修正（重试）】上一稿约 {prev_ln} 字，低于下限 {char_lo}。"
+        f"请重写 JSON，使 full_narration 落在 **{char_lo}～{char_hi}**（目标约 **{target_chars}** 字）。\n"
+        "在**不编造与梗概矛盾的新剧情**前提下补足过程与因果；逐幕顺序与开篇铁律不变。\n"
+        "只输出 JSON。"
+    )
+
+
+def _pick_closest_one_shot_candidate(
+    candidates: list[tuple[str, int]],
+    *,
+    target_chars: int,
+    char_lo: int,
+    char_hi: int,
+) -> str:
+    if not candidates:
+        return ""
+    in_band = [c for c in candidates if char_lo <= c[1] <= char_hi]
+    if in_band:
+        return min(in_band, key=lambda x: abs(x[1] - target_chars))[0]
+    return min(candidates, key=lambda x: abs(x[1] - target_chars))[0]
+
+
+def _compress_full_narration_overflow(
+    client: OpenAI,
+    topic: str,
+    synopsis_data: dict,
+    text: str,
+    char_hi: int,
+    *,
+    neutral: bool,
+) -> str | None:
+    """超长时单次压缩到不超过 char_hi（不改变第二人称与梗概事实）。"""
+    if len(text) <= char_hi:
+        return text
+    if neutral:
+        sys_p = f"""你是编辑。下列旁白超过 {char_hi} 字。在不改变剧情顺序与梗概事实、保持第二人称与中性气质的前提下压缩删繁，
+使 full_narration 总字符数**不超过 {char_hi}**。禁止新增重大情节。只输出 JSON：{{"full_narration":"..."}}。"""
+    else:
+        sys_p = f"""你是编辑。下列旁白超过 {char_hi} 字。在不改变剧情顺序与梗概事实、保持第二人称与冷峻风格的前提下压缩删繁，
+使 full_narration 总字符数**不超过 {char_hi}**。禁止新增重大情节。只输出 JSON：{{"full_narration":"..."}}。"""
+    user_p = f"主题：{topic}\n\n【须压缩的旁白】\n{text}"
+    max_tokens = min(8192, int(char_hi * float(NARRATION_SEGMENT_CH_TO_TOKEN_RATIO) * 1.4))
+    try:
+
+        def _inner():
+            return _chat_json_full_narration(
+                client,
+                sys_p=sys_p,
+                user_p=user_p,
+                max_tokens=max_tokens,
+                temperature=0.2,
+            )["text"]
+
+        out = log_llm_chat(
+            PHASE_NARRATION,
+            "expand_narration_one_shot_compress",
+            MODEL_WRITER,
+            _inner,
+        )
+        return out if out else None
+    except Exception as e:
+        print(f"     ⚠️ 超长压缩失败: {e}")
+        return None
+
+
+def _generate_one_shot_narration_from_acts(
+    client: OpenAI,
+    topic: str,
+    synopsis_data: dict,
+    acts_norm: list[str],
+    *,
+    target_chars: int,
+    char_lo: int,
+    char_hi: int,
+    neutral_narration: bool,
+) -> str | None:
+    n_acts = len(acts_norm)
+    sys_p = _build_one_shot_acts_system_prompt(
+        topic,
+        synopsis_data,
+        target_chars=target_chars,
+        char_lo=char_lo,
+        char_hi=char_hi,
+        n_acts=n_acts,
+        neutral_narration=neutral_narration,
+    )
+    base_user = _build_user_content_one_shot_acts(
+        topic,
+        synopsis_data,
+        acts_norm,
+        char_lo=char_lo,
+        char_hi=char_hi,
+        target_chars=target_chars,
+    )
+    max_tokens = min(
+        16384,
+        max(
+            512,
+            int(
+                (char_hi + NARRATION_SEGMENT_MAX_TOKENS_CHAR_BUFFER)
+                * float(NARRATION_SEGMENT_CH_TO_TOKEN_RATIO)
+            ),
+        ),
+    )
+    candidates: list[tuple[str, int]] = []
+    user_p = base_user
+    prev_ln: int | None = None
+    prev_too_long: bool | None = None
+    chosen: str | None = None
+
+    for attempt in range(1, ONE_SHOT_LENGTH_MAX_ATTEMPTS + 1):
+        print(f"     · 一次性按幕扩写（尝试 {attempt}/{ONE_SHOT_LENGTH_MAX_ATTEMPTS}）…")
+        if prev_ln is not None and prev_too_long is not None:
+            user_p = base_user + _one_shot_length_retry_addon(
+                prev_ln=prev_ln,
+                char_lo=char_lo,
+                char_hi=char_hi,
+                target_chars=target_chars,
+                prev_too_long=prev_too_long,
+            )
+        try:
+
+            def _do_one_shot_llm():
+                b = _chat_json_full_narration(
+                    client,
+                    sys_p=sys_p,
+                    user_p=user_p,
+                    max_tokens=max_tokens,
+                    temperature=0.35,
+                )
+                print(
+                    "     · LLM 返回 "
+                    f"raw {b['raw_content_chars']} 字，旁白 {b['out_chars']} 字，"
+                    f"finish_reason={b['finish_reason']!r}"
+                )
+                return b
+
+            bundle = log_llm_chat(
+                PHASE_NARRATION,
+                "expand_narration_one_shot_acts",
+                MODEL_WRITER,
+                _do_one_shot_llm,
+                attempt=attempt,
+                extra={
+                    "char_lo": char_lo,
+                    "char_hi": char_hi,
+                    "max_tokens": max_tokens,
+                },
+            )
+            text = bundle["text"]
+            finish_reason = bundle.get("finish_reason")
+            ln = len(text)
+            if finish_reason == "length":
+                print(
+                    f"     ⚠️ 一次性扩写返回 finish_reason=length（可能撞 max_tokens），"
+                    f"本稿 {ln} 字"
+                )
+            candidates.append((text, ln))
+            if char_lo <= ln <= char_hi:
+                chosen = text
+                break
+            prev_ln = ln
+            prev_too_long = ln > char_hi
+            if attempt >= ONE_SHOT_LENGTH_MAX_ATTEMPTS:
+                chosen = _pick_closest_one_shot_candidate(
+                    candidates,
+                    target_chars=target_chars,
+                    char_lo=char_lo,
+                    char_hi=char_hi,
+                )
+                print(
+                    f"     ⚠️ 已尝试 {ONE_SHOT_LENGTH_MAX_ATTEMPTS} 次仍未落入 [{char_lo},{char_hi}]；"
+                    f"采纳最接近目标 **{target_chars}** 字的一稿（约 **{len(chosen)}** 字）。"
+                )
+                break
+            print(
+                f"     🔄 全文 {ln} 字不在 [{char_lo},{char_hi}]，"
+                f"字数重试 {attempt}/{ONE_SHOT_LENGTH_MAX_ATTEMPTS}"
+            )
+        except Exception as e:
+            print(f"     ❌ 一次性扩写失败: {e}")
+            return None
+
+    if not chosen or not chosen.strip():
+        return None
+    if len(chosen) > char_hi:
+        print(f"     · 全文 {len(chosen)} 字超过上限 {char_hi}，尝试压缩到区间内…")
+        compressed = _compress_full_narration_overflow(
+            client, topic, synopsis_data, chosen, char_hi, neutral=neutral_narration
+        )
+        if compressed and len(compressed) <= char_hi:
+            chosen = compressed
+        elif compressed:
+            print(f"     ⚠️ 压缩后仍 {len(compressed)} 字，保留压缩稿继续后处理。")
+            chosen = compressed
+    return chosen
+
+
+def _finalize_narration_after_draft(
+    client: OpenAI,
+    topic: str,
+    synopsis_data: dict,
+    full_narration: str,
+    min_chars: int,
+    target_chars: int,
+    patch_stub: str,
+    neutral_narration: bool,
+    *,
+    max_chars: int | None,
+    draft_label: str,
+    success_label: str,
+) -> dict | None:
+    """尾部扩写、软下限、句末收尾与纯净校验（分段与一次性共用）。"""
+    full_narration = full_narration.strip()
+    print(f"     · {draft_label}，全文约 {len(full_narration)} 字")
+
+    if len(full_narration) < min_chars:
+        gap = min_chars - len(full_narration)
+        print(f"     · 全文低于下限 {gap} 字，尝试尾部扩写补丁...")
+        patched = _patch_narration_length(
+            client,
+            topic,
+            synopsis_data,
+            full_narration,
+            gap + max(80, gap // 8),
+            synopsis_excerpt=patch_stub,
+            neutral=neutral_narration,
+        )
+        if patched:
+            full_narration = patched.strip()
+
+    soft_floor = max(min_chars, int(target_chars * NARRATION_TARGET_SOFT_RATIO))
+    for _round in range(NARRATION_TAIL_PATCH_MAX_ROUNDS):
+        if len(full_narration) >= soft_floor:
+            break
+        gap2 = soft_floor - len(full_narration)
+        ask = gap2 + max(120, gap2 // 6)
+        print(
+            f"     · 全文 {len(full_narration)} 字，低于目标软下限 {soft_floor} 字，"
+            f"尾部扩写（第 {_round + 1}/{NARRATION_TAIL_PATCH_MAX_ROUNDS} 轮，约 +{ask} 字）..."
+        )
+        patched2 = _patch_narration_length(
+            client,
+            topic,
+            synopsis_data,
+            full_narration,
+            ask,
+            synopsis_excerpt=patch_stub,
+            neutral=neutral_narration,
+        )
+        if not patched2 or len(patched2.strip()) <= len(full_narration):
+            break
+        full_narration = patched2.strip()
+
+    for _ci in range(NARRATION_CLOSE_PATCH_MAX_ROUNDS):
+        if _narration_tail_sentence_complete(full_narration):
+            break
+        ask_close = 420 if _ci == 0 else 220
+        tail_preview = full_narration[-56:].replace("\n", " ")
+        print(
+            f"     · 末句未落在句末标点，尝试收尾扩写（第 {_ci + 1}/"
+            f"{NARRATION_CLOSE_PATCH_MAX_ROUNDS} 轮，约 +{ask_close} 字）…"
+            f"\n       结尾预览：…{tail_preview}"
+        )
+        patched_close = _patch_narration_length(
+            client,
+            topic,
+            synopsis_data,
+            full_narration,
+            ask_close,
+            synopsis_excerpt=patch_stub,
+            neutral=neutral_narration,
+        )
+        if not patched_close or len(patched_close.strip()) <= len(full_narration):
+            print("     ⚠️ 收尾扩写未生效或失败，保留当前正文。")
+            break
+        full_narration = patched_close.strip()
+
+    if max_chars is not None and len(full_narration) > max_chars:
+        print(
+            f"     · 后处理后全文 {len(full_narration)} 字仍超过上限 {max_chars}，尝试压缩…"
+        )
+        compressed = _compress_full_narration_overflow(
+            client, topic, synopsis_data, full_narration, max_chars, neutral=neutral_narration
+        )
+        if compressed:
+            full_narration = compressed.strip()
+
+    if not _is_pure_narration(full_narration, min_chars, max_chars):
+        hi_msg = f"、上限 {max_chars}" if max_chars is not None else ""
+        print(
+            f"     ❌ 全文校验未通过（字数 {len(full_narration)} / 下限 {min_chars}{hi_msg}，"
+            f"或含违禁标记）。可缩短目标时长或放宽 MIN_NARRATION 比例后重试；"
+            f"分段模式可设置环境变量 NARRATION_EXPAND_MODE=segmented。"
+        )
+        return None
+
+    print(success_label)
+    return {"full_narration": full_narration}
+
+
 def expand_narration(synopsis_data: dict, topic: str, duration_min: float = DEFAULT_STORY_DURATION_MINUTES):
-    """阶段 2：分段扩写旁白并拼接。人物定妆英文提示词由 ref_generator 写入 scripts/refs-prompt.json。"""
+    """阶段 2：旁白扩写。默认按 synopsis_acts 一次性扩写；可选分段模式（见 style_config.NARRATION_EXPAND_MODE）。"""
     synopsis_data = normalize_synopsis_payload(dict(synopsis_data))
+    neutral_narration = str(synopsis_data.get("story_source") or "") == "user_script"
     syn_dur = synopsis_data.get("duration")
     try:
         eff_dur = float(syn_dur) if syn_dur is not None else float(duration_min)
     except (TypeError, ValueError):
         eff_dur = float(duration_min)
     target_chars, min_chars = _compute_narration_targets(eff_dur)
+    char_lo = max(1, int(target_chars * ONE_SHOT_NARRATION_LO_RATIO))
+    char_hi = max(char_lo + 1, int(target_chars * ONE_SHOT_NARRATION_HI_RATIO))
+    acts_norm = [str(x).strip() for x in (synopsis_data.get("synopsis_acts") or []) if str(x).strip()]
+
+    if NARRATION_EXPAND_MODE == "one_shot_acts":
+        if not acts_norm:
+            print("❌ [FATAL] synopsis_acts 为空，无法按幕一次性扩写。")
+            return None
+        patch_stub = _patch_synopsis_excerpt_from_mo(acts_norm)
+        print(
+            f"\n[Step 2] 一次性按幕扩写旁白（NARRATION_EXPAND_MODE=one_shot_acts；"
+            f"目标成片约 {eff_dur:g} 分钟 → 全文目标约 {target_chars} 字，"
+            f"理想区间 {char_lo}～{char_hi} 字，下限 {min_chars} 字，共 {len(acts_norm)} 幕梗概）..."
+        )
+        client = get_client()
+        draft = _generate_one_shot_narration_from_acts(
+            client,
+            topic,
+            synopsis_data,
+            acts_norm,
+            target_chars=target_chars,
+            char_lo=char_lo,
+            char_hi=char_hi,
+            neutral_narration=neutral_narration,
+        )
+        if not draft:
+            print("❌ [FATAL] 一次性按幕扩写失败。")
+            return None
+        return _finalize_narration_after_draft(
+            client,
+            topic,
+            synopsis_data,
+            draft,
+            min_chars,
+            target_chars,
+            patch_stub,
+            neutral_narration,
+            max_chars=char_hi,
+            draft_label="一次性扩写初稿就绪",
+            success_label="     ✅ 一次性按幕扩写已完成（定妆提示词见 ref_generator → scripts/refs-prompt.json）",
+        )
+
     weights, labels = _pick_segment_plan(target_chars)
     seg_chars = _allocate_segment_chars(target_chars, weights)
     n_seg = len(seg_chars)
-    acts_norm = [str(x).strip() for x in (synopsis_data.get("synopsis_acts") or [])]
-    mo_slices = _bucket_strings_for_n_segments(acts_norm, n_seg)
+    acts_all = [str(x).strip() for x in (synopsis_data.get("synopsis_acts") or [])]
+    mo_slices = _bucket_strings_for_n_segments(acts_all, n_seg)
     if len(mo_slices) != n_seg or not any(mo_slices):
         mo_slices = _fallback_split_synopsis_text(str(synopsis_data.get("synopsis") or ""), n_seg)
     patch_stub = _patch_synopsis_excerpt_from_mo(mo_slices)
     print(
-        f"\n[Step 2] 分段扩写旁白（目标成片约 {eff_dur:g} 分钟 → 全文目标约 {target_chars} 字，"
+        f"\n[Step 2] 分段扩写旁白（NARRATION_EXPAND_MODE=segmented；目标成片约 {eff_dur:g} 分钟 → 全文目标约 {target_chars} 字，"
         f"下限 {min_chars} 字，共 {n_seg} 段）..."
     )
     client = get_client()
@@ -828,6 +1537,7 @@ def expand_narration(synopsis_data: dict, topic: str, duration_min: float = DEFA
             tail_chars=tail_n,
             all_labels=labels,
             handoff_brief=handoff,
+            neutral_narration=neutral_narration,
         )
         if seg_text is None:
             print(f"❌ [FATAL] 第 {i + 1} 段连续失败，终止。")
@@ -853,72 +1563,19 @@ def expand_narration(synopsis_data: dict, topic: str, duration_min: float = DEFA
             )
 
     full_narration = accumulated.strip()
-    print(f"     · 拼接完成，全文约 {len(full_narration)} 字")
-
-    if len(full_narration) < min_chars:
-        gap = min_chars - len(full_narration)
-        print(f"     · 全文低于下限 {gap} 字，尝试尾部扩写补丁...")
-        patched = _patch_narration_length(
-            client,
-            topic,
-            synopsis_data,
-            full_narration,
-            gap + max(80, gap // 8),
-            synopsis_excerpt=patch_stub,
-        )
-        if patched:
-            full_narration = patched.strip()
-
-    soft_floor = max(min_chars, int(target_chars * NARRATION_TARGET_SOFT_RATIO))
-    for _round in range(NARRATION_TAIL_PATCH_MAX_ROUNDS):
-        if len(full_narration) >= soft_floor:
-            break
-        gap2 = soft_floor - len(full_narration)
-        ask = gap2 + max(120, gap2 // 6)
-        print(
-            f"     · 全文 {len(full_narration)} 字，低于目标软下限 {soft_floor} 字，"
-            f"尾部扩写（第 {_round + 1}/{NARRATION_TAIL_PATCH_MAX_ROUNDS} 轮，约 +{ask} 字）..."
-        )
-        patched2 = _patch_narration_length(
-            client, topic, synopsis_data, full_narration, ask, synopsis_excerpt=patch_stub
-        )
-        if not patched2 or len(patched2.strip()) <= len(full_narration):
-            break
-        full_narration = patched2.strip()
-
-    # 字数已够但末句没收束（常见于第六幕落在「理想字数带」内却停在半句话；与是否顶满 max_tokens 无必然关系）
-    for _ci in range(NARRATION_CLOSE_PATCH_MAX_ROUNDS):
-        if _narration_tail_sentence_complete(full_narration):
-            break
-        ask_close = 420 if _ci == 0 else 220
-        tail_preview = full_narration[-56:].replace("\n", " ")
-        print(
-            f"     · 末句未落在句末标点，尝试收尾扩写（第 {_ci + 1}/"
-            f"{NARRATION_CLOSE_PATCH_MAX_ROUNDS} 轮，约 +{ask_close} 字）…"
-            f"\n       结尾预览：…{tail_preview}"
-        )
-        patched_close = _patch_narration_length(
-            client,
-            topic,
-            synopsis_data,
-            full_narration,
-            ask_close,
-            synopsis_excerpt=patch_stub,
-        )
-        if not patched_close or len(patched_close.strip()) <= len(full_narration):
-            print("     ⚠️ 收尾扩写未生效或失败，保留当前正文。")
-            break
-        full_narration = patched_close.strip()
-
-    if not _is_pure_narration(full_narration, min_chars):
-        print(
-            f"     ❌ 全文校验未通过（字数 {len(full_narration)} / 下限 {min_chars}，"
-            f"或含违禁标记）。可缩短目标时长或放宽 MIN_NARRATION 比例后重试。"
-        )
-        return None
-
-    print("     ✅ 分段扩写已完成（定妆提示词见 ref_generator → scripts/refs-prompt.json）")
-    return {"full_narration": full_narration}
+    return _finalize_narration_after_draft(
+        client,
+        topic,
+        synopsis_data,
+        full_narration,
+        min_chars,
+        target_chars,
+        patch_stub,
+        neutral_narration,
+        max_chars=None,
+        draft_label="分段拼接完成",
+        success_label="     ✅ 分段扩写已完成（定妆提示词见 ref_generator → scripts/refs-prompt.json）",
+    )
 
 
 def _run_ref_generation(topic: str):
@@ -999,6 +1656,7 @@ def main():
                 "era": syn_result.get("era", "现代"),
                 "duration": effective_duration,
                 "run_id": get_current_run_id(),
+                "story_source": syn_result.get("story_source") or "blind_box",
             },
             "master_design": final_result,
         }

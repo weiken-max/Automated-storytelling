@@ -1808,11 +1808,20 @@ def run_project_pipeline(topic: str, receive_id: str):
         _clear_run_pids(run_id)
         PIPELINE_STOP_FLAGS.pop(run_id, None)
 
-def run_synopsis_setup(topic: str, receive_id: str, feedback: str = "", duration: float = DEFAULT_SYNOPSIS_DURATION_MINUTES):
-    """第一重审批：只生成大纲并推给用户看（不触碰 V6 源代码）"""
+def run_synopsis_setup(
+    topic: str,
+    receive_id: str,
+    feedback: str = "",
+    duration: float = DEFAULT_SYNOPSIS_DURATION_MINUTES,
+    *,
+    raw_script: str | None = None,
+):
+    """第一重审批：盲盒用冷酷梗概；投喂路径用剧本医生润色（结果均写入 temp_synopsis.json）。"""
     try:
         clear_last_error_context()
         from openai import OpenAI
+        import re
+
         from src.style_config import (
             LLM_API_KEY,
             LLM_BASE_URL,
@@ -1820,15 +1829,39 @@ def run_synopsis_setup(topic: str, receive_id: str, feedback: str = "", duration
             NARRATION_SEGMENT_COUNT,
             SYNOPSIS_BODY_MAX_CHARS,
         )
-        from src.story_planner_v6 import normalize_synopsis_payload
+        from src.story_planner_v6 import normalize_synopsis_payload, polish_user_script_synopsis
 
-        mgr.send_text(receive_id, "open_id", f"🧠 正在为【{topic}】构思剧情大纲..." if not feedback else f"🔄 收到反馈，正在为您重新修改大纲...")
-        state.set_status("GENERATING_SYNOPSIS", topic)
+        prev_path = BASE_DIR / "feishu" / "temp_synopsis.json"
+        prev_bundle = None
+        if prev_path.exists():
+            try:
+                prev_bundle = json.loads(prev_path.read_text(encoding="utf-8"))
+            except Exception:
+                prev_bundle = None
+
+        user_script_mode = raw_script is not None or (
+            bool(feedback) and isinstance(prev_bundle, dict) and prev_bundle.get("story_source") == "user_script"
+        )
+
+        if user_script_mode:
+            mgr.send_text(
+                receive_id,
+                "open_id",
+                "🧠 正在为您的素材做结构化润色…" if not feedback else "🔄 收到修改意见，正在重新润色大纲…",
+            )
+        else:
+            mgr.send_text(
+                receive_id,
+                "open_id",
+                f"🧠 正在为【{topic}】构思剧情大纲..." if not feedback else f"🔄 收到反馈，正在为您重新修改大纲...",
+            )
+
+        gen_topic = topic or (prev_bundle or {}).get("topic") or ""
+        state.set_status("GENERATING_SYNOPSIS", gen_topic)
 
         # 改稿时沿用上一份大纲卡片里确认的成片时长（避免回退成系统默认）
         if feedback:
             try:
-                prev_path = BASE_DIR / "feishu" / "temp_synopsis.json"
                 if prev_path.exists():
                     prev = json.loads(prev_path.read_text(encoding="utf-8"))
                     if prev.get("duration") is not None:
@@ -1836,12 +1869,65 @@ def run_synopsis_setup(topic: str, receive_id: str, feedback: str = "", duration
             except Exception:
                 pass
 
-        try:
-            n_act = max(4, min(8, int(NARRATION_SEGMENT_COUNT)))
-        except (TypeError, ValueError):
-            n_act = 6
-        client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
-        prompt = f"""你是一个极其冷酷的现实主义编剧与行业规则解剖师。
+        synopsis_data: dict | None = None
+
+        if user_script_mode:
+            raw_for_polish = ""
+            polish_feedback = ""
+            if raw_script is not None:
+                raw_for_polish = (raw_script or "").strip()
+                polish_feedback = ""
+            else:
+                raw_for_polish = str((prev_bundle or {}).get("original_user_input") or "").strip()
+                polish_feedback = (feedback or "").strip()
+
+            if not raw_for_polish:
+                raise RuntimeError("缺少原始投喂文本，无法润色。")
+
+            for attempt in range(2):
+                synopsis_data = polish_user_script_synopsis(
+                    raw_for_polish,
+                    feedback=polish_feedback,
+                    previous_synopsis=prev_bundle if polish_feedback else None,
+                )
+                if synopsis_data:
+                    break
+                mgr.send_text(receive_id, "open_id", "⚠️ 润色未能一次完成，正在自动重试…")
+
+            if not synopsis_data:
+                raise RuntimeError("剧本润色失败，请稍后重试或简化素材。")
+
+            synopsis_data = normalize_synopsis_payload(synopsis_data)
+            synopsis_data["story_source"] = "user_script"
+            synopsis_data["duration"] = float(duration)
+            opening_line_user = ""
+            m_open = re.search(r"([^\n。！？!?]{4,80}[。！？!?])", raw_for_polish)
+            if m_open:
+                opening_line_user = m_open.group(1).strip()
+            if opening_line_user:
+                synopsis_data["opening_line_user"] = opening_line_user
+            elif isinstance(prev_bundle, dict) and prev_bundle.get("opening_line_user"):
+                synopsis_data["opening_line_user"] = str(prev_bundle.get("opening_line_user", "")).strip()
+            if raw_script is not None:
+                synopsis_data["original_user_input"] = (raw_script or "").strip()
+            elif isinstance(prev_bundle, dict) and prev_bundle.get("original_user_input"):
+                synopsis_data["original_user_input"] = prev_bundle["original_user_input"]
+
+            title = (
+                str(synopsis_data.get("short_title") or "").strip()
+                or str(synopsis_data.get("identity") or "").strip()
+                or topic
+                or "用户剧本"
+            )
+            synopsis_data["topic"] = title
+            topic = title
+        else:
+            try:
+                n_act = max(4, min(8, int(NARRATION_SEGMENT_COUNT)))
+            except (TypeError, ValueError):
+                n_act = 6
+            client = OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
+            prompt = f"""你是一个极其冷酷的现实主义编剧与行业规则解剖师。
 任务：根据主题设定一个充满【利益算计】、【阶层跃迁】与【人性异化】的第二人称人生副本梗概（供后续旁白按幕扩写，不是旁白正文）。
 主题：{topic}
 {f'**重要修改意见**：{feedback}' if feedback else ''}
@@ -1855,24 +1941,30 @@ def run_synopsis_setup(topic: str, receive_id: str, feedback: str = "", duration
 6. **总字数**：synopsis 与 synopsis_acts 拼接后的总字符数不得超过 **{SYNOPSIS_BODY_MAX_CHARS}**（汉字+标点），逻辑必须极其严密。
 
 只要一个纯净的 JSON，键名固定：synopsis_acts（字符串数组，{n_act} 个）、synopsis（将 synopsis_acts 用两个换行符拼接的全文，与各幕一致）、era、identity、industry_rules（数组）。"""
-        
-        completion = log_llm_chat(
-            PHASE_SYNOPSIS,
-            "feishu_synopsis_setup",
-            MODEL_LLM,
-            lambda: client.chat.completions.create(
-                model=MODEL_LLM,
-                messages=[{"role": "user", "content": prompt}],
-            ),
-        )
-        content = completion.choices[0].message.content.strip()
-        import re
-        if content.startswith("```"): content = re.sub(r"^```(?:json)?\n|\n```$", "", content, flags=re.IGNORECASE)
-        synopsis_data = normalize_synopsis_payload(json.loads(content))
-        synopsis_data["duration"] = duration  # 初始值；老板可在卡片上微调后由「确认」回写
+
+            completion = log_llm_chat(
+                PHASE_SYNOPSIS,
+                "feishu_synopsis_setup",
+                MODEL_LLM,
+                lambda: client.chat.completions.create(
+                    model=MODEL_LLM,
+                    messages=[{"role": "user", "content": prompt}],
+                ),
+            )
+            content = completion.choices[0].message.content.strip()
+            if content.startswith("```"):
+                content = re.sub(r"^```(?:json)?\n|\n```$", "", content, flags=re.IGNORECASE)
+            synopsis_data = normalize_synopsis_payload(json.loads(content))
+            synopsis_data["story_source"] = "blind_box"
+            synopsis_data["duration"] = duration
+
+        assert synopsis_data is not None
 
         with open(BASE_DIR / "feishu" / "temp_synopsis.json", "w", encoding="utf-8") as f:
             json.dump(synopsis_data, f, ensure_ascii=False)
+
+        if user_script_mode:
+            mgr.send_text(receive_id, "open_id", "📖 梗概已润色完成，请您过目下方大纲卡片。")
 
         init_sec = _initial_seconds_from_minutes(float(duration))
         _save_synopsis_duration_draft(receive_id, topic, init_sec)

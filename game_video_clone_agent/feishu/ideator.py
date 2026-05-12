@@ -28,6 +28,42 @@ state = FeishuStateMgr()
 # 全局记录上一批已推送的题目，用于换一批时排重
 _last_sent_topics: list = []
 
+
+def send_welcome_portal(receive_id: str):
+    """
+    第二版总入口：老板好 +（可选）未完成任务的名称与进度 + 主题 / 剧本投喂。
+    不改变状态机（不发题目前保持 IDLE / 原状态）。
+    """
+    from feishu.cards.idle_card import IdleCard
+    from feishu.config import STATUS, STATUS_HUMAN, STATUS_HUMAN_SHORT
+
+    curr = state.get_current_state()
+    st = curr.get("status", STATUS["IDLE"])
+    topic = (curr.get("topic") or "").strip()
+
+    # 仅在选择盲盒选题阶段或纯空闲/已交付时不展示「进行中任务」条
+    hide_resume = {
+        STATUS["IDLE"],
+        STATUS["COMPLETED"],
+        STATUS["WAITING_TOPIC"],
+    }
+    show_resume = st not in hide_resume
+    resume_label = STATUS_HUMAN_SHORT.get(st) or STATUS_HUMAN.get(st, st)
+
+    class _MiniSession:
+        def __init__(self, oid: str):
+            self.open_id = oid
+
+    card = IdleCard(
+        _MiniSession(receive_id),
+        mgr,
+        variant="portal",
+        show_resume=show_resume,
+        resume_topic=topic,
+        resume_status_label=str(resume_label),
+    )
+    mgr.send_card(receive_id, "open_id", card.build())
+
 def get_dynamic_topics(exclude: list = None):
     """生成选题列表，exclude 传入上一批标题可防止重复"""
     try:
@@ -74,31 +110,29 @@ def get_dynamic_topics(exclude: list = None):
     return ["煤矿工人的一生", "末代铁匠的故事", "1960年代赤脚医生的一生"]
 
 def send_morning_topics(receive_id: str):
-    """发送选题卡片，自动对上一批题目排重"""
+    """第二步：发送选题盲盒列表（与 IdleCard topics 一致，含换一批/投喂/状态）"""
     global _last_sent_topics
+    from feishu.cards.idle_card import IdleCard
+
     curr = state.get_current_state()
     is_busy = curr["status"] not in ["IDLE", "WAITING_TOPIC", "COMPLETED"]
-    
-    elements = []
-    header_text = "**老板早安！** 🌤️\n为您精选了 10 个真实历史/现实题材！\n\n"
-    if is_busy:
-        header_text += f"> ⚠️ **当前提醒**：后台正忙于制作【{curr['topic']}】，您可以先看选题，等它忙完再开新单哦！\n\n"
-    
-    elements.append({"tag": "markdown", "content": header_text})
-    
-    # 把上一批传给 LLM 做排重，确保换一批真的换
+
     topics = get_dynamic_topics(exclude=_last_sent_topics if _last_sent_topics else None)
-    _last_sent_topics = list(topics)  # 更新已推送列表
+    _last_sent_topics = list(topics)
 
-    items = [f"🎯 `{t}`" for t in topics]
-    elements.append({"tag": "markdown", "content": "\n\n".join(items)})
+    class _MiniSession:
+        def __init__(self, oid: str):
+            self.open_id = oid
 
-    card = {
-        "config": {"wide_screen_mode": True},
-        "header": {"title": {"content": "🎬 今日好戏开场", "tag": "plain_text"}, "template": "turquoise"},
-        "elements": elements
-    }
-    mgr.send_card(receive_id, "open_id", card)
+    card = IdleCard(
+        _MiniSession(receive_id),
+        mgr,
+        topics=topics,
+        is_busy=is_busy,
+        busy_topic=curr.get("topic") or "",
+        variant="topics",
+    )
+    mgr.send_card(receive_id, "open_id", card.build())
     if not is_busy:
         state.set_status("WAITING_TOPIC", "")
 

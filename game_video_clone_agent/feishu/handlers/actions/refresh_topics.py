@@ -19,3 +19,10 @@ class RequestIdeasAction:
 
     def execute(self, session, data: dict, mgr, **context) -> dict:
         return RefreshTopicsAction().execute(session, data, mgr, **context)
+
+
+class OpenTopicBlindBoxAction:
+    """总入口「主题」→ 打开 10 条盲盒选题（第二步）"""
+
+    def execute(self, session, data: dict, mgr, **context) -> dict:
+        return RefreshTopicsAction().execute(session, data, mgr, **context)

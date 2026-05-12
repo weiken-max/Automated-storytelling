@@ -1,6 +1,7 @@
 """
 杂项 Action（重启、确认新项目、恢复旧项目、启动恢复关闭）
 """
+import threading
 
 class RestartBackendAction:
     """强制重启后台"""
@@ -58,6 +59,26 @@ class ResumeOldProjectAction:
         open_id = getattr(session, "open_id", "")
         mgr.send_text(open_id, "open_id", f"▶️ 好的，继续推进【{topic}】。发送「状态」可查看当前进度。")
         return {"toast": {"type": "info", "content": "继续上一个项目。"}}
+
+
+class ResumeLastTaskAction:
+    """总入口卡：继续上一个未完成任务"""
+
+    def execute(self, session, data: dict, mgr, **context) -> dict:
+        open_id = getattr(session, "open_id", "")
+        get_state = context.get("get_current_state")
+        send_status = context.get("send_status_card")
+        if not (get_state and send_status):
+            return {"toast": {"type": "error", "content": "缺少运行上下文，请重试。"}}
+        s = get_state() or {}
+        topic = str(s.get("topic", "") or "").strip()
+        status = str(s.get("status", "IDLE") or "IDLE")
+        send_status(open_id, topic, status)
+        if topic:
+            mgr.send_text(open_id, "open_id", f"▶️ 正在继续任务【{topic}】。")
+        else:
+            mgr.send_text(open_id, "open_id", "▶️ 已打开当前任务状态。")
+        return {"toast": {"type": "success", "content": "已定位到上一个任务。"}}
 
 
 class StartupResumeDismissAction:

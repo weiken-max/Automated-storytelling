@@ -10,7 +10,14 @@ from .refresh_topics import RefreshTopicsAction, RequestIdeasAction
 from .revision import RejectVisualsAction, RegenStageAction, RegenAllVisualsAction, RegenSupportingAction
 from .ops import RetryFailedStageAction, OpsStatusAction, OpsRetryStepAction, OpsAbortRunAction
 from .duration import SynopsisDurationDeltaAction, SynopsisDurationPresetAction
-from .misc import RestartBackendAction, ConfirmNewProjectAction, ResumeOldProjectAction, StartupResumeDismissAction, DoNothingAction
+from .misc import (
+    RestartBackendAction,
+    ConfirmNewProjectAction,
+    ResumeOldProjectAction,
+    ResumeLastTaskAction,
+    StartupResumeDismissAction,
+    DoNothingAction,
+)
 
 __all__ = [
     "ConfirmSynopsisAction", "ConfirmCharacterAction", "ConfirmStoryboardAction",
@@ -21,6 +28,6 @@ __all__ = [
     "RegenStageAction", "RegenAllVisualsAction", "RegenSupportingAction",
     "RetryFailedStageAction", "OpsStatusAction", "OpsRetryStepAction", "OpsAbortRunAction",
     "SynopsisDurationDeltaAction", "SynopsisDurationPresetAction",
-    "RestartBackendAction", "ConfirmNewProjectAction", "ResumeOldProjectAction",
+    "RestartBackendAction", "ConfirmNewProjectAction", "ResumeOldProjectAction", "ResumeLastTaskAction",
     "StartupResumeDismissAction", "DoNothingAction",
 ]

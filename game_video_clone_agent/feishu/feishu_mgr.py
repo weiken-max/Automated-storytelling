@@ -1,8 +1,14 @@
 import os
 import json
+from io import BytesIO
+from pathlib import Path
+
 import lark_oapi as lark
 from lark_oapi.api.im.v1 import *
-from typing import Optional, Dict
+from typing import Optional, Tuple
+
+# 用户投喂剧本：单文件大小上限（字节）
+MAX_SCRIPT_UPLOAD_BYTES = 800 * 1024
 
 class FeishuManager:
     """飞书核心通讯员"""
@@ -127,4 +133,90 @@ class FeishuManager:
         if resp and resp.success():
             return resp.data.file_key
         return None
+
+    def download_message_file_bytes(self, message_id: str, file_key: str) -> Optional[bytes]:
+        """
+        下载会话消息中的用户上传文件（需与消息同会话，使用 message_id + file_key）。
+        见开放平台：获取消息中的资源文件（type=file）。
+        """
+        if not message_id or not file_key:
+            return None
+        request = GetMessageResourceRequest.builder() \
+            .message_id(message_id) \
+            .file_key(file_key) \
+            .type("file") \
+            .build()
+        try:
+            getter = getattr(self.client.im.v1, "message_resource", None)
+            if getter is None:
+                print("  [FeishuMgr] SDK 缺少 im.v1.message_resource，无法下载消息文件")
+                return None
+            resp = self._with_retry(getter.get, request)
+        except Exception as e:
+            print(f"  [FeishuMgr] download_message_file_bytes 异常: {e}")
+            return None
+        if not resp or not getattr(resp, "file", None):
+            return None
+        try:
+            data = resp.file.read()
+            return data if isinstance(data, (bytes, bytearray)) else None
+        except Exception as e:
+            print(f"  [FeishuMgr] 读取下载流失败: {e}")
+            return None
+
+    @staticmethod
+    def script_text_from_upload_bytes(body: bytes, file_name: str) -> Tuple[Optional[str], str]:
+        """
+        将用户上传的文件解析为剧本纯文本。
+        返回 (text, error_message)；成功时 error_message 为空字符串。
+        """
+        if not body:
+            return None, "文件为空。"
+        if len(body) > MAX_SCRIPT_UPLOAD_BYTES:
+            return None, f"文件过大（>{MAX_SCRIPT_UPLOAD_BYTES // 1024}KB），请精简、分段发送或改用纯文字粘贴。"
+
+        fn = (file_name or "").strip().lower()
+        ext = Path(fn).suffix
+
+        _binary_exts = (
+            ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico",
+            ".mp4", ".mov", ".avi", ".mkv", ".zip", ".rar", ".7z",
+            ".pdf", ".xlsx", ".xls", ".ppt", ".pptx",
+        )
+        if ext in _binary_exts:
+            return None, "剧本投喂仅支持 .txt / .md / .docx，或直接在聊天框粘贴文字；请勿上传图片/音视频/压缩包等。"
+
+        if ext == ".docx":
+            try:
+                from docx import Document
+            except ImportError:
+                return None, "服务器未安装 python-docx，暂无法读取 .docx，请改用 .txt 或粘贴文字。"
+            try:
+                doc = Document(BytesIO(body))
+                parts = [p.text.strip() for p in doc.paragraphs if p.text and p.text.strip()]
+                text = "\n".join(parts)
+            except Exception as e:
+                return None, f"无法解析 Word 文档：{e}"
+            if not text.strip():
+                return None, "Word 文档中未读到正文段落。"
+            return text.strip(), ""
+
+        if ext not in ("", ".txt", ".md", ".markdown", ".text", ".log"):
+            return None, "不支持的文本扩展名，请上传 .txt / .md / .docx，或直接粘贴文字。"
+
+        try:
+            text = body.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            try:
+                text = body.decode("gbk")
+            except UnicodeDecodeError:
+                return None, "无法用 UTF-8 或 GBK 解码该文件，请另存为 UTF-8 编码的 .txt 再上传。"
+
+        if "\x00" in text[:2000]:
+            return None, "文件内容不像纯文本，请将剧本保存为 .txt（UTF-8）再上传。"
+
+        text = text.strip()
+        if not text:
+            return None, "文件内容为空。"
+        return text, ""
 

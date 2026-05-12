@@ -166,13 +166,35 @@ def _handle_message_async(data):
     """异步消息处理"""
     open_id = data.event.sender.sender_id.open_id
     msg_raw = data.event.message.content
+    message_id = data.event.message.message_id
+    msg = msg_raw if isinstance(msg_raw, str) else str(msg_raw)
     try:
         parsed = json.loads(msg_raw)
-        msg = parsed.get("text", "")
-        if not msg:
+        if isinstance(parsed, dict):
+            t = (parsed.get("text") or "").strip() if isinstance(parsed.get("text"), str) else ""
+            if t:
+                msg = t
+            elif parsed.get("file_key"):
+                raw_b = mgr.download_message_file_bytes(message_id, parsed["file_key"])
+                if not raw_b:
+                    mgr.send_text(
+                        open_id,
+                        "open_id",
+                        "❌ 无法读取您上传的文件（请确认应用具备「获取消息中的资源」相关权限，或改用聊天框直接粘贴文字）。",
+                    )
+                    return
+                fn = parsed.get("file_name") or ""
+                body_text, err = FeishuManager.script_text_from_upload_bytes(raw_b, fn)
+                if err or not body_text:
+                    mgr.send_text(open_id, "open_id", f"❌ {err or '无法解析文件内容'}")
+                    return
+                msg = body_text
+            else:
+                msg = str(parsed)
+        else:
             msg = str(parsed)
     except Exception:
-        msg = msg_raw
+        pass
 
     # 获取或创建 Session
     session_dict = store.get_active_session(open_id)

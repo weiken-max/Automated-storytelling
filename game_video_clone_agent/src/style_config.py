@@ -4,8 +4,14 @@
 所有脚本共用的风格锚点、API Key、路径配置集中在此。
 """
 
+import os
 from pathlib import Path
+
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# 旁白扩写：segmented=多段请求+拼接；one_shot_acts=按 synopsis_acts 顺序一次性扩写全文
+_nem = os.environ.get("NARRATION_EXPAND_MODE", "one_shot_acts").strip().lower()
+NARRATION_EXPAND_MODE = _nem if _nem in ("segmented", "one_shot_acts") else "one_shot_acts"
 
 # ================================================================
 #  🔑 三分离 API 配置
@@ -110,10 +116,17 @@ SYNOPSIS_BODY_MAX_CHARS = 1500
 # 长文案目标字数：按「目标成片时长(分钟)」粗估（对齐中文旁白 TTS 实测，略留余量避免成片短于目标时长）
 NARRATION_CHARS_PER_MINUTE = 300
 
-# 分段扩写（story_planner）：段数、承接上一段尾字数、单段输出 token 上限系数（≈中文 1 字≈1~2 token）
+# 分段扩写（story_planner）：段数、承接上一段尾字数
 NARRATION_SEGMENT_COUNT = 6
 NARRATION_SEGMENT_TAIL_CHARS = 240
-NARRATION_SEGMENT_MAX_TOKEN_FACTOR = 2.6
+# 单幕 chat.completions 的 max_tokens：粗估「汉字→token」≈ 1.5；在目标字数上加 BUFFER 再换算，避免沿用 2048 导致篇幅失控
+NARRATION_SEGMENT_MAX_TOKENS_CHAR_BUFFER = 100
+NARRATION_SEGMENT_CH_TO_TOKEN_RATIO = 1.5
+
+# 一次性按幕扩写：理想字数带与分段写手一致（相对 target_chars）
+ONE_SHOT_NARRATION_LO_RATIO = 0.78
+ONE_SHOT_NARRATION_HI_RATIO = 1.18
+ONE_SHOT_LENGTH_MAX_ATTEMPTS = 4
 
 # 🎬 视频 & 宫格参数（P1 冻结规格）
 # 最终成片固定 4:3，统一避免拉伸。

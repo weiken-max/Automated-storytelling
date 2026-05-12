@@ -17,6 +17,7 @@ from feishu.cards.progress_card import ProgressCard
 CARD_MAP = {
     STATUS["IDLE"]:                      IdleCard,
     STATUS["WAITING_TOPIC"]:            IdleCard,
+    STATUS["WAITING_SCRIPT_FEED"]:      IdleCard,
     STATUS["COMPLETED"]:                IdleCard,
     STATUS["GENERATING_SYNOPSIS"]:      ProgressCard,
     STATUS["WAITING_SYNOPSIS_APPROVAL"]:SynopsisCard,

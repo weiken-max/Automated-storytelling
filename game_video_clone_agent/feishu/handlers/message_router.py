@@ -2,6 +2,7 @@
 消息路由器
 处理飞书文字消息：关键词快速通道 + LLM 对话兜底
 """
+import json
 import re
 import threading
 from pathlib import Path
@@ -114,10 +115,55 @@ class MessageRouter:
                     open_id, "open_id",
                     "❌ 补发分镜未接入后台，请重启 Hub 或升级 `hub.py` 的 `resend_storyboard_review_card` 注入。",
                 )
+                return
+
+        # ── 3.5 投喂剧本：等待粘贴 ──
+        if current_status == STATUS["WAITING_SCRIPT_FEED"]:
+            if msg_clean in RESET_PHRASES:
+                if set_status:
+                    set_status(STATUS["IDLE"], "")
+                mgr.send_text(open_id, "open_id", "🔄 已取消投喂，返回空闲。")
+                return
+            if any(p in msg_clean for p in REFRESH_PHRASES) or any(p in msg_clean for p in IDEAS_PHRASES):
+                if set_status:
+                    set_status(STATUS["IDLE"], "")
+                self._refresh_topics(open_id, ideator_module)
+                return
+            if len(msg_clean) < 12:
+                mgr.send_text(
+                    open_id,
+                    "open_id",
+                    "请粘贴完整一些的剧本或梗概（建议不少于十几个字），或发送「重置」退出投喂模式。",
+                )
+                return
+            run_synopsis_setup = pipeline_funcs.get("run_synopsis_setup")
+            if not run_synopsis_setup:
+                mgr.send_text(open_id, "open_id", "❌ 大纲管线未接入，请检查 Hub。")
+                return
+            mgr.send_text(open_id, "open_id", "✅ 收到您的剧本，马上开始润色并生成大纲卡片…")
+            raw_text = (msg or "").strip()
+            enqueue_job(
+                open_id,
+                "投喂剧本润色",
+                run_synopsis_setup,
+                "用户投喂剧本",
+                open_id,
+                "",
+                DEFAULT_SYNOPSIS_DURATION_MINUTES,
+                raw_script=raw_text,
+            )
             return
 
         # ── 4. 忙碌态拦截 ──
-        is_asking_status = msg_clean in CHITCHAT_PHRASES
+        if msg_clean == "你好":
+            if ideator_module:
+                threading.Thread(
+                    target=ideator_module.send_welcome_portal,
+                    args=(open_id,),
+                ).start()
+            return
+
+        is_asking_status = msg_clean in CHITCHAT_PHRASES and msg_clean != "你好"
         is_whitelisted = any(w in msg_clean for w in INTERCEPT_WHITELIST)
         is_busy_blocked = current_status in BUSY_OR_ERROR_STATES and not is_whitelisted
         if is_asking_status or is_busy_blocked:
@@ -160,6 +206,41 @@ class MessageRouter:
                 mgr.send_text(open_id, "open_id",
                               "⚠️ 为避免误触发，请点击卡片按钮确认；或回复「下一步/确认通过」再继续。")
                 return
+
+        # 投喂梗概：大纲审批态下直接按修改意见重新润色（不经闲聊 LLM）
+        if current_status == STATUS["WAITING_SYNOPSIS_APPROVAL"]:
+            tsp = BASE_DIR / "feishu" / "temp_synopsis.json"
+            if tsp.exists():
+                try:
+                    syn_doc = json.loads(tsp.read_text(encoding="utf-8"))
+                except Exception:
+                    syn_doc = {}
+                if syn_doc.get("story_source") == "user_script" and len(msg_clean) >= 6:
+                    quick_approve = (
+                        msg_clean in APPROVE_PHRASES
+                        or any(
+                            msg_clean.startswith(p) or msg_clean.endswith(p)
+                            for p in ["下一步", "进行下一步", "开始吹", "可以，进", "好了，"]
+                        )
+                        or (
+                            len(msg_clean) <= 10
+                            and any(p in msg_clean for p in ["下一步", "进行", "开始吹"])
+                        )
+                    )
+                    if not quick_approve:
+                        run_synopsis_setup = pipeline_funcs.get("run_synopsis_setup")
+                        if run_synopsis_setup:
+                            mgr.send_text(open_id, "open_id", "🔄 收到您的修改意见，正在重新润色大纲…")
+                            enqueue_job(
+                                open_id,
+                                f"润色修订: {current_topic}",
+                                run_synopsis_setup,
+                                current_topic,
+                                open_id,
+                                msg_clean,
+                                DEFAULT_SYNOPSIS_DURATION_MINUTES,
+                            )
+                            return
 
         is_approval = (
             msg_clean in APPROVE_PHRASES

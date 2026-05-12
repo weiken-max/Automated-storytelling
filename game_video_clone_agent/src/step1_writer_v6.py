@@ -1043,7 +1043,7 @@ def _tag_subshots_only(beat: dict, attempt: int = 0) -> list[str]:
             ok=True,
             duration_ms=(time.perf_counter() - t_tag) * 1000,
             model=MODEL_WRITER,
-            attempt=attempt + 1,
+            attempt=max(1, int(attempt or 1)),
             extra={"phase": "tag"},
         )
         choice = response.choices[0] if response.choices else None
@@ -1086,7 +1086,7 @@ def _tag_subshots_only(beat: dict, attempt: int = 0) -> list[str]:
             ok=False,
             duration_ms=(time.perf_counter() - t_tag) * 1000,
             model=MODEL_WRITER,
-            attempt=attempt + 1,
+            attempt=max(1, int(attempt or 1)),
             error=str(e),
             extra={"phase": "tag"},
         )

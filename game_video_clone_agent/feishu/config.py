@@ -10,6 +10,8 @@ STATUS = {
     # 基础态
     "IDLE":                         "IDLE",
     "WAITING_TOPIC":                "WAITING_TOPIC",
+    # 等待用户粘贴投喂剧本
+    "WAITING_SCRIPT_FEED":          "WAITING_SCRIPT_FEED",
     # 大纲审批
     "GENERATING_SYNOPSIS":          "GENERATING_SYNOPSIS",
     "WAITING_SYNOPSIS_APPROVAL":    "WAITING_SYNOPSIS_APPROVAL",
@@ -38,6 +40,7 @@ STATUS = {
 STATUS_HUMAN = {
     STATUS["IDLE"]:                         "🟢 空闲待机（请让我推荐选题）",
     STATUS["WAITING_TOPIC"]:                "⏳ 等待您选择盲盒题目",
+    STATUS["WAITING_SCRIPT_FEED"]:          "✍️ 等待您粘贴剧本（投喂路径）",
     STATUS["GENERATING_SYNOPSIS"]:          "🧠 正在连线大模型撰写剧情大纲...",
     STATUS["WAITING_SYNOPSIS_APPROVAL"]:    "👀 大纲已发，正在等待您批示（可回复修改意见）",
     STATUS["GENERATING_VISUALS"]:           "🎨 正在绘制三阶段定妆照...",
@@ -56,6 +59,7 @@ STATUS_HUMAN = {
 
 # 冲突卡片中使用的简化状态映射（较简短的描述）
 STATUS_HUMAN_SHORT = {
+    STATUS["WAITING_SCRIPT_FEED"]:          "✍️ 等待粘贴剧本",
     STATUS["GENERATING_SYNOPSIS"]:          "🧠 正在编写大纲",
     STATUS["WAITING_SYNOPSIS_APPROVAL"]:    "👀 等待您审批大纲",
     STATUS["GENERATING_VISUALS"]:           "🎨 正在绘制三阶段定妆照",
@@ -75,6 +79,7 @@ STATUS_CARD_COLOR = {
     STATUS["IDLE"]:     "green",
     STATUS["COMPLETED"]: "green",
     STATUS["WAITING_TOPIC"]: "green",
+    STATUS["WAITING_SCRIPT_FEED"]: "green",
 }
 
 # 需要拦截用户消息的「忙碌/错误」状态（这些状态下不处理普通对话，直接推状态卡）
@@ -118,10 +123,16 @@ BUSY_PRODUCTION_STATES = [
 # 三、合法状态转移表（当前态 → 允许到达的目标态集合）
 # ================================================================
 ALLOWED_TRANSITIONS = {
-    STATUS["IDLE"]:                     {STATUS["WAITING_TOPIC"], STATUS["GENERATING_SYNOPSIS"], STATUS["WAITING_SYNOPSIS_APPROVAL"]},
-    STATUS["WAITING_TOPIC"]:            {STATUS["IDLE"], STATUS["GENERATING_SYNOPSIS"]},
+    STATUS["IDLE"]:                     {
+        STATUS["WAITING_TOPIC"],
+        STATUS["WAITING_SCRIPT_FEED"],
+        STATUS["GENERATING_SYNOPSIS"],
+        STATUS["WAITING_SYNOPSIS_APPROVAL"],
+    },
+    STATUS["WAITING_TOPIC"]:            {STATUS["IDLE"], STATUS["GENERATING_SYNOPSIS"], STATUS["WAITING_SCRIPT_FEED"]},
     STATUS["GENERATING_SYNOPSIS"]:      {STATUS["WAITING_SYNOPSIS_APPROVAL"], STATUS["ERROR"], STATUS["IDLE"]},
     STATUS["WAITING_SYNOPSIS_APPROVAL"]:{STATUS["GENERATING_VISUALS"], STATUS["GENERATING_SYNOPSIS"], STATUS["ERROR"], STATUS["IDLE"]},
+    STATUS["WAITING_SCRIPT_FEED"]:      {STATUS["IDLE"], STATUS["GENERATING_SYNOPSIS"]},
     STATUS["GENERATING_VISUALS"]:       {STATUS["WAITING_CHARACTER_APPROVAL"], STATUS["ERROR"], STATUS["IDLE"]},
     STATUS["WAITING_CHARACTER_APPROVAL"]:{STATUS["STEP1_WRITING"], STATUS["GENERATING_VISUALS"], STATUS["ERROR"], STATUS["IDLE"]},
     STATUS["WAITING_STORYBOARD_APPROVAL"]:{STATUS["STEP2_GENERATING"], STATUS["STEP3_ASSEMBLING"], STATUS["ERROR"], STATUS["IDLE"]},
@@ -144,6 +155,9 @@ ACTION = {
     "SELECT_TOPIC":                 "select_topic",
     "REQUEST_IDEAS":                "request_ideas",
     "REFRESH_TOPICS":               "refresh_topics",
+    "REQUEST_SCRIPT_FEED":          "request_script_feed",
+    "OPEN_TOPIC_BLIND_BOX":         "open_topic_blind_box",
+    "RESUME_LAST_TASK":             "resume_last_task",
     "CONFIRM_NEW_PROJECT":          "confirm_new_project",
     "RESUME_PROJECT":               "resume_project",
     # 大纲审批

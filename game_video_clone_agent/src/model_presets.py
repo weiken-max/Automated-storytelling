@@ -21,10 +21,10 @@ if load_dotenv:
 # ================================================================
 #  🚩 三分离：LLM / VLM / IMG 各自独立选厂商
 # ================================================================
-ACTIVE_LLM_VENDOR = "gribo_text"          # ✅ 调头：使用 Gribo 转发 Qwen
-ACTIVE_VLM_VENDOR = "gribo_text"          # ✅ 保持 Gribo (Gemini-3.1-Flash) 处理分镜
-ACTIVE_IMG_VENDOR = "gribo_img"          # ✅ 保持 Gribo (Gemini-3.1-Flash) 生图
-# 备选厂商（降级时才改）："doubao_v4" | "aliyun_dashscope"
+ACTIVE_LLM_VENDOR = "deepseek_v4_pro"    # DeepSeek V4 Pro（OpenAI 兼容）
+ACTIVE_VLM_VENDOR = "gribo_text"    # 与 LLM 同源；分镜多模态
+ACTIVE_IMG_VENDOR = "gribo_img"          # ✅ 生图仍走 Gribo
+# 备选厂商（降级时才改）："doubao_v4" | "aliyun_dashscope" | "deepseek_v4_pro"
 
 
 # ================================================================
@@ -47,6 +47,25 @@ VENDORS_PRESETS = {
             "img": "qwen-image-2.0",
         },
         "extra_params": {}
+    },
+
+    # ----------------------------------------------------------
+    # DeepSeek V4 Pro（OpenAI Chat Completions 兼容）
+    # 官方：base_url 不变，模型名 deepseek-v4-pro / deepseek-v4-flash
+    # ----------------------------------------------------------
+    "deepseek_v4_pro": {
+        "vendor_name": "DeepSeek V4 Pro",
+        "api_key": os.getenv("DEEPSEEK_API_KEY", ""),
+        "app_secret": os.getenv("DEEPSEEK_APP_SECRET", ""),
+        "base_url": "https://api.deepseek.com",
+        "dashscope_base_http": "",
+        "models": {
+            "llm": "deepseek-v4-pro",
+            "vlm": "deepseek-v4-pro",
+        },
+        "extra_params": {
+            "protocol": "openai_compatible",
+        }
     },
 
     # ----------------------------------------------------------

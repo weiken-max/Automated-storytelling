@@ -41,6 +41,8 @@ MAX_SUPPORTING = 3
 MAX_REF_CHARACTERS = 4
 # 配角三视图生图并发上限（与 MAX_SUPPORTING 一致，最多 3 人同时请求）
 MAX_SUPPORTING_REF_CONCURRENCY = 3
+# 是否允许在 cast 规划失败时回退到 legacy（仅主角）流水线
+ALLOW_LEGACY_REF_FALLBACK = False
 
 
 def _require_active_paths(create_if_missing: bool = False) -> dict:
@@ -790,15 +792,28 @@ def _build_ref_display_slots(cast_registry: dict, physical_anchors: dict) -> lis
 async def _run_synopsis_driven_protagonist_pipeline(topic: str):
     syn = _load_synopsis_dict()
     if not syn:
-        print("  ⚠️ [Cast] 未找到 temp_synopsis.json，回退旧流水线。")
-        await _run_legacy_protagonist_only(topic, target_stage=None)
-        return
+        msg = "  ❌ [Cast] 未找到 temp_synopsis.json，无法执行新版 cast 规划。"
+        print(msg)
+        if ALLOW_LEGACY_REF_FALLBACK:
+            print("  ⚠️ [Cast] 允许 fallback：回退旧流水线（仅主角）。")
+            await _run_legacy_protagonist_only(topic, target_stage=None)
+            return
+        raise RuntimeError("cast 规划失败：缺少 temp_synopsis.json（已禁用 legacy fallback）")
 
-    plan = llm_plan_cast_from_synopsis(topic, syn)
+    plan = None
+    for i in range(1, 3):
+        plan = llm_plan_cast_from_synopsis(topic, syn)
+        if plan:
+            break
+        print(f"  ⚠️ [Cast] 规划失败（第 {i}/2 次），正在重试...")
     if not plan:
-        print("  ⚠️ [Cast] 规划失败，回退旧流水线。")
-        await _run_legacy_protagonist_only(topic, target_stage=None)
-        return
+        msg = "  ❌ [Cast] 规划失败（2 次），未生成可用主/配角清单。"
+        print(msg)
+        if ALLOW_LEGACY_REF_FALLBACK:
+            print("  ⚠️ [Cast] 允许 fallback：回退旧流水线（仅主角）。")
+            await _run_legacy_protagonist_only(topic, target_stage=None)
+            return
+        raise RuntimeError("cast 规划失败：LLM 未返回有效计划（已禁用 legacy fallback）")
 
     try:
         write_refs_prompt_cast_from_synopsis(topic, syn, plan)
