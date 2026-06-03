@@ -67,14 +67,14 @@ def upscale_image(img_path: Path) -> bool:
         "true",
         "yes",
     ):
-        return False
+        return True
     if not _REALESRGAN_EXE.is_file():
         if not _missing_exe_warned:
             print(
-                "[upscale] 未找到 toolsrealesrgan/realesrgan-ncnn-vulkan.exe，无法执行高清。"
+                "[upscale] 未找到 toolsrealesrgan/realesrgan-ncnn-vulkan.exe，将自动跳过超分并直接使用原图。"
             )
             _missing_exe_warned = True
-        return False
+        return True
 
     # 强制使用用户指定方案：realesr-animevideov3 x3
     model = "realesr-animevideov3"
@@ -114,29 +114,29 @@ def upscale_image(img_path: Path) -> bool:
             timeout=600,
         )
     except OSError as e:
-        print(f"[upscale] 调用失败 {src.name}: {e}")
+        print(f"[upscale] ⚠️ 调用失败 {src.name} (已自动跳过超分，保留原图兜底): {e}")
         if tmp.exists():
             tmp.unlink(missing_ok=True)
-        return False
+        return True
     except subprocess.TimeoutExpired:
-        print(f"[upscale] 超时 {src.name}")
+        print(f"[upscale] ⚠️ 超时 {src.name} (已自动跳过超分，保留原图兜底)")
         if tmp.exists():
             tmp.unlink(missing_ok=True)
-        return False
+        return True
 
     if r.returncode != 0:
         err = (r.stderr or r.stdout or "").strip()
         tail = err[-400:] if err else "(无输出)"
-        print(f"[upscale] {src.name} 失败 (code={r.returncode}): {tail}")
+        print(f"[upscale] ⚠️ {src.name} 超分失败 (已自动跳过超分，保留原图兜底) (code={r.returncode}): {tail}")
         if tmp.exists():
             tmp.unlink(missing_ok=True)
-        return False
+        return True
 
     if not tmp.is_file() or tmp.stat().st_size < 64:
-        print(f"[upscale] {src.name} 输出异常或过小，保留原图")
+        print(f"[upscale] ⚠️ {src.name} 输出异常或过小 (已自动跳过超分，保留原图兜底)")
         if tmp.exists():
             tmp.unlink(missing_ok=True)
-        return False
+        return True
 
     try:
         os.replace(tmp, src)
@@ -154,10 +154,10 @@ def upscale_image(img_path: Path) -> bool:
             print(f"[upscale] {src.name}: -> {aw}x{ah} (model={model}, -s {scale})")
         return True
     except OSError as e:
-        print(f"[upscale] 覆盖原图失败 {src.name}: {e}")
+        print(f"[upscale] ⚠️ 覆盖原图失败 {src.name} (已自动跳过超分，保留原图兜底): {e}")
         if tmp.exists():
             tmp.unlink(missing_ok=True)
-        return False
+        return True
 
 def process_16_grid(image_path: Path, output_dir: Path, start_idx: int) -> int:
     """

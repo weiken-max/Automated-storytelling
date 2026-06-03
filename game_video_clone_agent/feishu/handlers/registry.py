@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from feishu.config import ACTION
 from feishu.handlers.actions.confirm_synopsis import ConfirmSynopsisAction, RequestReviseSynopsisAction
 from feishu.handlers.actions.confirm_character import ConfirmCharacterAction
-from feishu.handlers.actions.confirm_storyboard import ConfirmStoryboardAction, RejectStoryboardBatchAction
+from feishu.handlers.actions.confirm_storyboard import ConfirmStoryboardAction, RejectStoryboardBatchAction, ToggleBatchPromptsAction, RejectBatchWithPromptsAction
 from feishu.handlers.actions.cancel_project import CancelProjectAction
 from feishu.handlers.actions.pause_resume import PauseProjectAction, ResumeProjectAction
 from feishu.handlers.actions.refresh_topics import (
@@ -63,6 +63,8 @@ ACTION_REGISTRY = {
     # 分镜审批
     ACTION["APPROVE_STORYBOARDS"]:      ConfirmStoryboardAction(),
     ACTION["REJECT_STORYBOARD_BATCH"]:  RejectStoryboardBatchAction(),
+    ACTION["TOGGLE_BATCH_PROMPTS"]:     ToggleBatchPromptsAction(),
+    ACTION["REJECT_BATCH_WITH_PROMPTS"]: RejectBatchWithPromptsAction(),
     # 项目控制
     ACTION["CANCEL_PROJECT"]:           CancelProjectAction(),
     ACTION["PAUSE_PROJECT"]:            PauseProjectAction(),

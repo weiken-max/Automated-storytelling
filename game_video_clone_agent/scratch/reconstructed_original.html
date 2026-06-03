@@ -1,0 +1,2540 @@
+import json
+import os
+import sys
+log_path = r'C:\Users\86198\.gemini\antigravity\brain\2407058c-fded-46a3-a898-61406a3aada8\.system_generated\logs\transcript.jsonl'
+target_path = os.path.join(BASE_DIR, "palette_studio.html")
+print(f"Scanning {log_path}...")
+matches = []
+with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+    for idx, line in enumerate(f):
+        try:
+            data = json.loads(line)
+            # Look for write_to_file calls in tool_calls
+            tool_calls = data.get("tool_calls", [])
+            for tc in tool_calls:
+                name = tc.get("name", "")
+                args = tc.get("args", {})
+                if name == "write_to_file" and "palette_studio.html" in args.get("TargetFile", ""):
+                    content = args.get("CodeContent", "")
+                    print(f"Match found at line {idx+1}: size={len(content)} bytes")
+                    matches.append((idx+1, content))
+        except Exception as e:
+            pass
+last_doctype = doctype_positions[-1]
+if matches:
+    # Let's save the largest content to scratch/past_clean.html
+    largest = max(matches, key=lambda x: len(x[1]))
+    target_out = "scratch/past_clean.html"
+    with open(target_out, "w", encoding="utf-8") as out:
+        out.write(largest[1])
+    print(f"🎉 Saved largest matched content ({len(largest[1])} bytes) from line {largest[0]} to {target_out}!")
+else:
+    print("No matching write_to_file calls found in the log.")
+    ('id="chEditorCast"',                    True),
+    ('id="chEditorStoryboard"',              True),
+    ('id="chEditorImage"',                   True),
+    ('id="chEditorVoiceover"',               True),
+    ('function rollbackChannelPresets',      True),
+    ('bak.cast',                             True),
+    ('cast_prompt: state.presets.cast',      True),
+    ('cast_prompt: state.presets.cast_prompt', False),
+    ('function saveChannelFromEditor',       True),
+    ('</html>',                              True),
+]
+PASS: getChannelPresets: cast fallback
+passed = failed = 0
+for pattern, should_exist in checks:
+    found = pattern in real_html
+    ok = (found == should_exist)
+    status = 'PASS' if ok else 'FAIL'
+    if ok: passed += 1
+    else: failed += 1
+    print(f"  {status}: {'exists' if should_exist else 'absent'} -> {pattern[:60]}")
+prev_c = draft_lines[507]
+if failed > 0:
+    print(f"\nERROR: {failed} checks failed, aborting write!")
+    sys.exit(1)
+2. 弹窗底部出现「**👤 角色与资产定妆 Prompt**」输入框
+with open(target_path, 'w', encoding='utf-8') as f:
+    f.write(real_html)
+   [character]
+final_lines = real_html.count('\n') + 1
+print(f"\nSUCCESS: Wrote {len(real_html)} bytes, {final_lines} lines -> {target_path}")
+print(f"All {passed} sanity checks passed!")
+   像素风格场景背景 depicting {entity}...
+prev_c = draft_lines[750]
+   [prop]
+   像素风格道具图标 of {entity}...
+   ```
+4. 点击 **💾 保存频道** → 下次编译时 `cast_prompt` 自动随 `render_flow` 发送给后端
+    "mode_path": "RED",
+    "original_text": "",
+    "compiled_voiceover": "",
+    "entities": [],
+    "style_presets": "cinematic realism, commercial grading, 35mm photograph",
+    "seed": 40984180,
+    "polish_enabled": False,
+    "last_compiled_synopsis": {}
+}
+// MISSING LINE 79
+# ── 如果 data 目录存在，托管 data/runs 目录供前端直连读取生成的图片/音频/视频 ──
+RUNS_DIR = os.path.join(BASE_DIR, "data", "runs")
+if os.path.exists(RUNS_DIR):
+    app.mount("/static/runs", StaticFiles(directory=RUNS_DIR), name="runs")
+// MISSING LINE 84
+# ── 统一托管前端素材 ──
+app.mount("/static", StaticFiles(directory=BASE_DIR), name="static")
+                    for chunk in chunks:
+                        t_content = decode_log_string(chunk.get("TargetContent", ""))
+# ── Pydantic 请求模型定义 ──
+class PolishFlow(BaseModel):
+    enabled: bool
+          outline: "你是一名科普内容策划大师，专注于将晦涩的科学原理转化为令人上瘾的短视频内容。\n任务：根据用户给出的科普主题，设计一个充满震撼数据、反直觉结论与科学悬疑感的纪录片式梗概。\n\n要求：\n1. 开篇必须有一个颠覆常识的惊人事实或数字。\n2. 按「现象→原理→实验证据→颠覆性结论」逻辑链展开。\n3. 必须包含至少3个具体、可视化的数字。\n4. 分幕结构（硬性）：synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n\n输出 JSON（键名固定）：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"科学背景\",\"identity\":\"主角\",\"industry_rules\":[\"科学规律\"]}",
+    immutable_lock: bool = True
+                        if t_content_norm in html_norm:
+class VoiceoverFlow(BaseModel):
+    system_prompt: str = ""
+                        else:
+class RenderFlow(BaseModel):
+    style_presets: str = ""
+    seed: int = 40984180
+            pass
+// MISSING LINE 102
+print(f"\nReplay summary:")
+print(f"Applied successfully: {replace_count} replacements.")
+print(f"Skipped (unmatched): {skip_count} replacements.")
+// MISSING LINE 106
+with open(target_out_path, "w", encoding="utf-8") as f:
+    f.write(html)
+=== MATCH 19 (Length: 1272 characters) ===
+print(f"\n🎉 Successfully wrote replayed and fully clean HTML ({len(html)} bytes) to {target_out_path}!")
+// MISSING LINE 111
+// MISSING LINE 112
+// MISSING LINE 113
+// MISSING LINE 114
+// MISSING LINE 115
+// MISSING LINE 116
+// MISSING LINE 117
+// MISSING LINE 118
+// MISSING LINE 119
+// MISSING LINE 120
+    // 监听 pywebviewready 以触发历史会话自愈检测
+    window.addEventListener('pywebviewready', function() {
+      detectRestorableSession();
+    });"""
+// MISSING LINE 125
+assert old_listener in html, "Could not find event listener in palette_studio.html"
+html = html.replace(old_listener, new_listener, 1)
+print("4. Updated pywebviewready event listener successfully.")
+// MISSING LINE 129
+      showToast(`🎲 正在为「${ch ? ch.name : '当前频道'}」脑暴剧本灵感...`);
+# 5. Add all JS functions after onBackendProgress
+old_progress = """    function onBackendProgress(stage, percent, message) {
+      console.log('[Bridge] ' + stage + ' ' + percent + '% - ' + message);
+      var logEl = document.getElementById('assistantLogText');
+      if (logEl && message) { logEl.innerText = message; }
+    }"""
+// MISSING LINE 137
+new_js = """    function onBackendProgress(stage, percent, message) {
+      console.log('[Bridge] ' + stage + ' ' + percent + '% - ' + message);
+      var logEl = document.getElementById('assistantLogText');
+// MISSING LINE 141
+// MISSING LINE 142
+// MISSING LINE 143
+// MISSING LINE 144
+// MISSING LINE 145
+// MISSING LINE 146
+// MISSING LINE 147
+// MISSING LINE 148
+// MISSING LINE 149
+// MISSING LINE 150
+// MISSING LINE 151
+// MISSING LINE 152
+// MISSING LINE 153
+// MISSING LINE 154
+// MISSING LINE 155
+// MISSING LINE 156
+// MISSING LINE 157
+// MISSING LINE 158
+// MISSING LINE 159
+// MISSING LINE 160
+// MISSING LINE 161
+// MISSING LINE 162
+// MISSING LINE 163
+// MISSING LINE 164
+      </div>
+    </div>
+  </div>
+// MISSING LINE 168
+  <!-- 🎨 频道编辑器模态弹窗 -->
+      <div class="pt-2 flex justify-center space-x-4">
+        <button onclick="document.getElementById('sessionRestoreModal').classList.add('hidden')" class="px-5 py-2.5 bg-slate-850 hover:bg-slate-800 text-slate-400 font-semibold text-xs rounded-xl transition border border-slate-800 cursor-pointer">
+          放弃恢复，开启新片 ✕
+        </button>
+        <button onclick="restoreSession()" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-xl transition-all shadow-lg shadow-indigo-600/30 flex items-center space-x-1 cursor-pointer">
+          <span>🚀 恢复现场并继续</span>
+        </button>
+      </div>
+    </div>
+  </div>
+        </div>
+  <!-- 🎨 频道编辑器模态弹窗 -->
+  <div id="channelEditorModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+    <div class="w-full max-w-2xl bg-[#0D1127] border border-indigo-500/20 rounded-2xl shadow-2xl flex flex-col overflow-hidden" style="max-height:90vh">
+      <!-- Header -->
+      <div class="flex items-center justify-between px-6 py-4 border-b border-slate-900/80 shrink-0">
+        <div class="flex items-center space-x-3">
+          <span id="chEditorEmoji" class="text-2xl">🎭</span>
+          <div>
+            <h3 id="chEditorTitle" class="text-sm font-bold text-slate-100">新增创作频道</h3>
+            <p class="text-[10px] text-slate-500">配置频道专属信息与提示词预设</p>
+          </div>
+        </div>
+        <button onclick="closeChannelEditor()" class="text-slate-400 hover:text-white text-lg cursor-pointer">✕</button>
+      </div>
+          <div class="col-span-2 space-y-1.5">
+      <!-- Scrollable Body -->
+      <div class="overflow-y-auto flex-1 p-6 space-y-5 no-scrollbar">
+              class="w-full bg-[#05070E] border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none">
+        <!-- Row 1: name + emoji + color -->
+        <div class="grid grid-cols-3 gap-4">
+          <div class="col-span-1 space-y-1.5">
+            </div>
+          </div>
+        `;
+      });
+            <!-- Colors rendered by JS -->
+      container.innerHTML = html;
+    }
+        </div>
+    function showLargeGridImage(url) {
+      if (!url) return;
+      document.getElementById("largeGridImg").src = url;
+      document.getElementById("overlayLargeGrid").classList.remove("hidden");
+    }
+            <label class="flex items-center gap-2.5 bg-[#05070E] border border-slate-800 rounded-xl p-3 cursor-pointer transition-all hover:border-amber-500/50" id="chTypeLabelScience">
+    function closeLargeGrid() {
+      document.getElementById("overlayLargeGrid").classList.add("hidden");
+      document.getElementById("largeGridImg").src = "";
+    }
+              </div>
+    async function handleRegenBatch(batchIndex, btn) {
+      if (state.isRunning) {
+        showToast("⏳ 任务正在全力运转中，请勿重复点击！");
+        return;
+          statusBadge = `<span class="px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[9px] font-bold animate-pulse flex items-center space-x-1"><span>●</span> <span>运行中</span></span>`;
+          borderClass = "border-amber-500/40";
+          bgClass = "bg-amber-500/[0.04]";
+          titleColor = "text-amber-300 font-semibold";
+          pulseClass = "shadow-[0_0_15px_rgba(245,158,11,0.08)] scale-[1.01]";
+        } else {
+          statusBadge = `<span class="px-2 py-0.5 rounded-lg bg-slate-800/40 text-slate-500 border border-slate-800 text-[9px] font-semibold flex items-center space-x-1"><span>●</span> <span>等待中</span></span>`;
+        }
+      const oldBtnHtml = btn.innerHTML;
+        const stageEl = document.createElement("div");
+        stageEl.className = `p-4 rounded-2xl border ${borderClass} ${bgClass} ${pulseClass} space-y-3 transition-all duration-300 hover:border-indigo-500/30`;
+        <div class="w-3.5 h-3.5 border-2 border-rose-300 border-t-transparent rounded-full animate-spin"></div>
+        let headerHtml = `
+          <div class="flex justify-between items-start cursor-pointer" onclick="document.getElementById('stageCalls_${idx}').classList.toggle('hidden')">
+            <div class="space-y-1">
+              <div class="text-[9px] text-slate-500 font-mono tracking-widest uppercase">STAGE 0${idx+1}</div>
+              <div class="text-xs ${titleColor} flex items-center space-x-1.5">
+                <span class="text-sm select-none">${icon}</span>
+                <span>${stage.name}</span>
+              </div>
+            </div>
+            <div class="flex items-center space-x-2">
+              ${statusBadge}
+              <span class="text-[9px] text-slate-600 font-mono select-none">▼</span>
+            </div>
+          </div>
+        </div>
+html = html.replace(old_viewer_render_flow, new_viewer_render_flow)
+        <!-- Voiceover Prompt -->
+        <div class="space-y-1.5">
+# 8. compile_story payloads
+# Replace in applyD2Feedback (in D2 screen)
+old_d2_feedback_payload = """            render_flow: {
+              style_presets: state.presets.image,
+              seed: 12345,
+              cast_prompt: state.presets.cast_prompt,
+              storyboard_prompt: state.presets.storyboard_prompt
+            }"""
+        </div>
+new_d2_feedback_payload = """            render_flow: {
+              style_presets: state.presets.image,
+              seed: 12345,
+              cast_prompt: state.presets.cast,
+              storyboard_prompt: state.presets.storyboard
+            }"""
+            placeholder="例如：Cyanide and Happiness comic style, 2D vector / flat graphic cartoon..."
+assert old_d2_feedback_payload in html, "Could not find applyD2Feedback compile_story payload!"
+html = html.replace(old_d2_feedback_payload, new_d2_feedback_payload)
+      </div>
+# Replace in handleC1Launch compile_story
+old_c1_compile_payload = """              render_flow: { style_presets: state.presets.image, seed: state.seed }"""
+      <div class="px-6 py-4 border-t border-slate-900/80 flex items-center justify-between shrink-0 bg-[#090D1E]">
+new_c1_compile_payload = """              render_flow: {
+                style_presets: state.presets.image,
+                seed: state.seed,
+                cast_prompt: state.presets.cast,
+                storyboard_prompt: state.presets.storyboard
+              }"""
+            <span>🔙 回滚到上一版本</span>
+assert old_c1_compile_payload in html, "Could not find handleC1Launch compile_story payload!"
+html = html.replace(old_c1_compile_payload, new_c1_compile_payload)
+        <div class="flex items-center space-x-3">
+          <button onclick="closeChannelEditor()" class="px-5 py-2 text-xs text-slate-400 hover:text-white transition cursor-pointer">取消</button>
+# --- PART C: Save Rebuilt Clean HTML ---
+        </div>
+print(f"6. Writing final clean, uncorrupted HTML to {target_path}...")
+with open(target_path, "w", encoding="utf-8") as f:
+    f.write(html)
+| 点击摇一摇 | 后台使用美食频道专属 Prompt 生成大纲，填充到当前文本框 |
+print("🎉 HTML Rebuilt successfully and saved!")
+| 切换到"科普"频道 | 草稿、提示词完全独立，不受美食频道影响 |
+| 尝试删除原厂"剧情故事"频道 | 系统拒绝，弹出保护提示 |
+| 退出 App 重新启动 | 自建"美食"频道仍然存在，配置完好 |
+      <div class="flex items-center space-x-2.5">
+---
+                <p class="text-[10px] text-slate-500 leading-normal font-light">★ 本提示词是在 C1 界面勾选“开启剧本润色”时，送往后端的 System 变量。未开启润色时，该请求体将被隔离关闭。</p>
+## 六、开放问题（需大导演决策）
+            <span>🗑️ 删除此频道</span>
+            cast_prompt: state.presets.cast,
+            storyboard_prompt: state.presets.storyboard
+          }"""
+1. **摇一摇结果的处理方式**：
+assert old_viewer_render_flow in html, "Could not find updateJsonPayloadViewer render_flow definition!"
+html = html.replace(old_viewer_render_flow, new_viewer_render_flow)
+                <textarea id="promptText-voiceover" oninput="syncPromptToState('voiceover')" rows="8" class="w-full bg-[#05070E] border border-slate-800 rounded-xl p-4 text-xs font-mono text-slate-200 focus:border-indigo-500 focus:outline-none leading-relaxed"></textarea>
+2. **首页卡片布局风格**：
+# 8. compile_story payloads
+# Replace in applyD2Feedback (in D2 screen)
+old_d2_feedback_payload = """            render_flow: {
+              style_presets: state.presets.image,
+              seed: 12345
+            }"""
+  <!-- 📊 右侧抽屉：后台引擎实时审计大盘 -->
+new_d2_feedback_payload = """            render_flow: {
+              style_presets: state.presets.image,
+              seed: 12345,
+              cast_prompt: state.presets.cast,
+              storyboard_prompt: state.presets.storyboard
+            }"""
+// MISSING LINE 324
+assert old_d2_feedback_payload in html, "Could not find applyD2Feedback compile_story payload!"
+html = html.replace(old_d2_feedback_payload, new_d2_feedback_payload)
+// MISSING LINE 327
+# Replace in handleC1Launch compile_story
+old_c1_compile_payload = """              render_flow: { style_presets: state.presets.image, seed: state.seed }"""
+// MISSING LINE 330
+new_c1_compile_payload = """              render_flow: {
+                style_presets: state.presets.image,
+                seed: state.seed,
+                cast_prompt: state.presets.cast,
+                storyboard_prompt: state.presets.storyboard
+              }"""
+        "TargetContent": "\"    const state = {\\n      appState: \\\"SCREEN_A\\\",\\n      selectedColor: \\\"\\\",\\n      modePath: \\\"RED\\\", // RED, YELLOW, BLUE\\n      polishEnabled: false,\\n\\n      // 后台返回的真实编译结果\\n      compiledVoiceover: \\\"\\\",\\n      extractedEntities: [],\\n      assets: [],      // 定妆照卡片\\n      storyboards: [], // 分镜帧底片\\n      relativeVideoPath: \\\"\\\", // 合成视频在 Runs 下的相对路径，如 \\\"Run_xxx/output/narrative_v6_final_epic.mp4\\\"\\n      \\n      // 后画后悔药对比备份\\n      assetHistory: {}, // {card_id: {new_url, old_url}}\\n      frameHistory: {}, // {frame_idx: {new_url, old_url}}\\n    };\"",
+assert old_c1_compile_payload in html, "Could not find handleC1Launch compile_story payload!"
+html = html.replace(old_c1_compile_payload, new_c1_compile_payload)
+        "toolSummary": "\
+// MISSING LINE 341
+# --- PART C: Save Final HTML ---
+// MISSING LINE 343
+print(f"6. Writing final HTML to {target_path}...")
+with open(target_path, "w", encoding="utf-8") as f:
+    f.write(html)
+        "💡 立即发起一键重试",
+print("HTML Rebuilt successfully!")
+        retryCallback
+      );
+    }"""
+// MISSING LINE 352
+new_api_error = """    // ── 🩺 容灾报错与重试拦截机制 ──
+    function handleApiError(err, retryCallback) {
+      console.error("[Bridge ERROR]:", err);
+// MISSING LINE 356
+      // 抛出异常时，前端本地状态（输入文本、调好的 presets 参数等）绝对保留！
+      // 弹出一个高质感对话框，提供“一键无缝重试”
+      showCustomModal(
+        "⚠️ 后台处理发生异常",
+        `后台脚本执行中出现错误：${err && err.message ? err.message : '未知异常'}。请点击下方按钮重新发起请求（当前输入内容已全部保留）。`,
+        "💡 立即重新发起请求",
+        true, // 显示取消按钮，留存状态
+        retryCallback
+      );
+    }"""
+// MISSING LINE 367
+if old_api_error not in html:
+    print("WARNING: Exact old_api_error not found, trying fuzzy replacement...")
+    pattern = r'function\s+handleApiError\s*\(err,\s*retryCallback\)\s*\{.*?showCustomModal\(.*?"⚠️ 本地生图显卡/API 队列排队中".*?\);\s*\}'
+    html, count = re.subn(pattern, new_api_error, html, flags=re.DOTALL)
+    print(f"Fuzzy handleApiError replaced: {count} occurrences")
+else:
+    html = html.replace(old_api_error, new_api_error)
+    print("Exact handleApiError replaced.")
+// MISSING LINE 376
+html_path.write_text(html, encoding="utf-8")
+print("SUCCESS: patch_all_bridge_fetches.py script ran completely!")
+// MISSING LINE 379
+// MISSING LINE 380
+// MISSING LINE 381
+// MISSING LINE 382
+// MISSING LINE 383
+// MISSING LINE 384
+// MISSING LINE 385
+// MISSING LINE 386
+// MISSING LINE 387
+// MISSING LINE 388
+// MISSING LINE 389
+        const vPlayer = document.getElementById("epicVideoPlayer");
+        const vPlaceholder = document.getElementById("videoPlaceholder");
+        if (vPlaceholder) vPlaceholder.classList.add("hidden");
+        if (vPlayer) {
+          vPlayer.src = res.video_url;
+          vPlayer.classList.remove("hidden");
+        }
+      }
+// MISSING LINE 398
+      navigateTo(res.stage);
+      showToast(`🎉 成功为您自动恢复至 [${res.stage} 界面]！`);
+    }
+// MISSING LINE 402
+    // ── ✍️ D2 大纲意见反馈重写逻辑 ──
+    async function applyD2Feedback() {
+      if (state.isRunning) {
+        showToast("⏳ 任务正在全力运转中，请勿重复点击！");
+        return;
+      }
+          original_text: state.rawScript,
+      const feedbackInput = document.getElementById("d2FeedbackInput");
+      const feedback = feedbackInput.value.trim();
+      if (!feedback) {
+        showToast("⚠️ 请先写入您的具体修改意见（例如：加一个猫咪助手）！");
+        return;
+      }
+            voiceover_flow: { system_prompt: state.presets.voiceover },
+      state.isRunning = true;
+      showToast("🧠 正在根据您的修改建议由编剧大模型重新雕琢大纲...");
+              seed: 12345,
+      const btn = document.getElementById("applyFeedbackBtn");
+      const oldHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `
+        <div class="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+// MISSING LINE 425
+      `;
+          state.rawScript = res.data.compiled_voiceover;
+      try {
+        const res = await pywebview.api.compile_story({
+          app_id: "palette-cinema-id",
+          mode_path: "BLUE",
+          original_text: state.rawScript,
+          pipeline_config: {
+            polish_flow: {
+              enabled: true,
+              system_prompt: state.presets.outline,
+              feedback: feedback
+            },
+            voiceover_flow: { system_prompt: state.presets.voiceover },
+            render_flow: {
+              style_presets: state.presets.image,
+              seed: 12345,
+              cast_prompt: state.presets.cast_prompt,
+              storyboard_prompt: state.presets.storyboard_prompt
+            }
+          }
+        });
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+        if (res.status === "success") {
+          state.rawScript = res.data.compiled_voiceover;
+          document.getElementById("shakeOutlineContent").innerText = res.data.compiled_voiceover;
+          feedbackInput.value = "";
+          showToast("🎉 大纲重写成功！大模型已完美吸纳您的意见！");
+        } else {
+          showCustomModal("⚠️ 后端排队中", "重写大纲失败，请重试！");
+        }
+      } catch(err) {
+        handleApiError(err, applyD2Feedback);
+      } finally {
+        state.isRunning = false;
+        btn.disabled = false;
+        btn.innerHTML = oldHtml;
+      }
+    }"""
+        if (res.status === "success") {
+assert old_progress in html, "Could not find onBackendProgress function in palette_studio.html"
+html = html.replace(old_progress, new_js, 1)
+print("5. Added all JS logic including applyD2Feedback and backstage audit logs successfully.")
+          showToast("🎉 大纲重写成功！大模型已完美吸纳您的意见！");
+html_path.write_text(html, encoding="utf-8")
+          showCustomModal("⚠️ 后端排队中", "重写大纲失败，请重试！");
+        }
+      } catch(err) {
+        handleApiError(err, applyD2Feedback);
+      } finally {
+        state.isRunning = false;
+        btn.disabled = false;
+        btn.innerHTML = oldHtml;
+          <div class="bg-slate-950 border border-slate-850 rounded-2xl p-5 space-y-3 shadow-inner">
+            <div class="flex justify-between items-center border-b border-slate-900 pb-2">
+// MISSING LINE 481
+// MISSING LINE 482
+// MISSING LINE 483
+// MISSING LINE 484
+// MISSING LINE 485
+// MISSING LINE 486
+// MISSING LINE 487
+// MISSING LINE 488
+// MISSING LINE 489
+// MISSING LINE 490
+// MISSING LINE 491
+// MISSING LINE 492
+// MISSING LINE 493
+// MISSING LINE 494
+// MISSING LINE 495
+// MISSING LINE 496
+// MISSING LINE 497
+// MISSING LINE 498
+// MISSING LINE 499
+      }
+    }"""
+// MISSING LINE 502
+assert old_progress in html, "Could not find onBackendProgress function in palette_studio.html"
+html = html.replace(old_progress, new_js, 1)
+print("5. Added all JS logic including applyD2Feedback and backstage audit logs successfully.")
+// MISSING LINE 506
+html_path.write_text(html, encoding="utf-8")
+print("SUCCESS: patch_drawer_and_recovery.py script ran completely!")
+// MISSING LINE 509
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+// MISSING LINE 511
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full bg-[#03050C] text-slate-200">
+<head>
+  <meta charset="UTF-8">
+// MISSING LINE 516
+// MISSING LINE 517
+// MISSING LINE 518
+// MISSING LINE 519
+// MISSING LINE 520
+// MISSING LINE 521
+// MISSING LINE 522
+// MISSING LINE 523
+// MISSING LINE 524
+// MISSING LINE 525
+// MISSING LINE 526
+// MISSING LINE 527
+// MISSING LINE 528
+// MISSING LINE 529
+// MISSING LINE 530
+// MISSING LINE 531
+// MISSING LINE 532
+// MISSING LINE 533
+// MISSING LINE 534
+// MISSING LINE 535
+    1220:         outline:    channel.presets.outline    || DEFAULT_PRESETS.outline,
+    1221:         storyboard: channel.presets.storyboard || DEFAULT_PRESETS.storyboard
+    1222:       };
+>>> 1223: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1224:
+    1225:       polishEnabled: false,
+    1226:       defaultDownloadFolder: localStorage.getItem("palette_default_do
+    1227: <truncated 242 bytes>
+    1228:       // 后画后悔药对比备份
+    1229:       assetHistory: {}, // {card_id: {new_url, old_url}}
+    1230:       frameHistory: {}, // {frame_idx: {new_url, old_url}}
+    1231:     };
+                title="修改当前频道的摸一摇大纲/画面/旁白提示词">
+--- Corrupted line at index 1227 (Line 1227):
+Content: <truncated 242 bytes>
+Surrounding lines:
+    1219:         voiceover:  channel.presets.voiceover  || DEFAULT_PRESETS.voiceover,
+    1220:         outline:    channel.presets.outline    || DEFAULT_PRESETS.outline,
+    1221:         storyboard: channel.presets.storyboard || DEFAULT_PRESETS.storyboard
+    1222:       };
+    1223: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1224:
+    1225:       polishEnabled: false,
+    1226:       defaultDownloadFolder: localStorage.getItem("palette_default_do
+>>> 1227: <truncated 242 bytes>
+    1228:       // 后画后悔药对比备份
+          </div>
+        </div>
+    1231:     };
+          <!-- 页底 -->
+          <div class="flex justify-end space-x-4 pt-4 border-t border-slate-850">
+            <button onclick="navigateTo('B')" class="px-5 py-2.5 text-xs text-slate-400 hover:text-white transition">
+              放弃配置
+            </button>
+            <button onclick="savePresets()" class="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 font-bold text-white rounded-xl transition text-xs tracking-wider uppercase shadow-lg shadow-indigo-500/10">
+              确认并同步提示词预设 ➔ (回流至C1)
+            </button>
+          </div>
+          </div>
+        <!-- ==================== 16 宫格大图放大弹窗 ==================== -->
+        <div id="overlayLargeGrid" class="hidden fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/90 backdrop-blur-md cursor-zoom-out" onclick="closeLargeGrid()">
+          <div class="relative max-w-7xl max-h-[90vh] bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl flex items-center justify-center" onclick="event.stopPropagation()">
+            <img id="largeGridImg" src="" class="max-w-full max-h-[85vh] object-contain" />
+            <button onclick="closeLargeGrid()" class="absolute top-4 right-4 w-10 h-10 bg-black/60 hover:bg-slate-900 border border-slate-800 text-white rounded-full flex items-center justify-center font-bold text-lg transition cursor-pointer">✕</button>
+          </div>
+        </div>
+// MISSING LINE 582
+        </section>
+// MISSING LINE 584
+        <!-- ==================== 界面 C1: 核心输入总控通道 ==================== -->
+        <
+// MISSING LINE 587
+// MISSING LINE 588
+// MISSING LINE 589
+// MISSING LINE 590
+// MISSING LINE 591
+// MISSING LINE 592
+// MISSING LINE 593
+// MISSING LINE 594
+// MISSING LINE 595
+// MISSING LINE 596
+// MISSING LINE 597
+// MISSING LINE 598
+// MISSING LINE 599
+// MISSING LINE 600
+// MISSING LINE 601
+// MISSING LINE 602
+// MISSING LINE 603
+// MISSING LINE 604
+// MISSING LINE 605
+// MISSING LINE 606
+// MISSING LINE 607
+// MISSING LINE 608
+// MISSING LINE 609
+// MISSING LINE 610
+// MISSING LINE 611
+                  <span class="font-bold text-indigo-300 text-[10px] tracking-wide">${call.step_cn}</span>
+                  <span>${callOkMark}</span>
+                </div>
+                <div class="flex justify-between items-center text-[9px] text-slate-500 font-mono">
+                  <span>🤖 模型: ${call.model || '-'}</span>
+                  <span>⚡ 耗时: ${call.duration.toFixed(2)}s (第 ${call.attempt} 次)</span>
+                </div>
+            `;
+            if (call.error) {
+              callsHtml += `
+                <div class="text-[9px] text-rose-400/90 font-mono bg-rose-950/20 p-2 rounded-lg border border-rose-900/30 overflow-x-auto whitespace-pre leading-relaxed">
+                  Error Detail: ${call.error}
+                </div>
+              `;
+            }
+            callsHtml += `</div>`;
+          });
+        }
+// MISSING LINE 630
+        if (stage.calls.length > 0) {
+          headerHtml += `
+            <div class="flex justify-between items-center text-[9px] text-slate-500 font-mono pt-2 border-t border-slate-850/20">
+              <span>⏱️ 累计开销: <span class="text-indigo-400 font-semibold">${totalDuration.toFixed(2)}s</span></span>
+              <span>📡 调用次数: <span class="text-slate-400 font-semibold">${attemptsCount}次</span></span>
+            </div>
+          `;
+        }
+// MISSING LINE 639
+        callsHtml += `</div>`;
+        stageEl.innerHTML = headerHtml + callsHtml;
+        listEl.appendChild(stageEl);
+      });
+    }"""
+html = html.replace(old_backstage, new_backstage)
+          <!-- 编译区主头部 -->
+# 8. Add defensive checks inside other recovery fields in case elements are missing
+html_path.write_text(html, encoding="utf-8")
+print("SUCCESS: HTML Patcher script ran completely!")
+                <span id="d1LockBadge" class="px-2 py-0.5 text-[9px] tracking-widest uppercase font-bold rounded bg-red-950 border border-red-800/80 text-red-200">🔒 ORIGINAL_TEXT_LOCKED</span>
+                <h3 class="text-xl font-bold tracking-wide text-slate-100">核心视觉定妆照与配音旁白处理区 (D1)</h3>
+              </div>
+              <p class="text-xs text-slate-400 mt-1.5 font-light">
+                系统严格按序编译数据流：首先，大模型在后台拆解编写解说旁白；随后，提炼实体词，调用图片引擎渲染高保真定妆照大卡。
+              </p>
+            </div>
+            <span class="text-xs text-slate-500 font-mono tracking-widest hidden md:inline">SYSTEM: PIPELINE_STAGE_1</span>
+          </div>
+// MISSING LINE 659
+          <!-- 双进度异步运行仪表盘 -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 bg-[#04060E]/60 p-6 rounded-2xl border border-slate-850 shadow-inner">
+// MISSING LINE 662
+            <!-- 步骤 1 进度条 -->
+            <div class="space-y-3">
+              <div class="flex justify-between items-center text-xs">
+                <span class="font-bold flex items-center space-x-2.5">
+                  <span id="p1StatusDot" class="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>
+                  <span id="p1StatusText" class="text-slate-300">1. 第三人称解说词文本生成中...</span>
+                </span>
+                <span id="p1Val" class="font-mono text-slate-400">0%</span>
+              </div>
+              <div class="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden">
+                <div id="p1Bar" class="bg-gradient-to-r from-red-650 via-indigo-650 to-indigo-500 h-full w-0 transition-all duration-300"></div>
+              </div>
+            </div>
+// MISSING LINE 676
+            <!-- 步骤 2 进度条 -->
+            <div class="space-y-3">
+              <div class="flex justify-between items-center text-xs">
+                <span class="font-bold flex items-center space-x-2.5">
+                  <span id="p2StatusDot" class="w-2.5 h-2.5 rounded-full bg-slate-800"></span>
+                  <span id="p2StatusText" class="text-slate-500">2. 角色及美术场景定妆照大图绘制中...</span>
+                </span>
+                <span id="p2Val" class="font-mono text-slate-550">0%</span>
+              </div>
+              <div class="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden">
+                <div id="p2Bar" class="bg-gradient-to-r from-indigo-600 via-purple-650 to-emerald-500 h-full w-0 transition-all duration-300"></div>
+              </div>
+            </div>
+// MISSING LINE 690
+          </div>
+// MISSING LINE 692
+          <!-- 💬 进度文字小助手日志 -->
+          <div class="bg-slate-950/60 border border-slate-900 rounded-xl p-3.5 px-5 flex items-center space-x-3 shadow-inner">
+            <span class="text-[10px] font-mono font-bold text-indigo-400 uppercase tracking-widest animate-pulse">Assistant Log:</span>
+          }"""
+          </div>
+assert old_viewer_render_flow in html, "Could not find updateJsonPayloadViewer render_flow definition!"
+html = html.replace(old_viewer_render_flow, new_viewer_render_flow)
+          <div id="d1ResultArea" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-8 pt-4 animate-fade-in">
+// MISSING LINE 701
+# 2. compile_story payloads
+# Replace in applyD2Feedback (in D2 screen)
+old_d2_feedback_payload = """            render_flow: {
+              style_presets: state.presets.image,
+              seed: 12345
+            }"""
+// MISSING LINE 708
+new_d2_feedback_payload = """            render_flow: {
+              style_presets: state.presets.image,
+              seed: 12345,
+              cast_prompt: state.presets.cast,
+              storyboard_prompt: state.presets.storyboard
+            }"""
+// MISSING LINE 715
+assert old_d2_feedback_payload in html, "Could not find applyD2Feedback compile_story payload!"
+html = html.replace(old_d2_feedback_payload, new_d2_feedback_payload)
+// MISSING LINE 718
+# Replace in handleC1Launch compile_story
+old_c1_compile_payload = """              render_flow: { style_presets: state.presets.image, seed: state.seed }"""
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+new_c1_compile_payload = """              render_flow: {
+                style_presets: state.presets.image,
+                seed: state.seed,
+                cast_prompt: state.presets.cast,
+                storyboard_prompt: state.presets.storyboard
+              }"""
+                  <div class="relative w-full aspect-[4/3] bg-slate-950 rounded-xl border border-slate-850 overflow-hidden flex items-center justify-center" id="cardImg0">
+assert old_c1_compile_payload in html, "Could not find handleC1Launch compile_story payload!"
+html = html.replace(old_c1_compile_payload, new_c1_compile_payload)
+// MISSING LINE 731
+                  <div class="space-y-1">
+# --- PART D: Save final clean, fully compiled HTML ---
+                      <span class="text-xs font-bold text-slate-100" id="cardName0">角色：主角</span>
+print(f"7. Saving clean, uncorrupted and patched HTML to {target_path}...")
+with open(target_path, "w", encoding="utf-8") as f:
+    f.write(html)
+                  </div>
+print("🎉 Success! Assembly ran fully and saved output file!")
+                    <span>提示词精整</span>
+                    <span>点击调优 ›</span>
+                  </div>
+                </div>
+// MISSING LINE 744
+                <!-- 卡片1: 核心大场景 -->
+                <div onclick="openD1_1(1)" class="group relative bg-[#0D1227] border border-slate-800 hover:border-indigo-500/80 rounded-2xl shadow-2xl p-4 cursor-pointer transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_15px_30px_rgba(99,102,241,0.15)] flex flex-col space-y-3">
+                  <div class="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+// MISSING LINE 748
+                  <div class="relative w-full aspect-[4/3] bg-slate-950 rounded-xl border border-slate-850 overflow-hidden flex items-center justify-center" id="cardImg1">
+                    <div class="text-xs text-slate-600 animate-pulse">Awaiting Scene</div>
+                  </div>
+// MISSING LINE 752
+                  <div class="space-y-1">
+                    <div class="flex justify-between items-center">
+                      <span class="text-xs font-bold text-slate-100" id="cardName1">场景：核心场景</span>
+                      <span class="px-1.5 py-0.5 bg-indigo-900/40 text-[9px] font-bold text-indigo-300 rounded font-mono">CAST ID: 02</span>
+                    </div>
+                    <p class="text-[10px] text-slate-400 line-clamp-2 leading-relaxed" id="cardPrompt1">Generating...</p>
+                  </div>
+                  <div class="pt-2 border-t border-slate-850 flex items-center justify-between text-[10px] text-indigo-400 font-bold group-hover:text-indigo-300">
+                    <span>提示词精整</span>
+                    <span>点击调优 ›</span>
+                  </div>
+                </div>
+// MISSING LINE 765
+                <!-- 卡片2: 核心道具 -->
+                <div onclick="openD1_1(2)" class="group relative bg-[#0D1227] border border-slate-800 hover:border-indigo-500/80 rounded-2xl shadow-2xl p-4 cursor-pointer transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_15px_30px_rgba(99,102,241,0.15)] flex flex-col space-y-3">
+                  <div class="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+// MISSING LINE 769
+                  <div class="relative w-full aspect-[4/3] bg-slate-950 rounded-xl border border-slate-850 overflow-hidden flex items-center justify-center" id="cardImg2">
+                    <div class="text-xs text-slate-600 animate-pulse">Awaiting Prop</div>
+                  </div>
+// MISSING LINE 773
+                  <div class="space-y-1">
+                    <div class="flex justify-between items-center">
+                      <span class="text-xs font-bold text-slate-100" id="cardName2">道具：核心道具</span>
+                      <span class="px-1.5 py-0.5 bg-indigo-900/40 text-[9px] font-bold text-indigo-300 rounded font-mono">CAST ID: 03</span>
+                    </div>
+                    <p class="text-[10px] text-slate-400 line-clamp-2 leading-relaxed" id="cardPrompt2">Generating...</p>
+                  </div>
+                  <div class="pt-2 border-t border-slate-850 flex items-center justify-between text-[10px] text-indigo-400 font-bold group-hover:text-indigo-300">
+                    <span>提示词精整</span>
+                    <span>点击调优 ›</span>
+                  </div>
+                </div>
+// MISSING LINE 786
+              </div>
+// MISSING LINE 788
+            </div>
+// MISSING LINE 790
+          </div>
+// MISSING LINE 792
+          <!-- 页脚控制面板 -->
+          <div class="flex items-center justify-between border-t border-slate-850 pt-6">
+            <button onclick="navigateTo('C1')" class="text-xs text-slate-400 hover:text-white transition">
+              ‹ 返回文本投喂处
+            </button>
+            <button id="d1NextBtn" disabled onclick="handleD1Next()" class="px-8 py-3.5 bg-slate-800 text-slate-500 font-bold rounded-xl shadow-lg cursor-not-allowed transition-all text-xs tracking-wider uppercase">
+              角色场景已确定，生成分镜底片大网格 (下一步) ➔
+            </button>
+          </div>
+        </section>
+// MISSING LINE 803
+        <!-- ==================== 界面 D1.1: 资产细节精修沉浸式弹窗 ==================== -->
+        <div id="overlayD1_1" class="hidden fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/85 backdrop-blur-md" onclick="closeD1_1(event)">
+          <div class="w-full max-w-4xl bg-[#090D20] border border-slate-800 rounded-3xl shadow-2xl overflow-hidden glass-studio-panel" onclick="event.stopPropagation()">
+// MISSING LINE 807
+            <div class="flex items-center justify-between px-8 py-5 border-b border-slate-850">
+              <h4 id="d1_1_Title" class="font-bold text-slate-200 tracking-wider">定妆画资产细节深度精整 (D1.1)</h4>
+              <button onclick="closeD1_1_Force()" class="text-slate-400 hover:text-white text-lg">✕</button>
+            </div>
+// MISSING LINE 812
+            <!-- 卡片局部与修改意见左右大开合布局 -->
+            <div class="p-8 grid grid-cols-1 md:grid-cols-12 gap-8">
+// MISSING LINE 815
+              <!-- 左侧：超高分辨率预览框 (支持新旧后悔药对比) -->
+              <div class="md:col-span-5 flex flex-col space-y-3">
+                <div class="flex justify-between items-center text-xs">
+                  <span class="text-slate-450">🔍 分辨率: HD vector</span>
+                  <!-- ⚖️ 新旧对比后悔药 Tab 页签 -->
+                  <div class="flex space-x-1.5 bg-slate-950 p-1 round
+// MISSING LINE 822
+// MISSING LINE 823
+// MISSING LINE 824
+// MISSING LINE 825
+// MISSING LINE 826
+// MISSING LINE 827
+// MISSING LINE 828
+// MISSING LINE 829
+// MISSING LINE 830
+// MISSING LINE 831
+// MISSING LINE 832
+// MISSING LINE 833
+// MISSING LINE 834
+// MISSING LINE 835
+// MISSING LINE 836
+// MISSING LINE 837
+// MISSING LINE 838
+// MISSING LINE 839
+// MISSING LINE 840
+// MISSING LINE 841
+// MISSING LINE 842
+// MISSING LINE 843
+// MISSING LINE 844
+// MISSING LINE 845
+// MISSING LINE 846
+// MISSING LINE 847
+// MISSING LINE 848
+// MISSING LINE 849
+// MISSING LINE 850
+// MISSING LINE 851
+// MISSING LINE 852
+// MISSING LINE 853
+// MISSING LINE 854
+// MISSING LINE 855
+// MISSING LINE 856
+// MISSING LINE 857
+// MISSING LINE 858
+// MISSING LINE 859
+// MISSING LINE 860
+// MISSING LINE 861
+// MISSING LINE 862
+// MISSING LINE 863
+// MISSING LINE 864
+// MISSING LINE 865
+// MISSING LINE 866
+// MISSING LINE 867
+// MISSING LINE 868
+// MISSING LINE 869
+// MISSING LINE 870
+// MISSING LINE 871
+// MISSING LINE 872
+// MISSING LINE 873
+// MISSING LINE 874
+// MISSING LINE 875
+// MISSING LINE 876
+// MISSING LINE 877
+// MISSING LINE 878
+// MISSING LINE 879
+// MISSING LINE 880
+// MISSING LINE 881
+// MISSING LINE 882
+// MISSING LINE 883
+// MISSING LINE 884
+// MISSING LINE 885
+// MISSING LINE 886
+// MISSING LINE 887
+// MISSING LINE 888
+// MISSING LINE 889
+// MISSING LINE 890
+// MISSING LINE 891
+// MISSING LINE 892
+// MISSING LINE 893
+// MISSING LINE 894
+// MISSING LINE 895
+// MISSING LINE 896
+// MISSING LINE 897
+// MISSING LINE 898
+// MISSING LINE 899
+      storyboardGrids: [], // 16 宫格大图批次
+      relativeVideoPath: "", // 合成视频在 Runs 下的相对路径，如 "Run_xxx/output/narrative_v6_final_epic.mp4"
+// MISSING LINE 902
+      // 后画后悔药对比备份
+      assetHistory: {}, // {card_id: {new_url, old_url}}
+      frameHistory: {}, // {frame_idx: {new_url, old_url}}
+    };
+// MISSING LINE 907
+    // ── 🔌 连接保活状态灯 ──
+    function checkApiConnection() {
+      fetch("http://127.0.0.1:8000/api/health")
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === "success") {
+            document.getElementById("connectionBadge").className = "flex items-center space-x-2 text-[10px] font-mono tracking-widest px-3 py-1.5 rounded bg-slate-900 border border-slate-800 text-emerald-400";
+            document.getElementById("badgeLight").className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
+            document.getElementById("badgeText").innerText = "STATUS: LIVE (API CONNECTED)";
+          }
+        })
+        .catch(err => {
+          document.getElementById("connectionBadge").className = "flex items-center space-x-2 text-[10px] font-mono tracking-widest px-3 py-1.5 rounded bg-slate-900 border border-slate-800 text-red-500";
+          document.getElementById("badgeLight").className = "w-2 h-2 rounded-full bg-red-500 animate-pulse";
+          document.getElementById("badgeText").innerText = "STATUS: OFFLINE (API DISCONNECTED)";
+        });
+    }
+// MISSING LINE 925
+    // 初始化定时检测
+    setInterval(checkApiConnection, 5000);
+    checkApiConnection();
+// MISSING LINE 929
+    // ── 📝 自动草稿箱机制 ──
+    window.addEventListener("load", () => {
+      // 载入草稿
+      const savedScript = localStorage.getItem("palette_draft_raw_script");
+      if (savedScript) {
+        document.getElementById("rawScriptTextarea").value = savedScript;
+        state.rawScript = savedScript;
+      }
+// MISSING LINE 938
+      // 载入提示词预设
+      const savedPresets = localStorage.getItem("palette_draft_presets");
+// MISSING LINE 941
+// MISSING LINE 942
+// MISSING LINE 943
+// MISSING LINE 944
+// MISSING LINE 945
+// MISSING LINE 946
+// MISSING LINE 947
+// MISSING LINE 948
+// MISSING LINE 949
+// MISSING LINE 950
+// MISSING LINE 951
+// MISSING LINE 952
+// MISSING LINE 953
+// MISSING LINE 954
+// MISSING LINE 955
+// MISSING LINE 956
+// MISSING LINE 957
+// MISSING LINE 958
+// MISSING LINE 959
+// MISSING LINE 960
+// MISSING LINE 961
+// MISSING LINE 962
+// MISSING LINE 963
+// MISSING LINE 964
+// MISSING LINE 965
+// MISSING LINE 966
+// MISSING LINE 967
+// MISSING LINE 968
+// MISSING LINE 969
+// MISSING LINE 970
+// MISSING LINE 971
+// MISSING LINE 972
+// MISSING LINE 973
+// MISSING LINE 974
+// MISSING LINE 975
+// MISSING LINE 976
+// MISSING LINE 977
+// MISSING LINE 978
+// MISSING LINE 979
+// MISSING LINE 980
+// MISSING LINE 981
+// MISSING LINE 982
+// MISSING LINE 983
+// MISSING LINE 984
+// MISSING LINE 985
+// MISSING LINE 986
+// MISSING LINE 987
+// MISSING LINE 988
+// MISSING LINE 989
+// MISSING LINE 990
+// MISSING LINE 991
+// MISSING LINE 992
+// MISSING LINE 993
+// MISSING LINE 994
+// MISSING LINE 995
+// MISSING LINE 996
+// MISSING LINE 997
+// MISSING LINE 998
+// MISSING LINE 999
+// MISSING LINE 1000
+// MISSING LINE 1001
+// MISSING LINE 1002
+// MISSING LINE 1003
+// MISSING LINE 1004
+// MISSING LINE 1005
+// MISSING LINE 1006
+// MISSING LINE 1007
+// MISSING LINE 1008
+// MISSING LINE 1009
+// MISSING LINE 1010
+// MISSING LINE 1011
+// MISSING LINE 1012
+// MISSING LINE 1013
+// MISSING LINE 1014
+// MISSING LINE 1015
+// MISSING LINE 1016
+// MISSING LINE 1017
+// MISSING LINE 1018
+// MISSING LINE 1019
+  </div>
+// MISSING LINE 1021
+  <!-- JavaScript 核心状态逻辑 -->
+  <script>
+    // ── 🎨 全局状态定义 ──
+    const state = {
+      appState: "SCREEN_A",
+      selectedColor: "",
+      modePath: "RED", // RED, YELLOW, BLUE
+      polishEnabled: false,
+      defaultDownloadFolder: localStorage.getItem("palette_default_download_folder") || "",
+      document.getElementById("promptText-polish").value = state.presets.polish;
+      // 后台真实提示词预设组装库入库
+      presets: {
+        image: "High-quality 2D vector cartoon, bold black outlines, vibrant flat colors with soft cel-shading. Style inspired by Cyanide and Happiness but with professional lighting and detailed illustrated backgrounds. Character proportions: stick figure limbs, round bean heads.",
+        polish: "你是一位专业的资深编剧与剧本医生。\n任务：请阅读用户提供的原始素材（梗概、片段或小说节选均可），在【完全保留用户原始创意、情节走向和核心设定】的前提下，进行专业润色，并补充与盲盒梗概同规格的结构化字段。\n\n润色要求：\n1. 语言风格：使文字更具画面感（Visual Thinking），多用具象动词，少用空泛形容词；**禁止**强行套用「阶层跃迁」「利益算计」等固定套路，除非用户原文已包含类似内核。\n2. 节奏与体量：优化起承转合与悬念，整体梗概总长度须符合后续约 1700 字旁白体量的信息密度，且 synopsis 与 synopsis_acts 拼接总字符数
+    });
+      </div>
+    function syncRawScriptToState() {
+      const text = document.getElementById("rawScriptTextarea").value;
+      state.rawScript = text;
+      localStorage.setItem("palette_draft_raw_script", text);
+      updateJsonPayloadViewer();
+    }
+    // ── 🎨 全局状态定义 ──
+    function syncPromptToState(cat) {
+      const text = document.getElementById(`promptText-${cat}`).value;
+      state.presets[cat] = text;
+      localStorage.setItem("palette_draft_presets", JSON.stringify(state.presets));
+      updateJsonPayloadViewer();
+    }
+        channelType: "drama",
+    // ── 🛠️ 弹窗与吐司通知 ──
+    function showToast(text, duration = 3000) {
+      const toast = document.getElementById("toastNotification");
+      document.getElementById("toastText").innerText = text;
+      toast.classList.remove("hidden");
+      setTimeout(() => toast.classList.add("hidden"), duration);
+    }
+        channelType: "drama",
+    function showCustomModal(title, desc, primaryText = "我知道了", showCancel = false, primaryCallback = null) {
+      document.getElementById("modalTitle").innerText = title;
+      document.getElementById("modalDesc").innerText = desc;
+        locked: true,
+      const pBtn = document.getElementById("modalPrimaryBtn");
+      pBtn.innerText = primaryText;
+      pBtn.onclick = () => {
+        closeCustomModal();
+        if (primaryCallback) primaryCallback();
+      };
+        emoji: "🔬",
+      const sBtn = document.getElementById("modalSecBtn");
+      if (showCancel) {
+        sBtn.classList.remove("hidden");
+      } else {
+        sBtn.classList.add("hidden");
+      }
+// MISSING LINE 1077
+      document.getElementById("customModal").classList.remove("hidden");
+    }
+// MISSING LINE 1080
+    function closeCustomModal() {
+      document.getElementById("customModal").classList.add("hidden");
+    }
+// MISSING LINE 1084
+    // ── 🔄 页面导航状态机 ──
+    function navigateTo(targetState) {
+      const screens = ["screenA", "screenB", "screenC1", "screenC2", "screenD1", "screenD2", "screenE", "screenF"];
+      screens.forEach(s => document.getElementById(s).classList.add("hidden"));
+// MISSING LINE 1089
+      document.getElementById(`screen${targetState}`).classList.remove("hidden");
+        return parsed;
+      } catch(e) {
+        return JSON.parse(JSON.stringify(DEFAULT_CHANNELS));
+      }
+    }
+// MISSING LINE 1096
+    // 从后台的物理 JSON 备份中异步恢复频道列表（自愈双保险，防止 localStorage 易失）
+    async function loadChannelsFromBackend() {
+      if (typeof pywebview !== 'undefined' && pywebview.api && pywebview.api.get_channels) {
+    // ── 🎨 全局状态定义 ──
+          const res = await pywebview.api.get_channels();
+    // 出厂默认提示词（所有频道的 fallback）
+    const DEFAULT_PRESETS = {
+      image: "High-quality 2D vector cartoon, bold black outlines, vibrant flat colors with soft cel-shading. Style inspired by Cyanide and Happiness but with professional lighting and detailed illustrated backgrounds. Character proportions: stick figure limbs, round bean heads.",
+      polish: "你是一位专业的资深编剧与剧本医生。\n任务：请阅读用户提供的原始素材（梗概、片段或小说节选均可），在【完全保留用户原始创意、情节走向和核心设定】的前提下，进行专业润色。\n\n输出：仅 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"short_title\":\"12字内标题\",\"era\":\"时代背景\",\"identity\":\"主角身份\",\"industry_rules\":[\"规则\"]}",
+      voiceover: "你是一个极其冷峻、犀利的短视频旁白文案大师。\n任务：按用户指示写出一段沉浸式旁白。\n全程使用「你」，极简冷峻。禁止分镜标签。只输出旁白正文。",
+      outline: "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满利益算计、阶层跃迁与人性异化的第二人称人生副本梗概。\n分幕结构硬性：输出 synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n输出 JSON：\n{\"synopsis_acts\":[6个
+  <script>
+    // ── 🎨 全局状态定义 ──
+              if (!ch.channelType) {
+    // 出厂默认提示词（所有频道的 fallback）
+    const DEFAULT_PRESETS = {
+      cast: "[character]\nCyanide and Happiness stick figure character sheet of {entity}. Three-view layout (front/side/back). Simple round bean head, stick limbs, flat colors, bold black outlines. Pure white background, no shadows.\n\n[scene]\nFlat 2D vector background scenery depicting {entity}. Clean composition, no characters, minimalist color palette. Pure white background.\n\n[prop]\nFlat 2D vector icon object: {entity}. Primitive shape, flat color fill, bold outline. White background.",
+      image: "High-quality 2D vector cartoon, bold black outlines, vibrant flat colors with soft cel-shading. Style inspired by Cyanide and Happiness but with professional lighting and detailed illustrated backgrounds. Character proportions: stick figure limbs, round bean heads.",
+      polish: "你是一位专业的资深编剧与剧本医生。\n任务：请阅读用户提供的原始素材（梗概、片段或小说节选均可），在【完全保留用户原始创意、情节走向和核心设定】的前提下，进行专业润色。\n\n输出：仅 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"short_title\":\"12字内标题\",\"era\":\"时代背景\",\"identity\":\"主角身份\",\"industry_rules\":[\"规则\"]}",
+      voiceover: "你是一个极其冷峻、犀利的短视频旁白文案大师。\n任务：
+            const activeCh = state.channels.find(c => c.id === state.activeChannelId) || state.channels[0];
+            if (activeCh) {
+              state.activeChannelId = activeCh.id;
+            </div>
+          </div>
+// MISSING LINE 1122
+          <!-- 📀 功能控制按钮（带另存为与默认预设下载） -->
+          <div class="flex flex-col sm:flex-row justify-center items-center gap-4 border-t border-slate-850 pt-6">
+            <button onclick="downloadEpicVideo()" class="w-full sm:w-auto px-8 py-4 bg-emerald-650 hover:bg-emerald-500 font-bold text-white rounded-xl shadow-lg shadow-emerald-500/10 transition-all flex items-center justify-center space-x-2 text-xs tracking-widest uppercase">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              <span>💾 另存为视频文件 (下载)</span>
+            </button>
+            <button onclick="presetDownloadFolder()" class="w-full sm:w-auto px-6 py-4 bg-indigo-650 hover:bg-indigo-500 font-bold text-white rounded-xl shadow-lg shadow-indigo-500/10 transition-all flex items-center justify-center space-x-2 text-xs tracking-widest uppercase cursor-pointer">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24
+<truncated 2374 bytes>
+式旁白。\n全程使用「你」，极简冷峻。禁止分镜标签。只输出旁白正文。",
+      polish: "你是一位专业的资深编剧与剧本医生。\n任务：请阅读用户提供的原始素材（梗概、片
+      voiceover: "你是一个极其冷峻、犀利的短视频旁白文案大师。\n任务：按用户指示写出一段沉浸式旁白。\n全程使用「你」，极简冷峻。禁止分镜标签。只输出旁白正文。",
+      outline: "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满利益算计、阶层跃迁与人性异化的第二人称人生副本梗概。\n分幕结构硬性：输出 synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n输出 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"时代\",\"identity\":\"主角终极身份\",\"industry_rules\":[\"潜规则\"]}",
+      storyboard: "【画风锚点】\nCyanide and Happiness comic style, 2D vector / flat graphic cartoon, bold black outlines, vivid flat color fills, pure 2D, no photoreal skin texture, no 3D/CGI. 允许卡通级光向（key direction, warm/cool, simple hard-edge shadow shapes），禁止电影级体积光与写实 subsurface skin。\n\n【分镜表现规则】\n★ 动态表情与肢体（核心要求：打破参考图的呆滞感！）：必须深度解析当前分镜的故事情节，强制赋予角色强烈且符合情境的情绪反应。\n1. 必须采用【核心情绪词 + 氰化物式五官拆解】组合。例如不要只写 mouth line，必须写：terrified expression, sharply angled frowning eyebrows, wide dilated dot eyes, screaming jagged mouth shape.\n2. 明确指令：绝不允许角
+<truncated 1088 bytes>
+        locked: true,
+        presets: null // null 表示使用 DEFAULT_PRESETS
+      },
+    const DEFAULT_CHANNELS = [
+      {
+        id: "ch_drama",
+        name: "剧情故事",
+        emoji: "🎭",
+    const state = {
+      appState: "SCREEN_A",
+      activeChannelId: "ch_drama",
+      modePath: "CH_DRAMA",
+      polishEnabled: false,
+      defaultDownloadFolder: localStorage.getItem("palette_default_download_folder") || "",
+// MISSING LINE 1152
+      // 频道列表（动态，持久化到 localStorage）
+      channels: loadChannelsFromStorage(),
+// MISSING LINE 1155
+      // 当前激活频道的提示词（激活频道时深拷贝注入）
+      presets: {
+        image: "High-quality 2D vector cartoon, bold black outlines, vibrant flat colors with soft cel-shading. Style inspired by Cyanide and Happiness but with professional lighting and detailed illustrated backgrounds. Character proportions: stick figure limbs, round bean heads.",
+    };
+        voiceover: "你是一个极其冷峻、犀利的短视频旁白文案大师。\n任务：按用户指示写出**一段**沉浸式旁白（不是全文，只是连续叙事中的一段）。\n\n【写作铁律】\n1. **一镜到底**：禁止使用段落小标题（如 Level、第一阶段）。用时间流逝、场景升级、数字与利益推进。\n2. **第二人称**：全程使用「你」，极简冷峻，少用形容词。\n3. **纯净文本**：禁止 <subshot>、禁止 [CUT]、禁止任何分镜标签。\n4. **本段体量**：本段目标约 {seg_target} 字（允许 ±10%）。\n\n输出要求：**只输出旁白正文**，不要标题、不要 JSON、不要代码围栏、不要解释。",
+    // 出厂原厂频道（locked=true 不可删除）
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+      },
+    const DEFAULT_CHANNELS = [
+      {
+        id: "ch_drama",
+        channelType: "drama",
+        name: "剧情故事",
+        emoji: "🎭",
+        color: "#EF4444",
+        locked: true,
+        presets: null // null 表示使用 DEFAULT_PRESETS
+      },
+      {
+        id: "ch_science",
+        channelType: "science",
+        name: "硬核科普",
+        emoji: "🔬",
+        color: "#F59E0B",
+        locked: true,
+// MISSING LINE 1181
+// MISSING LINE 1182
+// MISSING LINE 1183
+// MISSING LINE 1184
+// MISSING LINE 1185
+// MISSING LINE 1186
+// MISSING LINE 1187
+// MISSING LINE 1188
+// MISSING LINE 1189
+// MISSING LINE 1190
+// MISSING LINE 1191
+// MISSING LINE 1192
+// MISSING LINE 1193
+// MISSING LINE 1194
+// MISSING LINE 1195
+// MISSING LINE 1196
+        // 安全守卫：确保原厂频道始终存在
+        DEFAULT_CHANNELS.forEach(dc => {
+          if (!parsed.find(c => c.id === dc.id)) parsed.unshift(dc);
+        });
+        // 迁移守卫：为旧版本没有 channelType 字段的频道补充默认值
+        parsed.forEach(ch => {
+          if (!ch.channelType) {
+            ch.channelType = (ch.id === "ch_drama") ? "drama" : "science";
+          }
+        });
+        // 安全守卫：确保原厂频道始终存在
+        DEFAULT_CHANNELS.forEach(dc => {
+          if (!parsed.find(c => c.id === dc.id)) parsed.unshift(dc);
+        });
+        // 迁移守卫：为旧版本没有 channelType 字段的频道补充默认值
+        parsed.forEach(ch => {
+          if (!ch.channelType) {
+            ch.channelType = (ch.id === "ch_drama") ? "drama" : "science";
+          }
+        });
+        return parsed;
+      } catch(e) {
+        return JSON.parse(JSON.stringify(DEFAULT_CHANNELS));
+      }
+    }
+      };
+    // 获取频道实际使用的 presets（null 时 fallback 到 DEFAULT_PRESETS）
+    function getChannelPresets(channel) {
+      if (!channel.presets) return { ...DEFAULT_PRESETS };
+      return {
+        image:      channel.presets.image      || DEFAULT_PRESETS.image,
+        polish:     channel.presets.polish     || DEFAULT_PRESETS.polish,
+        voiceover:  channel.presets.voiceover  || DEFAULT_PRESETS.voiceover,
+        outline:    channel.presets.outline    || DEFAULT_PRESETS.outline,
+        storyboard: channel.presets.storyboard || DEFAULT_PRESETS.storyboard
+      };
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+// MISSING LINE 1234
+      polishEnabled: false,
+      defaultDownloadFolder: localStorage.getItem("palette_default_do
+<truncated 242 bytes>
+      // 后画后悔药对比备份
+      assetHistory: {}, // {card_id: {new_url, old_url}}
+      frameHistory: {}, // {frame_idx: {new_url, old_url}}
+      } else {
+        document.getElementById("connectionBadge").className = "flex items-center space-x-2 text-[10px] font-mono tracking-widest px-3 py-1.5 rounded bg-slate-900 border border-slate-800 text-red-500";
+        document.getElementById("badgeLight").className = "w-2 h-2 rounded-full bg-red-500 animate-pulse";
+        document.getElementById("badgeText").innerText = "STATUS: OFFLINE (BRIDGE NOT READY)";
+      }
+    }
+    window.addEventListener('pywebviewready', function() {
+      checkApiConnection();
+      detectRestorableSession();
+    });
+// MISSING LINE 1251
+// MISSING LINE 1252
+// MISSING LINE 1253
+// MISSING LINE 1254
+// MISSING LINE 1255
+// MISSING LINE 1256
+// MISSING LINE 1257
+// MISSING LINE 1258
+// MISSING LINE 1259
+// MISSING LINE 1260
+// MISSING LINE 1261
+// MISSING LINE 1262
+// MISSING LINE 1263
+// MISSING LINE 1264
+// MISSING LINE 1265
+// MISSING LINE 1266
+// MISSING LINE 1267
+// MISSING LINE 1268
+// MISSING LINE 1269
+// MISSING LINE 1270
+// MISSING LINE 1271
+// MISSING LINE 1272
+// MISSING LINE 1273
+// MISSING LINE 1274
+// MISSING LINE 1275
+// MISSING LINE 1276
+// MISSING LINE 1277
+// MISSING LINE 1278
+// MISSING LINE 1279
+// MISSING LINE 1280
+// MISSING LINE 1281
+// MISSING LINE 1282
+// MISSING LINE 1283
+// MISSING LINE 1284
+// MISSING LINE 1285
+// MISSING LINE 1286
+// MISSING LINE 1287
+// MISSING LINE 1288
+// MISSING LINE 1289
+// MISSING LINE 1290
+// MISSING LINE 1291
+// MISSING LINE 1292
+// MISSING LINE 1293
+// MISSING LINE 1294
+// MISSING LINE 1295
+// MISSING LINE 1296
+// MISSING LINE 1297
+// MISSING LINE 1298
+// MISSING LINE 1299
+// MISSING LINE 1300
+// MISSING LINE 1301
+// MISSING LINE 1302
+// MISSING LINE 1303
+// MISSING LINE 1304
+// MISSING LINE 1305
+// MISSING LINE 1306
+// MISSING LINE 1307
+// MISSING LINE 1308
+// MISSING LINE 1309
+// MISSING LINE 1310
+// MISSING LINE 1311
+// MISSING LINE 1312
+// MISSING LINE 1313
+// MISSING LINE 1314
+// MISSING LINE 1315
+// MISSING LINE 1316
+// MISSING LINE 1317
+// MISSING LINE 1318
+// MISSING LINE 1319
+// MISSING LINE 1320
+// MISSING LINE 1321
+// MISSING LINE 1322
+// MISSING LINE 1323
+// MISSING LINE 1324
+// MISSING LINE 1325
+// MISSING LINE 1326
+// MISSING LINE 1327
+// MISSING LINE 1328
+// MISSING LINE 1329
+// MISSING LINE 1330
+// MISSING LINE 1331
+// MISSING LINE 1332
+// MISSING LINE 1333
+// MISSING LINE 1334
+// MISSING LINE 1335
+// MISSING LINE 1336
+// MISSING LINE 1337
+// MISSING LINE 1338
+// MISSING LINE 1339
+// MISSING LINE 1340
+// MISSING LINE 1341
+// MISSING LINE 1342
+// MISSING LINE 1343
+// MISSING LINE 1344
+// MISSING LINE 1345
+// MISSING LINE 1346
+// MISSING LINE 1347
+// MISSING LINE 1348
+// MISSING LINE 1349
+// MISSING LINE 1350
+// MISSING LINE 1351
+// MISSING LINE 1352
+// MISSING LINE 1353
+// MISSING LINE 1354
+// MISSING LINE 1355
+// MISSING LINE 1356
+// MISSING LINE 1357
+// MISSING LINE 1358
+// MISSING LINE 1359
+// MISSING LINE 1360
+// MISSING LINE 1361
+// MISSING LINE 1362
+                </div>
+            `;
+            if (call.error) {
+              callsHtml += `
+                <div class="text-[9px] text-rose-400/90 font-mono bg-rose-950/20 p-2 rounded-lg border border-rose-900/30 overflow-x-auto whitespace-pre leading-relaxed">
+                  Error Detail: ${call.error}
+                </div>
+              `;
+            }
+            callsHtml += `</div>`;
+          });
+        }
+// MISSING LINE 1375
+        if (stage.calls.length > 0) {
+          headerHtml += `
+            <div class="flex justify-between items-center text-[9px] text-slate-500 font-mono pt-2 border-t border-slate-850/20">
+              <span>⏱️ 累计开销: <span class="text-indigo-400 font-semibold">${totalDuration.toFixed(2)}s</span></span>
+              <span>📡 调用次数: <span class="text-slate-400 font-semibold">${attemptsCount}次</span></span>
+            </div>
+          `;
+        }
+// MISSING LINE 1384
+        callsHtml += `</div>`;
+        stageEl.innerHTML = headerHtml + callsHtml;
+        listEl.appendChild(stageEl);
+      });
+    }
+// MISSING LINE 1390
+    // ── 🔄 历史会话检测与一键断点恢复逻辑 ──
+    let restorableSessionData = null;
+// MISSING LINE 1393
+    async function detectRestorableSession() {
+      if (typeof pywebview === 'undefined' || !pywebview.api) return;
+      try {
+        const res = await pywebview.api.get_restorable_session();
+        if (res.status === "success" && res.run_id) {
+          restorableSessionData = res;
+// MISSING LINE 1400
+          document.getElementById("restoreRunId").innerText = res.run_id;
+// MISSING LINE 1402
+          le
+// MISSING LINE 1404
+// MISSING LINE 1405
+// MISSING LINE 1406
+// MISSING LINE 1407
+// MISSING LINE 1408
+// MISSING LINE 1409
+// MISSING LINE 1410
+// MISSING LINE 1411
+// MISSING LINE 1412
+// MISSING LINE 1413
+// MISSING LINE 1414
+// MISSING LINE 1415
+// MISSING LINE 1416
+// MISSING LINE 1417
+// MISSING LINE 1418
+// MISSING LINE 1419
+// MISSING LINE 1420
+// MISSING LINE 1421
+                "msg": f"保存成功！视频已导出至 {actual_path}",
+                "actual_path": actual_path
+            }
+// MISSING LINE 1425
+        except Exception as e:
+            print(f"❌ [Bridge] 文件导出失败: {e}")
+            return {"status": "error", "detail": f"文件保存失败: {str(e)}"}
+// MISSING LINE 1429
+// MISSING LINE 1430
+def main():
+    print(f"[系统] 使用的 Python 解释器: {sys.executable}")
+// MISSING LINE 1433
+    try:
+        bridge = DesktopApiBridge()
+        html_path = os.path.join(BASE_DIR, "palette_studio.html")
+        print(f"[系统] 正在装载前端文件: {html_path}")
+// MISSING LINE 1438
+        window = webview.create_window(
+            title='"调色板" AI 电影级多大模型联调总控台',
+            url=html_path,
+            js_api=bridge,      # 绑定 JS Bridge
+            width=1360,
+            height=850,
+            resizable=True,
+            min_size=(1024, 700)
+        )
+// MISSING LINE 1448
+        global GLOBAL_WINDOW
+        state.modePath = (chObj.channelType === "drama") ? "CH_DRAMA" : recoveredChId.toUpperCase();
+      }
+        print("[系统] 正在为您弹开独立软件窗口（JS Bridge 已就绪，无需 HTTP 服务器）...")
+      // 同步顶部状态灯
+      document.getElementById("activeStateBadge").innerText = `STATUS: SCREEN_${res.stage}`;
+        webview.start(debug=False, http_server=True)
+      // 2. 恢复剧本大纲与编译文本
+      if (res.synopsis) {
+        state.rawScript = res.synopsis.synopsis || "";
+        state.compiledVoiceover = res.synopsis.synopsis || "";
+        state.lastCompiledText = res.synopsis.synopsis || "";
+    finally:
+        const rawScriptEl = document.getElementById("rawScriptTextarea");
+        if (rawScriptEl) {
+          rawScriptEl.value = res.synopsis.synopsis || "";
+        }
+    main()
+        const d1VoiceoverEl = document.getElementById("d1VoiceoverOutput");
+        if (d1VoiceoverEl) {
+          d1VoiceoverEl.innerText = res.synopsis.synopsis || "";
+        }
+      }
+// MISSING LINE 1472
+      // 3. 恢复定妆卡片，并在资产就绪时同步更新 D1 界面所有进度条与状态
+      if (res.assets && res.assets.length > 0) {
+        state.assets = res.assets;
+        state.assets.forEach((ast, idx) => {
+          const nameEl = document.getElementById(`cardName${idx}`);
+          const promptEl = document.getElementById(`cardPrompt${idx}`);
+          const imgEl = document.getElementById(`cardImg${idx}`);
+// MISSING LINE 1480
+          if (nameEl) nameEl.innerText = ast.name || "";
+          if (promptEl) promptEl.innerText = ast.prompt || "";
+          if (imgEl && ast.image_url) {
+            imgEl.innerHTML = `<img src="${ast.image_url}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />`;
+          }
+        });
+// MISSING LINE 1487
+        // 移出结果区域隐藏，百分比进度拉满 100%，点亮状态圆点，启用并高亮下一步按钮
+        document.getElementById("d1ResultArea").classList.remove("hidden");
+// MISSING LINE 1490
+        const p1Bar = document.getElementById("p1Bar");
+        const p1Val = document.getElementById("p1Val");
+        const p2Bar = document.getElementById("p2Bar");
+        const p2Val = document.getElementById("p2Val");
+        const logText = document.getElementById("assistantLogText");
+// MISSING LINE 1496
+        if (p1Bar) p1Bar.style.width = "100%";
+        if (p1Val) p1Val.innerText = "100%";
+        const p1Dot = document.getElementById("p1StatusDot");
+            source_abs = runs_dir / source_relative
+            if not source_abs.exists():
+                return {"status": "error", "detail": "未找到合成好的视频源文件。"}
+// MISSING LINE 1503
+            # 智能防错自愈处理：如果 target_absolute 是一个已存在的文件夹或以斜杠结尾，或者不包含后缀名
+            import os
+            target_path = Path(target_absolute)
+            if target_path.is_dir() or target_absolute.endswith("/") or target_absolute.endswith("\\") or not target_path.suffix:
+                os.makedirs(target_path, exist_ok=True)
+                target_path = target_path / source_abs.name
+            else:
+                os.makedirs(target_path.parent, exist_ok=True)
+// MISSING LINE 1512
+            shutil.copy(str(source_abs), str(target_path))
+            actual_path = str(target_path)
+            print(f"🎉 [Bridge] 成功导出至: {actual_path}")
+            return {
+                "status": "success",
+                "msg": f"保存成功！视频已导出至 {actual_path}",
+                "actual_path": actual_path
+            }
+def main():
+        except Exception as e:
+            print(f"❌ [Bridge] 文件导出失败: {e}")
+            return {"status": "error", "detail": f"文件保存失败: {str(e)}"}
+        bridge = DesktopApiBridge()
+        html_path = os.path.join(BASE_DIR, "palette_studio.html")
+def main():
+    print(f"[系统] 使用的 Python 解释器: {sys.executable}")
+        window = webview.create_window(
+    try:
+        bridge = DesktopApiBridge()
+        html_path = os.path.join(BASE_DIR, "palette_studio.html")
+        print(f"[系统] 正在装载前端文件: {html_path}")
+            height=850,
+        window = webview.create_window(
+            min_size=(1024, 700)
+        )
+              cast_prompt: state.presets.cast_prompt,
+        global GLOBAL_WINDOW
+        GLOBAL_WINDOW = window
+          }
+        print("[系统] 正在为您弹开独立软件窗口（JS Bridge 已就绪，无需 HTTP 服务器）...")
+        # http_server=True：pywebview 内置 HTTP 服务器，托管 BASE_DIR 下的所有静态资源
+        # 这样前端可以用相对路径（如 data/runs/.../image.png）直接访问本地图片/视频
+        webview.start(debug=False, http_server=True)
+          document.getElementById("shakeOutlineContent").innerText = res.data.compiled_voiceover;
+    except Exception as e:
+        import traceback
+        print(f"❌ [系统] 运行发生致命错误: {traceback.format_exc()}")
+          showCustomModal("⚠️ 后端排队中", "重写大纲失败，请重试！");
+    finally:
+        print("[系统] 软件已完全退出。再见，导演！")
+        handleApiError(err, applyD2Feedback);
+      } finally {
+if __name__ == "__main__":
+    main()
+        btn.innerHTML = oldHtml;
+      }
+    }
+// MISSING LINE 1560
+// MISSING LINE 1561
+// MISSING LINE 1562
+// MISSING LINE 1563
+// MISSING LINE 1564
+// MISSING LINE 1565
+// MISSING LINE 1566
+// MISSING LINE 1567
+// MISSING LINE 1568
+// MISSING LINE 1569
+// MISSING LINE 1570
+// MISSING LINE 1571
+// MISSING LINE 1572
+// MISSING LINE 1573
+// MISSING LINE 1574
+// MISSING LINE 1575
+// MISSING LINE 1576
+// MISSING LINE 1577
+// MISSING LINE 1578
+// MISSING LINE 1579
+// MISSING LINE 1580
+// MISSING LINE 1581
+// MISSING LINE 1582
+// MISSING LINE 1583
+// MISSING LINE 1584
+// MISSING LINE 1585
+// MISSING LINE 1586
+// MISSING LINE 1587
+// MISSING LINE 1588
+// MISSING LINE 1589
+// MISSING LINE 1590
+// MISSING LINE 1591
+// MISSING LINE 1592
+// MISSING LINE 1593
+// MISSING LINE 1594
+      const btn = document.getElementById("applyFeedbackBtn");
+      const oldHtml = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `
+        <div class="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+        <span>重写大纲中...</span>
+      `;
+    // ── 🎥 F 页面全盘多轨物理装配 ──
+      try {
+        const res = await pywebview.api.compile_story({
+          app_id: "palette-cinema-id",
+          mode_path: "BLUE",
+          original_text: state.rawScript,
+          pipeline_config: {
+            polish_flow: {
+              enabled: true,
+              system_prompt: state.presets.outline,
+              feedback: feedback
+            },
+            voiceover_flow: { system_prompt: state.presets.voiceover },
+          mode_path: "BLUE",
+          original_text: state.rawScript,
+          pipeline_config: {
+            polish_flow: {
+              enabled: true,
+              system_prompt: state.presets.outline,
+              feedback: feedback
+            },
+            voiceover_flow: { system_prompt: state.presets.voiceover },
+            render_flow: {
+              style_presets: state.presets.image,
+              seed: 12345,
+              cast_prompt: state.presets.cast_prompt,
+              storyboard_prompt: state.presets.storyboard
+            }
+          }
+        });
+    }
+        if (res.status === "success") {
+          state.rawScript = res.data.compiled_voiceover;
+          document.getElementById("shakeOutlineContent").innerText = res.data.compiled_voiceover;
+          feedbackInput.value = "";
+          showToast("🎉 大纲重写成功！大模型已完美吸纳您的意见！");
+        } else {
+          showCustomModal("⚠️ 后端排队中", "重写大纲失败，请重试！");
+        }
+      } catch(err) {
+        handleApiError(err, applyD2Feedback);
+      } finally {
+        state.isRunning = false;
+        btn.disabled = false;
+        btn.innerHTML = oldHtml;
+      }
+    }
+// MISSING LINE 1649
+    // ── 📝 初始化启动逻辑 ──
+    function initApp() {
+      // 1. 激活默认频道（注入提示词）
+      const firstCh = state.channels[0];
+      if (firstCh) {
+        state.activeChannelId = firstCh.id;
+        state.modePath = firstCh.id.toUpperCase();
+        state.presets = getChannelPresets(firstCh);
+      }
+            headers: {"Content-Type": "application/json"},
+      // 2. 渲染首页频道网格
+              source_file_relative_path: state.relativeVideoPath,
+              target_absolute_path: savePath
+            })
+          });
+          const res = await response.json();
+          if (res.status === "success") {
+            showCustomModal("🎉 保存成功！", `大导演，您的电影大作已成功下载并导出至：\n\n${savePath}`);
+          } else {
+            showCustomModal("⚠️ 保存失败", "文件物理拷贝失败，请核对写入权限后重试！");
+          }
+        } catch(e) {
+          showCustomModal("⚠️ 对话框异常", "桌面系统接口交互异常，请重试！");
+        }
+      } else {
+        // 兜底（以防是在普通浏览器里进行测试联调，而不是桌面 App 壳子中）
+        window.open(`http://127.0.0.1:8000/static/runs/${state.relativeVideoPath}`, "_blank");
+        showToast("🍿 已通过浏览器直接为您弹开视频下载！");
+      }
+    }
+// MISSING LINE 1680
+    // ── 🩺 容灾报错与重试拦截机制 ──
+    function handleApiError(err, retryCallback) {
+      console.error("[API ERROR] Catch-Guard:", err);
+// MISSING LINE 1684
+      // 抛出异常时，前端本地状态（输入文本、调好的 presets 参数等）绝对保留！
+      // 弹出一个高质感对话框，提供“一键无缝重试”
+// MISSING LINE 1687
+// MISSING LINE 1688
+// MISSING LINE 1689
+            storyboard_prompt: state.presets.storyboard
+          }
+        }
+      };
+      document.getElementById("jsonPayloadViewer").innerText = JSON.stringify(payload, null, 2);
+    }
+    function renderChannelGrid() {
+    // ── 🎲 摇一摇盲盒 ──
+    async function triggerShake() {
+      showToast("🔮 选题盲盒抽取中...");
+      // 限制：最多 8 个
+      // 摇晃球动画
+      const ball = document.getElementById("shakeBallIcon");
+      ball.classList.add("animate-bounce");
+      if (!state.channels || state.channels.length === 0) {
+      try {
+        const res = await pywebview.api.compile_story({
+            app_id: "palette-cinema-id",
+            mode_path: "BLUE",
+            original_text: "请为为我随机生成一个赛博朋克废土风格的电影梗概故事大纲。",
+            pipeline_config: {
+              polish_flow: { enabled: true, system_prompt: state.presets.outline },
+              voiceover_flow: { system_prompt: state.presets.voiceover },
+              render_flow: { style_presets: state.presets.image, seed: 12345 }
+            }
+          });
+        if (res.status === "success") {
+          state.rawScript = res.data.compiled_voiceover;
+          document.getElementById("shakeOutlineContent").innerText = res.data.compiled_voiceover;
+          navigateTo("D2");
+        } else {
+          showCustomModal("⚠️ 后端排队中", "选题抽取失败，请重试！");
+        }
+      } catch(err) {
+        handleApiError(err, triggerShake);
+      } finally {
+        ball.classList.remove("animate-bounce");
+      }
+    }
+                style="opacity:0; padding:6px; border-radius:8px; background:#0f172a; border:none; color:#94a3b8; font-size:0.75rem; cursor:pointer; transition:opacity 0.2s;"
+    function submitD2ToD1() {
+                onmouseout="this.style.opacity='0';"
+                class="edit-btn">✏️</button>
+            </div>
+        const c2Name = document.getElementById("c2ChannelName");
+            <!-- 频道名 -->
+            <div>
+              <p style="font-size:0.875rem; font-weight:700; color:#f1f5f9; letter-spacing:0.05em; margin:0 0 4px;">${ch.name}</p>
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="width:6px; height:6px; border-radius:50%; background:${ch.color}; display:inline-block;"></span>
+                <span style="font-size:10px; color:#64748b; font-family:monospace;">${ch.locked ? '🔒 原厂频道' : '🎨 自定义频道'}</span>
+              </div>
+            </div>
+      // 进入 A 时：重新渲染频道网格
+            <!-- 进入提示 -->
+            <div style="padding-top:8px; border-top:1px solid rgba(30,41,59,0.6); display:flex; justify-content:space-between; align-items:center; font-size:10px; color:#475569;">
+              <span>点击进入导演空间</span>
+              <span style="font-weight:700; color:${ch.color};">›</span>
+            </div>
+          </div>
+        `;
+      const grid = document.getElementById("channelGrid");
+      if (!grid) return;
+// MISSING LINE 1753
+      // 限制：最多 8 个
+      const addBtn = document.getElementById("addChannelBtn");
+      if (addBtn) addBtn.style.display = state.channels.length >= 8 ? "none" : "";
+// MISSING LINE 1757
+      if (!state.channels || state.channels.length === 0) {
+        grid.innerHTML = '<div class="col-span-3 text-center text-slate-600 text-xs py-10">暂无频道，请点击下方按钮新增</div>';
+        return;
+      }
+// MISSING LINE 1762
+      // ⚠️ 用内联 style 替代 Tailwind 动态类（运行时 JIT 不支持动态类名）
+      grid.innerHTML = state.channels.map(ch => {
+        const borderColor = ch.color;
+        const glowShadow = `0 12px 30px ${ch.color}44`;
+        return `
+          <div onclick="activateChannel('${ch.id}', event)"
+            class="ch-card group relative rounded-2xl p-5 cursor-pointer flex flex-col space-y-3"
+            style="background:#0D1227; border:1px solid #1e293b; transition:all 0.3s;"
+            onmouseover="this.style.borderColor='${borderColor}'; this.style.transform='translateY(-4px)'; this.style.boxShadow='${glowShadow}';"
+            onmouseout="this.style.borderColor='#1e293b'; this.style.transform=''; this.style.boxShadow='';"
+          >
+            <!-- 顶部发光线（hover 时显示） -->
+            <div class
+// MISSING LINE 1776
+// MISSING LINE 1777
+// MISSING LINE 1778
+// MISSING LINE 1779
+// MISSING LINE 1780
+// MISSING LINE 1781
+// MISSING LINE 1782
+// MISSING LINE 1783
+// MISSING LINE 1784
+// MISSING LINE 1785
+// MISSING LINE 1786
+// MISSING LINE 1787
+// MISSING LINE 1788
+// MISSING LINE 1789
+    // ── 🔍 获取当前激活频道对象 ──
+    function getActiveChannel() {
+      return state.channels.find(c => c.id === state.activeChannelId) || state.channels[0];
+    }
+// MISSING LINE 1794
+    // ── 💾 频道持久化存储 ──
+    function saveChannelsToStorage() {
+      localStorage.setItem("palette_channels_v3", JSON.stringify(state.channels));
+      // 异步同步到后台（双轨备份，失败不影响前端）
+      if (typeof pywebview !== 'undefined' && pywebview.api && pywebview.api.save_channels) {
+        pywebview.api.save_channels(state.channels).catch(() => {});
+      }
+    }
+          </div>
+    // ── 📝 频道草稿隔离读写 ──
+    function saveChannelDraft(text) {
+      localStorage.setItem(`palette_draft_${state.activeChannelId}`, text);
+    }
+    function loadChannelDraft() {
+      const draft = localStorage.getItem(`palette_draft_${state.activeChannelId}`) || "";
+      const ta = document.getElementById("rawScriptTextarea");
+      if (ta) { ta.value = draft; state.rawScript = draft; }
+      updateJsonPayloadViewer();
+    }
+      });
+    // ── ✏️ 频道编辑器弹窗 ──
+// MISSING LINE 1816
+    // ── ⚡ 频道激活（切换提示词上下文 + 触发转场） ──
+    function activateChannel(channelId, event) {
+      const ch = state.channels.find(c => c.id === channelId);
+    let _editingChannelId = null;
+// MISSING LINE 1821
+    function openChannelEditor(channelId) {
+      _editingChannelId = channelId;
+      const modal = document.getElementById("channelEditorModal");
+      const deleteBtn = document.getElementById("chEditorDeleteBtn");
+      const rollbackBtn = document.getElementById("chEditorRollbackBtn");
+// MISSING LINE 1827
+      // 渲染颜色选择器
+      const palette = document.getElementById("chColorPalette");
+      let selectedColor = channelId
+        ? (state.channels.find(c => c.id === channelId)?.color || CHANNEL_COLORS[0])
+        : CHANNEL_COLORS[3];
+      palette.innerHTML = CHANNEL_COLORS.map(clr => `
+        <button type="button" onclick="selectEditorColor('${clr}')" id="colorDot_${clr.replace('#','')}"
+          class="w-8 h-8 rounded-full border-2 transition-all cursor-pointer hover:scale-110"
+          style="background:${clr}; border-color: ${clr === selectedColor ? 'white' : 'transparent'}"></button>
+      `).join("");
+      document.getElementById("chEditorColor").value = selectedColor;
+      } else {
+      if (channelId) {
+        const ch = state.channels.find(c => c.id === channelId);
+        if (!ch) return;
+        document.getElementById("chEditorTitle").innerText = `编辑频道：${ch.name}`;
+        document.getElementById("chEditorEmoji").innerText = ch.emoji || '🎬';
+        document.getElementById("chEditorEmojiInput").value = ch
+      return state.channels.find(c => c.id === state.activeChannelId) || state.channels[0];
+    }
+// MISSING LINE 1848
+    // ── 💾 频道持久化存储 ──
+    function saveChannelsToStorage() {
+// MISSING LINE 1851
+// MISSING LINE 1852
+// MISSING LINE 1853
+// MISSING LINE 1854
+// MISSING LINE 1855
+// MISSING LINE 1856
+// MISSING LINE 1857
+// MISSING LINE 1858
+// MISSING LINE 1859
+// MISSING LINE 1860
+// MISSING LINE 1861
+// MISSING LINE 1862
+// MISSING LINE 1863
+// MISSING LINE 1864
+// MISSING LINE 1865
+            addCustomAssetRow(ast.label, ast.type);
+          });
+        }
+// MISSING LINE 1869
+        _syncChannelTypeStyle();
+        // 原厂频道不显示删除按钮
+        deleteBtn.classList.toggle("hidden", !!ch.locked);
+        // 有备份时才显示回滚按钮
+        if (rollbackBtn) rollbackBtn.classList.toggle("hidden", !ch.presetsBackup);
+      } else {
+        document.getElementById("chEditorTitle").innerText = "新增创作频道";
+        document.getElementById("chEditorEmoji").innerText = "🎬";
+        document.getElementById("chEditorEmojiInput").value = "";
+        document.getElementById("chEditorName").value = "";
+        document.getElementById("chEditorOutline").value = "";
+        document.getElementById("chEditorImage").value = "";
+        document.getElementById("chEditorVoiceover").value = "";
+        document.getElementById("chEditorPolish").value = "";
+        document.getElementById("chEditorStoryboard").value = "";
+// MISSING LINE 1885
+        const assetsList = document.getElementById("customAssetsList");
+        if (assetsList) assetsList.innerHTML = "";
+// MISSING LINE 1888
+        // 新频道默认「解说/科普」模式（1张背景底图）
+        document.querySelectorAll('input[name="chChannelType"]').forEach(r => {
+          r.checked = (r.value === "science");
+          r.disabled = false;
+        });
+        document.getElementById("chTypeRow").style.opacity = "1";
+        _syncChannelTypeStyle();
+        deleteBtn.classList.add("hidden");
+        if (rollbackBtn) rollbackBtn.classList.add("hidden");
+      }
+        document.getElementById("chEditorEmojiInput").value = ch.emoji || '';
+    }
+    }
+    // ── ✏️ 频道编辑器弹窗 ──
+    const CHANNEL_COLORS = [
+      "#EF4444","#F59E0B","#10B981","#3B82F6","#8B5CF6",
+      "#EC4899","#06B6D4","#F97316","#84CC16","#6366F1"
+    ];
+    let _editingChannelId = null;
+      const custEl = document.getElementById("chTypeLabelCustom");
+    function openChannelEditor(channelId) {
+      _editingChannelId = channelId;
+      const modal = document.getElementById("channelEditorModal");
+      const deleteBtn = document.getElementById("chEditorDeleteBtn");
+      const customSection = document.getElementById("customAssetsConfigSection");
+    // ── 💾 频道持久化存储 ──
+    function saveChannelsToStorage() {
+      localStorage.setItem("palette_channels_v3", JSON.stringify(state.channels));
+      // 异步同步到后台（双轨备份，失败不影响前端）
+      if (typeof pywebview !== 'undefined' && pywebview.api && pywebview.api.save_channels) {
+        pywebview.api.save_channels(state.channels).catch(() => {});
+      }
+    }
+        document.getElementById("chEditorEmojiInput").value = "";
+    // ── 📝 频道草稿隔离读写 ──
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+      document.getElementById("chEditorColor").value = clr;
+      `).join("");
+      document.getElementById("chEditorColor").value = selectedColor;
+        btn.style.borderColor = btnClr === clr ? 'white' : 'transparent';
+      if (channelId)
+<truncated 493 bytes>
+sets(ch);
+        const ch = state.channels.find(c => c.id === channelId);
+      document.getElementById("channelEditorModal").classLis
+        document.getElementById("chTypeRow").style.opacity = "1";
+        _syncChannelTypeStyle();
+        deleteBtn.classList.add("hidden");
+        document.getElementById("chEditorName").value = ch.name;
+        const presets = getChannelPresets(ch);
+        document.getElementById("chEditorOutline").value   = ch.presets?.outline   || presets.outline || '';
+        document.getElementById("chEditorImage").value     = ch.presets?.image     || '';
+        document.getElementById("chEditorVoiceover").value = ch.presets?.voiceover || '';
+        document.getElementById("chEditorPolish").value    = ch.presets?.polish    || '';
+        document.getElementById("chEditorStoryboard").value = ch.presets?.storyboard || '';
+        // 原厂频道不显示删除按钮
+        document.getElementById("chEditorName").value = ch.name;
+        const presets = getChannelPresets(ch);
+        document.getElementById("chEditorOutline").value   = ch.presets?.outline   || presets.outline || '';
+        document.getElementById("chEditorImage").value     = ch.presets?.image     || '';
+        document.getElementById("chEditorVoiceover").value = ch.presets?.voiceover || '';
+        document.getElementById("chEditorPolish").value    = ch.presets?.polish    || '';
+        document.getElementById("chEditorStoryboard").value = ch.presets?.storyboard || '';
+        document.getElementById("chEditorCast").value      = ch.presets?.cast      || '';
+        // 原厂频道不显示删除按钮
+        deleteBtn.classList.toggle("hidden", !!ch.locked);
+        // 有备份时才显示回滚按钮
+        if (rollbackBtn) rollbackBtn.classList.toggle("hidden", !ch.presetsBackup);
+      } else {
+        document.getElementById("chEditorTitle").innerText = "新增创作频道";
+        document.getElementById("chEditorEmoji").innerText = "🎬";
+        document.getElementById("chEditorEmojiInput").value = "";
+      document.getElementById("chEditorColor").value = selectedColor;
+      document.getElementById("channelEditorModal").classList.add("hidden");
+      if (channelId) {
+        const ch = state.channels.find(c => c.id === channelId);
+        if (!ch) return;
+        document.getElementById("chEditorTitle").innerText = `编辑频道：${ch.name}`;
+        document.getElementById("chEditorEmoji").innerText = ch.emoji || '🎬';
+        document.getElementById("chEditorEmojiInput").value = ch.emoji || '';
+        document.getElementById("chEditorName").value = ch.name;
+        const presets = getChannelPresets(ch);
+        document.getElementById("chEditorOutline").value   = ch.presets?.outline   || presets.outline || '';
+        document.getElementById("chEditorImage").value     = ch.presets?.image     || '';
+        document.getElementById("chEditorVoiceover").value = c
+<truncated 822 bytes>
+:         // 有备份时才显示回滚按钮
+        document.getElementById(
+<truncated 522 bytes>
+ = "";
+      _editingChannelId = null;
+    }
+          state.channels[idx].name = name;
+    function saveChannelFromEditor() {
+      const name = document.getElementById("chEditorName").value.trim();
+      if (!name) { showToast("⚠️ 请填写频道名称！"); return; }
+      if (state.channels.length >= 8 && !_editingChannelId) {
+        deleteBtn.classList.add("hidden");
+        if (rollbackBtn) rollbackBtn.classList.add("hidden");
+            state.channels[idx].presets = hasCustomPresets ? { outline, image, voiceover, polish, storyboard } : null;
+          } else {
+            // 原厂频道：只允许修改提示词，颜色/ID/类型锁定
+            state.channels[idx].presets = hasCustomPresets ? { outline, image, voiceover, polish, storyboard } : null;
+          }
+        }
+        showToast(`✅ 频道「${name}」已更新！`);
+      } else {
+        const newId = "ch_custom_" + Date.now();
+        state.channels.push({ id: newId, channelType, name, emoji, color, locked: false,
+          assets_config,
+          presets: hasCustomPresets ? { outline, image, voiceover, polish, storyboard } : null
+        });
+        showToast(`🎉 频道「${name}」已创建！`);
+      }
+      } else {
+      // 如果修改的是当前激活频道，同时刷新 state.presets
+        document.getElementById("chEditorName").value = "";
+        document.getElementById("chEditorOutline").value = "";
+        document.getElementById("chEditorImage").value = "";
+        document.getElementById("chEditorVoiceover").value = "";
+        document.getElementById("chEditorPolish").value = "";
+        document.getElementById("chEditorStoryboard").value = "";
+        document.getElementById("chEditorCast").value = "";
+        // 新频道默认「解说/科普」模式（1张背景底图）
+        document.querySelectorAll('input[name="chChannelType"]').forEach(r => {
+          r.checked = (r.value === "science");
+          r.disabled = false;
+        });
+        document.getElementById("chTypeRow").style.opacity = "1";
+        _syncChannelTypeStyle();
+        deleteBtn.classList.add("hidden");
+        if (rollbackBtn) rollbackBtn.classList.add("hidden");
+      }
+      }
+      const bak = ch.presetsBackup;
+      document.getElementById("chEditorOutline").value   = bak.outline   || '';
+    }
+      document.getElementById("chEditorVoiceover").value = bak.voiceover || '';
+    // 同步定妆模式选择器高亮边框
+    function _syncChannelTypeStyle() {
+      const val = document.querySelector('input[name="chChannelType"]:checked')?.value || "science";
+      const sciEl = document.getElementById("chTypeLabelScience");
+      const draEl = document.getElementById("chTypeLabelDrama");
+      if (sciEl) sciEl.style.borderColor = (val === "science") ? "#F59E0B" : "";
+      if (draEl) draEl.style.borderColor = (val === "drama")   ? "#6366F1" : "";
+    }
+      showCustomModal(
+        "🗑️ 确认删除频道",
+    function selectEditorColor(clr) {
+      document.getElementById("chEditorColor").value = clr;
+      document.querySelectorAll("#chColorPalette button").forEach(btn => {
+        const btnClr = btn.style.background;
+      );
+      });
+    }
+    function deleteChannel(channelId) {
+    function closeChannelEditor() {
+      document.getElementById("channelEditorModal").classList.add("hidden");
+      _editingChannelId = null;
+    }
+    }
+    function saveChannelFromEditor() {
+      const name = document.getElementById("chEditorName").value.trim();
+      if (!name) { showToast("⚠️ 请填写频道名称！"); return; }
+      if (state.channels.length >= 8 && !_editingChannelId) {
+        showToast("⚠️ 最多创建 8 个频道！"); return;
+      }
+      const emoji = document.getElementById("chEditorEmojiInput").value.trim() || "🎬";
+      const emoji = document.getElementById("chEditorEmojiInput").value.trim() || "🎬";
+      const color = document.getElementById("chEditorColor").value || "#6366F1";
+      const outline = document.getElementById("chEditorOutline").value.trim();
+      const image = document.getElementById("chEditorImage").value.trim();
+      const voiceover = document.getElementById("chEditorVoiceover").v
+<truncated 552 bytes>
+      document.getElementById("chEditorCast").value       = bak.cast       || '';
+      showToast("🔙 提示词已还原至上一个保存版本！");
+    }
+          }
+          state.channels[idx].name = name;
+      const name = document.getElementById("chEditorName").value.trim();
+      if (!name) { showToast("⚠️ 请填写频道名称！"); return; }
+      if (state.channels.length >= 8 && !_editingChannelId) {
+        showToast("⚠️ 最多创建 8 个频道！"); return;
+      }
+          if (state.channels[idx].presets) {
+      const emoji = document.getElementById("chEditorEmojiInput").value.trim() || "🎬";
+      const color = document.getElementById("chEditorColor").value || "#6366F1";
+      const outline = document.getElementById("chEditorOutline").value.trim();
+      const image = document.getElementById("chEditorImage").value.trim();
+      const voiceover = document.getElementById("chEditorVoiceover").value.trim();
+      const polish = document.getElementById("chEditorPolish").value.trim();
+      const storyboard = document.getElementById("chEditorStoryboard").value.trim();
+            state.channels[idx].channelType = channelType;
+            state.channels[idx].presets = hasCustomPresets ? { outline, image, voiceover, polish, storyboard, cast } : null;
+          } else {
+            // 原厂频道：只允许修改提示词，颜色/ID/类型锁定
+            state.channels[idx].presets = hasCustomPresets ? { outline, image, voiceover, polish, storyboard, cast } : null;
+          }
+        }
+        showToast(`✅ 频道「${name}」已更新！`);
+      } else {
+        const newId = "ch_custom_" + Date.now();
+        state.channels.push({ id: newId, channelType, name, emoji, color, locked: false,
+          presets: hasCustomPresets ? { outline, image, voiceover, polish, storyboard, cast } : null
+        });
+        showToast(`🎉 频道「${name}」已创建！`);
+      }
+// MISSING LINE 2096
+      // 如果修改的是当前激活频道，同时刷新 state.presets
+      if (_editingChannelId === state.activeChannelId) {
+        const ch = state.channels.find(c => c.id === _editingChannelId);
+        if (ch) state.presets = getChannelPresets(ch);
+      }
+      const tag = document.getElementById("polishStatusTag");
+      saveChannelsToStorage();
+      closeChannelEditor();
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+// MISSING LINE 2107
+    // ── 🔒 剧本锁定开关切换 ──
+      const toggle = document.getElementById("polishToggle");
+      state.polishEnabled = toggle.checked;
+// MISSING LINE 2111
+      const tag = document.getElementById("polishStatusTag");
+      const desc = document.getElementById("polishDesc");
+// MISSING LINE 2114
+      if (toggle.checked) {
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+// MISSING LINE 2117
+            style_presets: state.presets.image,
+            seed: state.seed
+          }
+        }
+      };
+      document.getElementById("jsonPayloadViewer").innerText = JSON.stringify(payload, null, 2);
+    }
+      const btn = document.getElementById("c1ShakeBtn");
+    // ── 🎲 摇一摇盲盒 ──
+    // ── 🎲 C1 内联版：摇一摇脑暴剧本（使用激活频道专属 Prompt，结果填回文本框）──
+    async function triggerChannelShake() {
+      if (state.isRunning) { showToast("⏳ 上一个请求还在运行中，请稍候！"); return; }
+      showToast(`🎲 正在为「${ch ? ch.name : '当前频道'}」脑暴剧本灵感...`);
+      const ch = getActiveChannel();
+      const outlinePrompt = state.presets.outline;
+        const res = await pywebview.api.compile_story({
+      // 按钮状态反馈
+      const btn = document.getElementById("c1ShakeBtn");
+          original_text: "请根据本频道的创作方向，为我随机生成一个精彩的短视频故事大纲。",
+          pipeline_config: {
+            polish_flow: { enabled: true, system_prompt: outlinePrompt },
+            voiceover_flow: { system_prompt: state.presets.voiceover },
+            render_flow: { style_presets: state.presets.image, seed: Date.now() % 99999 }
+          }
+        });
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+// MISSING LINE 2144
+// MISSING LINE 2145
+          vPlaceholder.classList.add("hidden");
+          vPlayer.src = res.video_url;
+          vPlayer.classList.remove("hidden");
+          vPlayer.play();
+// MISSING LINE 2150
+          showToast("🎉 全盘多轨视频物理拼装合成大获成功！请导演欣赏大作！");
+        } else {
+          showCustomModal("⚠️ 合成失败", "FFmpeg 合成大师运行发生阻碍，请重试！");
+        }
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+// MISSING LINE 2156
+        "🗑️ 确认删除频道",
+        `即将删除频道「${ch.name}」，该频道的专属提示词与草稿将一并清除，此操作不可撤销。`,
+        "确认删除",
+        true,
+        if (!ch.presets) ch.presets = {};
+        ch.presets.image     = state.presets.image;
+        ch.presets.polish    = state.presets.polish;
+        ch.presets.voiceover = state.presets.voiceover;
+        ch.presets.outline   = state.presets.outline;
+        saveChannelsToStorage();
+      }
+      showToast(`💾 「${ch ? ch.name : '当前频道'}」的提示词预设已同步！`);
+      setTimeout(() => navigateTo("C1"), 800);
+    }
+// MISSING LINE 2171
+    function updateJsonPayloadViewer() {
+      const payload = {
+        app_id: "palette-cinema-id",
+        mode_path: state.modePath,
+        original_text: state.rawScript || "等待输入...",
+        pipeline_config: {
+          polish_flow: {
+            enabled: state.polishEnabled,
+            system_prompt: state.polishEnabled ? state.presets.polish : "",
+            immutable_lock: !state.polishEnabled
+          },
+          voiceover_flow: {
+            system_prompt: state.presets.voiceover
+        app_id: "palette-cinema-id",
+        mode_path: state.modePath,
+        original_text: state.rawScript || "等待输入...",
+        pipeline_config: {
+          polish_flow: {
+            enabled: state.polishEnabled,
+            system_prompt: state.polishEnabled ? state.presets.polish : "",
+            immutable_lock: !state.polishEnabled
+          },
+          voiceover_flow: {
+            system_prompt: state.presets.voiceover
+          },
+          render_flow: {
+            style_presets: state.presets.image,
+            seed: state.seed,
+            cast_prompt: state.presets.cast,
+            storyboard_prompt: state.presets.storyboard
+          }
+      } else {
+        area.value = area.value.trim() + ", " + tag;
+      }
+      syncPromptToState("image");
+    }
+        ch.presets.polish    = state.presets.polish;
+    function resetSelectedPrompt(cat) {
+      const val = DEFAULT_PRESETS[cat] || "";
+      const el = document.getElementById(`promptText-${cat}`);
+      if (el) el.value = val;
+      state.presets[cat] = val;
+      syncPromptToState(cat);
+      showToast("🔄 参数已重置为出厂默认设置。");
+    }
+// MISSING LINE 2217
+    function savePresets() {
+      // 把当前编辑器的值同步到激活频道
+      const ch = getActiveChannel();
+      if (ch) {
+        if (!ch.presets) ch.presets = {};
+        ch.presets.image     = state.presets.image;
+        ch.presets.polish    = state.presets.polish;
+        ch.presets.voiceover = state.presets.voiceover;
+        ch.presets.outline   = state.presets.outline;
+        saveChannelsToStorage();
+      }
+      showToast(`💾 「${ch ? ch.name : '当前频道'}」的提示词预设已同步！`);
+      setTimeout(() => navigateTo("C1"), 800);
+    }
+          render_flow: {
+    function updateJsonPayloadViewer() {
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+          }
+      const payload = {
+        app_id: "palette-cinema-id",
+        mode_path: state.modePath,
+        original_text: state.rawScript || "等待输入...",
+        pipeline_config: {
+          polish_flow: {
+            enabled: state.polishEnabled,
+            system_prompt: state.polishEnabled ? state.presets.polish : "",
+            immutable_lock: !state.polishEnabled
+          },
+          voiceover_flow: {
+            system_prompt: state.presets.voiceover
+          },
+          render_flow: {
+            style_presets: state.presets.image,
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+      const originalIcon = btnIcon ? btnIcon.innerText : "🎲";
+        document.getElementById("p2StatusText").className = "text-slate-350";
+        p2Bar.style.width = "20%";
+        p2Val.innerText = "20%";
+// MISSING LINE 2256
+        // 定时改变生图日志
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call t
+          app_id: "palette-cinema-id",
+          mode_path: state.modePath,
+          original_text: "请根据本频道的创作方向，为我随机生成一个精彩的短视频故事大纲。",
+          pipeline_config: {
+            polish_flow: { enabled: true, system_prompt: outlinePrompt },
+            voiceover_flow: { system_prompt: state.presets.voiceover },
+            render_flow: { style_presets: state.presets.image, seed: Date.now() % 99999 }
+          }
+        });
+// MISSING LINE 2268
+        if (res.status === "success") {
+          const outline = res.data.compiled_voiceover || "";
+          // 直接填充到 C1 文本框（不跳转D2）
+          const ta = document.getElementById("rawScriptTextarea");
+          if (ta) { ta.value = outline; }
+          state.rawScript = outline;
+          saveChannelDraft(outline);
+          syncRawScriptToState();
+          showToast("🎉 脑暴灵感已生成并填入！您可以直接修改后发射！");
+        } else {
+          showCustomModal("⚠️ 后端排队中", "脑暴大纲生成失败，请重试！");
+        }
+// MISSING LINE 2281
+// MISSING LINE 2282
+// MISSING LINE 2283
+// MISSING LINE 2284
+// MISSING LINE 2285
+// MISSING LINE 2286
+// MISSING LINE 2287
+// MISSING LINE 2288
+// MISSING LINE 2289
+// MISSING LINE 2290
+// MISSING LINE 2291
+// MISSING LINE 2292
+// MISSING LINE 2293
+// MISSING LINE 2294
+// MISSING LINE 2295
+// MISSING LINE 2296
+// MISSING LINE 2297
+// MISSING LINE 2298
+// MISSING LINE 2299
+// MISSING LINE 2300
+      // 安全直出锁标志
+      document.getElementById("d1LockBadge").innerText = state.polishEnabled ? "✨ SMART_POLISH_FLOW" : "🔒 ORIGINAL_TEXT_LOCKED";
+      document.getElementById("d1LockBadge").className = state.polishEnabled ? "px-2 py-0.5 text-[9px] tracking-widest uppercase font-bold rounded bg-indigo-950 border border-indigo-800 text-indigo-200" : "px-2 py-0.5 text-[9px] tracking-widest uppercase font-bold rounded bg-red-950 border border-red-800/80 text-red-200";
+// MISSING LINE 2304
+      try {
+        // [第1步] 发送文本编译请求
+        logText.innerText = "[第1步] 正在呼唤大模型提炼大纲并编译解说旁白文本 (预计 5 秒)...";
+        p1Bar.style.width = "40%";
+        p1Val.innerText = "40%";
+// MISSING LINE 2310
+        const cData = await pywebview.api.compile_story({
+            app_id: "palette-cinema-id",
+            mode_path: state.modePath,
+            original_text: text,
+            pipeline_config: {
+              polish_flow: {
+                enabled: state.polishEnabled,
+                system_prompt: state.polishEnabled ? state.presets.polish : "",
+                immutable_lock: !state.polishEnabled
+              },
+              voiceover_flow: { system_prompt: state.presets.voiceover },
+              render_flow: {
+                style_presets: state.presets.image,
+                seed: state.seed,
+                storyboard_prompt: state.presets.storyboard
+              }
+            }
+          });
+      p1Bar.style.width = "0%";
+      p1Val.innerText = "0%";
+      p2Bar.style.width = "0%";
+      p2Val.innerText = "0%";
+        state.compiledVoiceover = cData.data.compiled_voiceover;
+      // 安全直出锁标志
+      document.getElementById("d1LockBadge").innerText = state.polishEnabled ? "✨ SMART_POLISH_FLOW" : "🔒 ORIGINAL_TEXT_LOCKED";
+      document.getElementById("d1LockBadge").className = state.polishEnabled ? "px-2 py-0.5 text-[9px] tracking-widest uppercase font-bold rounded bg-indigo-950 border border-indigo-800 text-indigo-200" : "px-2 py-0.5 text-[9px] tracking-widest uppercase font-bold rounded bg-red-950 border border-red-800/80 text-red-200";
+        p1Bar.style.width = "100%";
+      try {
+        // [第1步] 发送文本编译请求
+        logText.innerText = "[第1步] 正在呼唤大模型提炼大纲并编译解说旁白文本 (预计 5 秒)...";
+        p1Bar.style.width = "40%";
+        p1Val.innerText = "40%";
+        document.getElementById("d1VoiceoverOutput").innerText = state.compiledVoiceover;
+        const cData = await pywebview.api.compile_story({
+            app_id: "palette-cinema-id",
+            mode_path: state.modePath,
+            original_tex
+<truncated 4218 bytes>
+0px_rgba(99,102,241,0.15)] flex flex-col space-y-3 w-full";
+            pipeline_config: {
+              polish_flow: {
+                enabled: state.polishEnabled,
+                system_prompt: state.polishEnabled ? state.presets.polish : "",
+                immutable_lock: !state.polishEnabled
+        p1Val.innerText = "40%";
+              voiceover_flow: { system_prompt: state.presets.voiceover },
+        const cData = await pywebview.api.compile_story({
+            app_id: "palette-cinema-id",
+            mode_path: state.modePath,
+            original_tex
+<truncated 4218 bytes>
+0px_rgba(99,102,241,0.15)] flex flex-col space-y-3 w-full";
+            pipeline_config: {
+              polish_flow: {
+                enabled: state.polishEnabled,
+                system_prompt: state.polishEnabled ? state.presets.polish : "",
+                immutable_lock: !state.polishEnabled
+              },
+              voiceover_flow: { system_prompt: state.presets.voiceover },
+              render_flow: {
+                style_presets: state.presets.image,
+                seed: state.seed,
+                cast_prompt: state.presets.cast,
+                storyboard_prompt: state.presets.storyboard
+              }
+            }
+          });
+        if (cData.status !== "success") {
+          throw new Error(cData.detail || "剧本编译失败");
+        }
+        logText.innerText = "[第2步] 解说词已全部编译就绪！正在物理派生生图引擎绘制 3 大核心资产 (预计 20 秒)...";
+        state.compiledVoiceover = cData.data.compiled_voiceover;
+        state.lastCompiledText = text;
+        state.extractedEntities = cData.data.extracted_entities;
+        p2Val.innerText = "20%";
+                enabled: state.polishEnabled,
+        // 定时改变生图日志
+        let logSec =
+              },
+              voiceover_flow: { system_prompt: state.presets.voiceover },
+              render_flow: {
+                style_presets: state.presets.image,
+                seed: state.seed,
+                storyboard_prompt: state.presets.storyboard
+              }
+            }
+          });
+        if (cData.status !== "success") {
+          throw new Error(cData.detail || "剧本编译失败");
+        }
+        p2Bar.style.width = "100%";
+        state.compiledVoiceover = cData.data.compiled_voiceover;
+        state.lastCompiledText = text;
+        state.extractedEntities = cData.data.extracted_entities;
+        document.getElementById("p2StatusText").innerText = "2. 角色及美术场景定妆大画卡集已绘制成功！";
+        p1Bar.style.width = "100%";
+        p1Val.innerText = "100%";
+        document.getElementById("p1StatusDot").className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
+        document.getElementById("p1StatusText").className = "text-emerald-400";
+        document.getElementById("p1StatusText").innerText = "1. 第三人称解说词文本已就绪！";
+        const nBtn = document.getElementById("d1NextBtn");
+        nBtn.disabled = false;
+        nBtn.className = "px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition-all text-xs tracking-wider uppercase";
+// MISSING LINE 2414
+      } catch(err) {
+        handleApiError(err, () => handleC1Launch(text));
+      }
+    }
+// MISSING LINE 2419
+    // ── 🎭 D1.1 定妆细节精修逻辑 (支持新旧后悔药) ──
+        // 定时改变生图日志
+        let logSec = 0;
+        const logTimer = setInterval(() => {
+          logSec += 3;
+          if (state.extractedEntities && state.extractedEntities.length === 1) {
+            logText.innerText = `[第2步] 正在由画画引擎全力绘制【${state.extractedEntities[0] || '视觉基底'}】视觉背景底板...`;
+          galleryContainer.children[0].className = "group relative bg-[#0D1227] border border-slate-800 hover:border-indigo-500/80 rounded-2xl shadow-2xl p-4 cursor-pointer transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_15px_30px_rgba(99,102,241,0.15)] flex flex-col space-y-3";
+          galleryContainer.children[1].classList.remove("hidden");
+          galleryContainer.children[2].classList.remove("hidden");
+        }
+          }
+        state.assets.forEach((ast, idx) => {
+          document.getElementById(`cardName${idx}`).innerText = ast.name;
+          document.getElementById(`cardPrompt${idx}`).innerText = ast.prompt;
+          document.getElementById(`cardImg${idx}`).innerHTML = `<img src="${ast.image_url}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />`;
+        });
+      document.getElementById("d1_1_PreviewArea").innerHTML = `<img id="d1_1_preview_img" src="${ast.image_url}" class="max-w-full max-h-[300px] object-contain rounded-lg shadow-xl" />`;
+        p2Bar.style.width = "100%";
+        p2Val.innerText = "100%";
+        document.getElementById("p2StatusDot").className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
+        document.getElementById("p2StatusText").className = "text-emerald-400";
+        document.getElementById("p2StatusText").innerText = "2. 角色及美术场景定妆大画卡集已绘制成功！";
+        clearInterval(logTimer);
+        logText.innerText = "🎉 恭喜！大纲编译及资产三视图绘制圆满通过，大卡片画廊已解锁！";
+        document.getElementById("d1ResultArea").classList.remove("hidden");
+The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+      document.getElementById("overlayD1_1").classList.remove("hidden");
+          state.storyboardGrids = res.grids;
+// MISSING LINE 2449
+          // 渲染底片
+      activeD1_1PreviewMode = mode;
+        p2Bar.style.width = "100%";
+        p2Val.innerText = "100%";
+        document.getElementById("p2StatusDot").className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
+        document.getElementById("p2StatusText").className = "text-emerald-400";
+        document.getElementById("p2StatusText").innerText = "2. 角色及美术场景定妆大画卡集已绘制成功！";
+      const img = document.getElementById("d1_1_preview_img");
+        logText.innerText = "🎉 恭喜！大纲编译及资产三视图绘制圆满通过，大卡片画廊已解锁！";
+        document.getElementById("d1ResultArea").classList.remove("hidden");
+        tabNew.className = "px-2 py-1 bg-indigo-600 text-[10px] text-white rounded font-bold";
+// MISSING LINE 2461
+// MISSING LINE 2462
+// MISSING LINE 2463
+// MISSING LINE 2464
+        tabNew.className = "px-2 py-1 text-[10px] text-slate-400 hover:text-slate-200 rounded";
+        img.src = hist.old_url;
+      }
+    }
+// MISSING LINE 2469
+    async function rebuildAssetCard() {
+      const ast = state.assets[activeCardIndex];
+      const newPrompt = document.getElementById("d1_1_PromptInput").value;
+// MISSING LINE 2473
+      const rebuildBtn = document.getElementById("rebuildAssetBtn");
+      rebuildBtn.disabled = true;
+      rebuildBtn.innerText = "🎨 生图引擎重绘中...";
+// MISSING LINE 2477
+      try {
+        const res = await pywebview.api.render_single_frame({
+            target_id: ast.id,
+            prompt: newPrompt,
+            seed: state.seed,
+            style_lock: true
+          });
+        if (res.status === "success") {
+          // 更新后悔药
+          state.assetHistory[ast.id].old_url = ast.image_url;
+          state.assetHistory[ast.id].new_url = res.render_url;
+// MISSING LINE 2489
+          ast.image_url = res.render_url;
+          ast.prompt = newPrompt;
+// MISSING LINE 2492
+          // 更新前端卡片
+          document.getElementById(`cardPrompt${activeCardIndex}`).innerText = newPrompt;
+          document.getElementById(`cardImg${activeCardIndex}`).innerHTML = `<img src="${res.render_url}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />`;
+// MISSING LINE 2496
+          // 更新弹窗图
+          switchD1_1PreviewMode("new");
+          showToast("✨ 定妆卡片局部重绘成功！");
+        } else {
+          showCustomModal("⚠️ 生图失败", "重绘失败，请重试！");
+        }
+      } catch(err) {
+        handleApiError(err, rebuildAssetCard);
+      } finally {
+        rebuildBtn.disabled = false;
+        rebuildBtn.innerText = "💡 确定更新并进行局部重画";
+      }
+    }
+// MISSING LINE 2510
+    function closeD1_1(event) {
+      if (event.target.id === "overlayD1_1") {
+        closeD1_1_Force();
+      }
+    }
+    function closeD1_1_Force() {
+      document.getElementById("overlayD1_1").classList.add("hidden");
+    }
+// MISSING LINE 2519
+    // ── 🎬 E 页面分镜底片生成 ──
+    async function handleD1Next() {
+      if (state.storyboardGrids && state.storyboardGrids.length > 0) {
+        navigateTo("E");
+        showToast("🎞️ 已恢复已生成的分镜底片大网格。");
+        return;
+      }
+      if (state.isRunning) {
+        showToast("⏳ 任务正在全力运转中，请勿重复点击！");
+        return;
+      }
+      state.isRunning = true;
+      navigateTo("E");
+      showToast("🎞️ 正在物理切切旁白并插值生图分镜大宫格...");
+// MISSING LINE 2534
+      // 初始化骨架状态
+      const container = document.getElementById("storyboardGrid");
+      if (container) {
+        container.className = "flex items-center justify-center py-20 w-full";
+        container.innerHTML = `
+          <div class="text-center space-y-4">

@@ -232,7 +232,8 @@ Output ONLY: {"english_prompt":"...","anchor_description":"..."}"""
 
 
 def llm_regen_supporting_prompt(
-    topic: str, synopsis_payload: dict, role_id: str, display_name_en: str
+    topic: str, synopsis_payload: dict, role_id: str, display_name_en: str,
+    feedback: str = "",
 ) -> dict | None:
     client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL.rstrip("/"))
     user = json.dumps(
@@ -241,6 +242,7 @@ def llm_regen_supporting_prompt(
             "synopsis_package": synopsis_payload,
             "role_id": role_id,
             "display_name_en": display_name_en,
+            "feedback": feedback,
         },
         ensure_ascii=False,
     )
@@ -541,8 +543,8 @@ def get_needed_stages(topic: str):
         return ["middle"]
 
 
-def design_character(topic: str, role_tag: str, stage: str = "middle"):
-    """单阶段重画或回退：仅 topic + 阶段，无梗概细节。"""
+def design_character(topic: str, role_tag: str, stage: str = "middle", feedback: str = ""):
+    """单阶段重画或回退：仅 topic + 阶段，无梗概细节。feedback 为用户修改意见，会追加到 LLM prompt 中。"""
     stage_name_cn = {
         "child": "幼年/童年",
         "youth": "青年/求学期",
@@ -575,6 +577,14 @@ If any phrase implies realistic muscled limbs or detailed shoes, rewrite to atti
         f"Topic: 【{topic}】. Role tag: {role_tag}. Stage: 【{stage_name_cn}】.\n"
         f"Write english_prompt + anchor_description following the rules."
     )
+
+    if feedback:
+        user_prompt += (
+            f"\n\n⚠️ USER FEEDBACK (must be incorporated): "
+            f"{feedback}\n"
+            f"Revise the english_prompt to address this feedback "
+            f"while still following all the rules above."
+        )
 
     try:
         response = log_llm_chat(
@@ -656,7 +666,7 @@ def _archive_supporting_subdir(role_id: str):
 
 
 # Layer A：定妆壳（固定英文）+ 与 style_config.REF_STYLE_ANCHOR 摘要一致。
-REF_SHEET_LAYER_A = """Character sheet layout: one character, three orthographic full-body views (front, side, back) on a flat pure white #FFFFFF background only—no floor, horizon, props, or environment.
+REF_SHEET_LAYER_A_CYANIDE = """Character sheet layout: one character, three orthographic full-body views (front, side, back) on a flat pure white #FFFFFF background only—no floor, horizon, props, or environment.
 
 NON-NEGOTIABLE SILHOUETTE (Cyanide-and-Happiness read):
 - Oversized round / bean head; two tiny dot (pea) eyes—no anime eyes, eyelids, lashes, or detailed facial structure.
@@ -665,6 +675,10 @@ NON-NEGOTIABLE SILHOUETTE (Cyanide-and-Happiness read):
 
 Style mood: 2D vector web-comic, absurdist deadpan humor allowed; keep forms primitive and iconic."""
 
+REF_SHEET_LAYER_A_GENERAL = """Character sheet layout: one character, three orthographic full-body views (front, side, back) on a flat pure white #FFFFFF background only—no floor, horizon, props, or environment.
+
+Style mood: clean 2D flat-illustration representation, keeping forms clear, primitive, and iconic to represent the character's clothing and key features. Flat color fills, neat outlines, even lighting."""
+
 
 async def generate_ref_sheet_at(out_dir: Path, english_prompt: str, ref_image_path: Path | None = None) -> Path | None:
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -672,9 +686,14 @@ async def generate_ref_sheet_at(out_dir: Path, english_prompt: str, ref_image_pa
     label = out_dir.name
     print(f"  🎨 [Generate] 定妆输出 {label} (参考: {ref_image_path.name if ref_image_path else 'None'})...")
 
+    # 动态判定是否为经典火柴人风格，如果不是，则采用通用的扁平画风模版，不强行捏扁人物
+    ref_anchor_lower = str(config.REF_STYLE_ANCHOR or "").lower()
+    is_cyanide_style = "cyanide" in ref_anchor_lower or "stickman" in ref_anchor_lower
+    chosen_layer_a = REF_SHEET_LAYER_A_CYANIDE if is_cyanide_style else REF_SHEET_LAYER_A_GENERAL
+
     lines = [
-        REF_SHEET_LAYER_A.strip(),
-        "Lighting: flat even cartoon lighting—no dramatic cast shadows, rim light, or studio volumetrics.",
+        chosen_layer_a.strip(),
+        "Lighting: flat even lighting—no dramatic cast shadows, rim light, or studio volumetrics.",
         f"Style (summary): {config.REF_STYLE_ANCHOR}",
     ]
     if ref_image_path:
@@ -1005,7 +1024,7 @@ def _merge_supporting_anchor_into_full_story(role_id: str, abs_img: str | None):
         print(f"  ⚠️ [Sync] 配角回写失败: {e}")
 
 
-async def run_regen_supporting_character(topic: str, role_id: str) -> int:
+async def run_regen_supporting_character(topic: str, role_id: str, feedback: str = "") -> int:
     """
     仅重画单个配角三视图：读 cast_registry + 梗概 → LLM 提示词 → 生图 → 回写 physical_char_anchors。
     返回 0 成功，1 失败。
@@ -1040,9 +1059,9 @@ async def run_regen_supporting_character(topic: str, role_id: str) -> int:
     sdir = _run_ref_supporting_dir(role_id)
     sdir.mkdir(parents=True, exist_ok=True)
 
-    design = llm_regen_supporting_prompt(topic, syn, role_id, display_name_en)
+    design = llm_regen_supporting_prompt(topic, syn, role_id, display_name_en, feedback=feedback)
     if not design:
-        design = design_character(topic, f"supporting_{role_id}", "middle")
+        design = design_character(topic, f"supporting_{role_id}", "middle", feedback=feedback)
         if not isinstance(design, dict):
             print("  ❌ 无法生成配角提示词")
             return 1
@@ -1063,7 +1082,7 @@ async def run_regen_supporting_character(topic: str, role_id: str) -> int:
     return 0
 
 
-async def run_ref_process(topic: str, category: str, target_stage: str = None):
+async def run_ref_process(topic: str, category: str, target_stage: str = None, feedback: str = ""):
     print(f"\n🚀 [Ref Pipeline] 开始为【{topic}】定制 {category} 流水线...")
     _archive_and_clean_category(category, target_stage)
 
@@ -1090,7 +1109,7 @@ async def run_ref_process(topic: str, category: str, target_stage: str = None):
 
     if category == "protagonist":
         if target_stage:
-            design = design_character(topic, "protagonist", target_stage)
+            design = design_character(topic, "protagonist", target_stage, feedback=feedback)
             tdir = _run_ref_stage_dir(target_stage)
             mid = _run_ref_stage_dir("middle") / "triple_view.png"
             refp = mid if mid.exists() else None
@@ -1107,7 +1126,7 @@ async def run_ref_process(topic: str, category: str, target_stage: str = None):
         await _run_synopsis_driven_protagonist_pipeline(topic)
         return
 
-    design = design_character(topic, category, "middle")
+    design = design_character(topic, category, "middle", feedback=feedback)
     result_path = await generate_ref_sheet(category, design["english_prompt"], "middle")
     if result_path:
         desc_f = result_path.parent / "description.txt"
@@ -1136,8 +1155,9 @@ if __name__ == "__main__":
         metavar="ROLE_ID",
         help="仅重画 cast_registry 中该 role_id 的配角三视图",
     )
+    parser.add_argument("--feedback", type=str, default="", help="用户修改意见，LLM 会参考来改写提示词")
     args = parser.parse_args()
     if args.regen_supporting:
-        code = asyncio.run(run_regen_supporting_character(args.topic, args.regen_supporting.strip()))
+        code = asyncio.run(run_regen_supporting_character(args.topic, args.regen_supporting.strip(), feedback=args.feedback))
         sys.exit(code)
-    asyncio.run(run_ref_process(args.topic, args.role, args.stage))
+    asyncio.run(run_ref_process(args.topic, args.role, args.stage, feedback=args.feedback))

@@ -90,9 +90,13 @@ class PipelineBridge:
         return self._hub.run_synopsis_setup(topic, receive_id, feedback, duration, **kwargs)
 
     def run_visual_setup(self, topic: str, receive_id: str, regen_stage: str = None,
-                         regen_supporting_role_id: str = None):
-        """生成定妆照并推送审批卡"""
-        return self._hub.run_visual_setup(topic, receive_id, regen_stage, regen_supporting_role_id)
+                         regen_supporting_role_id: str = None,
+                         regen_element_key: str = None,
+                         feedback: str = ""):
+        """生成定妆照并推送审批卡（支持带 feedback 的重画）"""
+        return self._hub.run_visual_setup(topic, receive_id, regen_stage, regen_supporting_role_id,
+                                          regen_element_key=regen_element_key,
+                                          feedback=feedback)
 
     def retry_single_step(self, step_name: str, open_id: str):
         """断点续传 Step1/2/3"""

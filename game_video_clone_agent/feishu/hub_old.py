@@ -454,15 +454,32 @@ def _build_storyboard_review_card(
                 "content": f"⚠️ 批次 {i} 文件不存在：`{abs_path}`"
             })
 
-        # 每个批次配一个打回按钮
+        # 每个批次配：查看提示词按钮 + 打回按钮（同一行）
         card["elements"].append({
             "tag": "action",
-            "actions": [{
-                "tag": "button",
-                "text": {"content": f"❌ 打回批次 {i}（重画）", "tag": "plain_text"},
-                "type": "danger",
-                "value": {"action_type": "reject_storyboard_batch", "topic": topic, "batch_index": i}
-            }]
+            "actions": [
+                {
+                    "tag": "button",
+                    "text": {"content": f"📋 查看提示词 | 批次 {i}", "tag": "plain_text"},
+                    "type": "default",
+                    "value": {
+                        "action_type": "toggle_batch_prompts",
+                        "topic": topic,
+                        "batch_index": i,
+                        "action": "show",
+                    }
+                },
+                {
+                    "tag": "button",
+                    "text": {"content": f"❌ 打回批次 {i}（重画）", "tag": "plain_text"},
+                    "type": "danger",
+                    "value": {
+                        "action_type": "reject_storyboard_batch",
+                        "topic": topic,
+                        "batch_index": i,
+                    }
+                },
+            ]
         })
 
     # 底部：全部通过按钮
@@ -1984,10 +2001,13 @@ def run_synopsis_setup(
             receive_id, topic, "llm", e, failed_stage="GENERATING_SYNOPSIS",
         )
 
-def run_visual_setup(topic: str, receive_id: str, regen_stage: str = None, regen_supporting_role_id: str = None):
+def run_visual_setup(topic: str, receive_id: str, regen_stage: str = None, regen_supporting_role_id: str = None,
+                     regen_element_key: str = None, feedback: str = ""):
     """
     点选主题后：先生成骨架脚本和人设图，然后发给老板看。
     regen_supporting_role_id：仅重画 cast_registry 中该 role_id 的配角三视图（子进程 ref_generator --regen-supporting）。
+    regen_element_key：科普模式下仅重画指定视觉元素。
+    feedback：用户修改意见，会传递给 ref_generator 的 --feedback 参数。
     """
     try:
         clear_last_error_context()
@@ -2013,7 +2033,11 @@ def run_visual_setup(topic: str, receive_id: str, regen_stage: str = None, regen
             else:
                 msg_pre = "🎨 保留剧本，正在重画全部阶段定妆照，约 1-2 分钟..."
         elif regen_stage:
-            msg_pre = f"🧠 正在为您重新绘制【{regen_stage}】阶段的形象，请稍候..."
+            stage_name = {"child": "幼年期", "youth": "青年期", "middle": "中年期", "elderly": "老年期"}.get(regen_stage, regen_stage)
+            if feedback:
+                msg_pre = f"🔄 收到修改意见，正在根据「{feedback}」重新生成{stage_name}定妆照..."
+            else:
+                msg_pre = f"🧠 正在为您重新绘制【{regen_stage}】阶段的形象，请稍候..."
         else:
             msg_pre = f"🧠 正在为【{topic}】构思剧本和定妆照，预计 1-2 分钟..."
         mgr.send_text(receive_id, "open_id", msg_pre)
@@ -2030,6 +2054,8 @@ def run_visual_setup(topic: str, receive_id: str, regen_stage: str = None, regen
             if regen_sup:
                 print(f"  -> [HUB] 运行 ref_generator.py --regen-supporting {regen_sup} …")
                 ref_cmd = [PYTHON_BIN, "src/ref_generator.py", "--topic", topic, "--regen-supporting", regen_sup]
+                if feedback:
+                    ref_cmd += ["--feedback", feedback]
                 r1 = subprocess.run(ref_cmd, cwd=str(BASE_DIR),
                                     env=dict(os.environ, PYTHONIOENCODING="utf-8"),
                                     capture_output=True, text=True, encoding="utf-8", errors="replace")
@@ -2068,6 +2094,8 @@ def run_visual_setup(topic: str, receive_id: str, regen_stage: str = None, regen
                     # __all__ 不传 --stage，让 ref_generator 重画全部阶段
                     if regen_stage != "__all__":
                         ref_cmd += ["--stage", regen_stage]
+                    if feedback:
+                        ref_cmd += ["--feedback", feedback]
                     r1 = subprocess.run(ref_cmd, cwd=str(BASE_DIR),
                                         env=dict(os.environ, PYTHONIOENCODING="utf-8"),
                                         capture_output=True, text=True, encoding="utf-8", errors="replace")
@@ -2111,7 +2139,16 @@ def run_visual_setup(topic: str, receive_id: str, regen_stage: str = None, regen
         card = {
             "config": {"wide_screen_mode": True},
             "header": {"title": {"content": f"🎬 定妆照审批：{topic}", "tag": "plain_text"}, "template": "blue"},
-            "elements": [],
+            "elements": [
+                {
+                    "tag": "markdown",
+                    "content": (
+                        "💡 **修改意见**：复制下方角色标注行，接上意见即可触发重画。\n"
+                        "　如：`Lang · 主角 · 青年期（youth）帽子改成鸭舌帽，衣服换成浅灰色`"
+                    ),
+                },
+                {"tag": "hr"},
+            ],
         }
 
         generated_stages = []

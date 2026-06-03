@@ -26,6 +26,7 @@ class Session:
     open_id: str
     topic: str = ""
     status: str = STATUS["IDLE"]
+    style_preset: str = "story"  # "story" | "science"
     card_id: str = ""
     card_type: str = ""
     prod_progress: dict = field(default_factory=dict)
@@ -151,6 +152,7 @@ class Session:
             open_id=data.get("open_id", ""),
             topic=data.get("topic", ""),
             status=data.get("status", STATUS["IDLE"]),
+            style_preset=data.get("style_preset", "story"),
             card_id=data.get("card_id", ""),
             card_type=data.get("card_type", ""),
             prod_progress=data.get("prod_progress") or {},
@@ -167,6 +169,7 @@ class Session:
             "open_id": self.open_id,
             "topic": self.topic,
             "status": self.status,
+            "style_preset": self.style_preset,
             "card_id": self.card_id,
             "card_type": self.card_type,
             "prod_progress": self.prod_progress,

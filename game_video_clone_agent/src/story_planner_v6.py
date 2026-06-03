@@ -584,20 +584,25 @@ def _handoff_for_next_segment(
 ) -> str:
     """
     上一幕写完后，由统筹模型根据梗概+已写正文生成「给下一幕写手」的续写指令。
+    强制输出【衔接点】+【起手建议】+【本幕任务】，确保段间无缝连接。
     """
-    sys_p = """你是编剧统筹。根据故事梗概与**已写旁白正文**，为下一位「旁白写手」写一段**续写指令**（约 80～200 个汉字）。
+    sys_p = """你是编剧统筹。根据故事梗概与**已写旁白正文**，为下一位「旁白写手」写一段**续写指令**。
 
-要求：
-- 只写**必须推进的剧情节点**（可含时间、数字、利益交换、转折），不要写旁白正文，不要复述梗概全文。
-- 指令必须衔接已写内容，并指向「下一幕」的叙事任务，不能另起无关故事或改人设。
-- 用一段连续文字，不要用 markdown 分条。不要重复已写事实。"""
+请严格按以下三段式输出（约 100～300 个汉字，禁止 markdown 分条，用连续文字）：
+
+【衔接点】精确描述上一段结尾的场景状态：主角此刻在何处？正在做什么？处于什么情绪/处境？最近完成了什么动作？（让写手清楚知道自己从哪开始接）
+
+【起手建议】给下一段写手一个具体的「第一句话」建议——下一段第一句应该写什么动作、什么画面（不是直接给旁白正文，而是描述起手方向，例如「从他推开办公室门、面试官头也没抬开始写」）
+
+【本幕任务】根据梗概，下一幕「{label_hint}」必须推进的剧情节点（含具体事件、数字、转折）；禁止另起无关故事或改人设。""".replace("{label_hint}", next_label)
     tail = text_so_far[-3000:] if len(text_so_far) > 3000 else text_so_far
     syn_s = json.dumps(synopsis_data, ensure_ascii=False)[:4500]
     user_p = (
         f"主题：{topic}\n\n"
         f"【梗概 JSON 节选】\n{syn_s}\n\n"
         f"【已写旁白共 {len(text_so_far)} 字，下为近文】\n…{tail}\n\n"
-        f"【下一任务】第 {next_1based}/{total_mo} 幕「{next_label}」。请只输出给写手的续写指令。"
+        f"【下一任务】第 {next_1based}/{total_mo} 幕「{next_label}」。"
+        f"请按【衔接点】+【起手建议】+【本幕任务】三段式输出续写指令。"
     )
     t0 = time.perf_counter()
     try:
@@ -607,7 +612,7 @@ def _handoff_for_next_segment(
                 {"role": "system", "content": sys_p},
                 {"role": "user", "content": user_p},
             ],
-            max_tokens=500,
+            max_tokens=600,
             temperature=0.25,
         )
         ms = (time.perf_counter() - t0) * 1000
@@ -624,7 +629,7 @@ def _handoff_for_next_segment(
         h = h.strip()
         if len(h) < 20:
             raise ValueError("handoff too short")
-        return h[:800]
+        return h[:1000]
     except Exception as e:
         ms = (time.perf_counter() - t0) * 1000
         log_event(
@@ -639,7 +644,9 @@ def _handoff_for_next_segment(
         )
         print(f"     ⚠️ 续写统筹 handoff 未生成（{e}），使用幕次回退提示。")
         return (
-            f"请紧接上文时态与事实，进入第 {next_1based} 幕「{next_label}」："
+            f"【衔接点】上一段结尾的场景与情绪请自行从上文末尾推断。\n"
+            f"【起手建议】从上文最后一个动作或画面自然延伸，避免另起场景。\n"
+            f"【本幕任务】进入第 {next_1based} 幕「{next_label}」："
             f"从梗概中择取本阶段尚未写透的关键事件与代价，把叙事推进一步，避免重复上段已写内容。"
         )
 
@@ -1349,6 +1356,90 @@ def _generate_one_shot_narration_from_acts(
     return chosen
 
 
+def _stitch_segment_seams(
+    client: OpenAI,
+    topic: str,
+    full_narration: str,
+    neutral_narration: bool,
+) -> str:
+    """
+    分段拼接后，对全文做一次衔接润色：修复段间可能存在的场景跳跃、重复、人称不一致等问题。
+    不改变剧情主干与事实，只打磨段缝。
+    """
+    if neutral_narration:
+        sys_p = """你是一位专业文字编辑。下面是一篇由多个段落拼接而成的旁白全文。请只做一件事：找出段落衔接处存在的不顺之处，并修顺。
+
+可修复的问题包括（但不限于）：
+- 场景突然跳跃（上一句在A地，下一句突然跳到B地，中间缺过渡）
+- 同一件事或同一个动作说了两次（如「他举起枪举起枪」）
+- 人称/主语突然消失或混乱
+- 两个段落拼接处读起来像两篇文章的断口
+
+修复规则：
+1. 只在衔接不顺处做最小修改，不要重写整篇
+2. 保持第二人称、叙事语气和原文风格不变
+3. 不新增剧情、不删改梗概事实
+4. 输出修复后的**完整全文**（不是只输出修改部分）"""
+    else:
+        sys_p = """你是一位专业文字编辑。下面是一篇由多个段落拼接而成的冷峻风格旁白全文。请只做一件事：找出段落衔接处存在的不顺之处，并修顺。
+
+可修复的问题包括（但不限于）：
+- 场景突然跳跃（上一句在A地，下一句突然跳到B地，中间缺过渡）
+- 同一件事或同一个动作说了两次（如「他举起枪举起枪」）
+- 人称/主语突然消失或混乱
+- 两个段落拼接处读起来像两篇文章的断口
+
+修复规则：
+1. 只在衔接不顺处做最小修改，不要重写整篇
+2. 保持第二人称、冷峻叙事语气和原文风格不变
+3. 不新增剧情、不删改梗概事实
+4. 输出修复后的**完整全文**（不是只输出修改部分）"""
+
+    user_p = f"主题：{topic}\n\n【待修复的衔接不顺处】\n{full_narration}"
+
+    # 输入可能很长，max_tokens 按原文长度 1.2 倍估算
+    est_tokens = min(16384, max(512, int(len(full_narration) * float(NARRATION_SEGMENT_CH_TO_TOKEN_RATIO) * 1.3)))
+    t0 = time.perf_counter()
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_WRITER,
+            messages=[
+                {"role": "system", "content": sys_p},
+                {"role": "user", "content": user_p},
+            ],
+            max_tokens=est_tokens,
+            temperature=0.2,
+        )
+        ch = response.choices[0] if response.choices else None
+        result = _strip_ai_fences(ch.message.content if ch and ch.message else "") or ""
+        log_event(
+            PHASE_NARRATION,
+            "stitch_segment_seams",
+            "llm_chat",
+            ok=True,
+            duration_ms=(time.perf_counter() - t0) * 1000,
+            model=MODEL_WRITER,
+            extra={"in_chars": len(full_narration), "out_chars": len(result)},
+        )
+        if not result or len(result) < len(full_narration) * 0.6:
+            print("     ⚠️ 衔接润色返回过短，保留原文。")
+            return full_narration
+        return result.strip()
+    except Exception as e:
+        log_event(
+            PHASE_NARRATION,
+            "stitch_segment_seams",
+            "llm_chat",
+            ok=False,
+            duration_ms=(time.perf_counter() - t0) * 1000,
+            model=MODEL_WRITER,
+            error=str(e),
+            extra={"in_chars": len(full_narration)},
+        )
+        print(f"     ⚠️ 衔接润色失败（{e}），保留原文继续。")
+        return full_narration
+
+
 def _finalize_narration_after_draft(
     client: OpenAI,
     topic: str,
@@ -1519,7 +1610,7 @@ def expand_narration(synopsis_data: dict, topic: str, duration_min: float = DEFA
     client = get_client()
     accumulated = ""
     parts: list[str] = []
-    tail_n = max(80, int(NARRATION_SEGMENT_TAIL_CHARS))
+    tail_n = max(500, int(NARRATION_SEGMENT_TAIL_CHARS))
     handoff = ""
 
     for i in range(n_seg):
@@ -1563,6 +1654,8 @@ def expand_narration(synopsis_data: dict, topic: str, duration_min: float = DEFA
             )
 
     full_narration = accumulated.strip()
+    print("     · 分段拼接完成，执行衔接润色（修复段间可能的断层与重复）…")
+    full_narration = _stitch_segment_seams(client, topic, full_narration, neutral_narration)
     return _finalize_narration_after_draft(
         client,
         topic,

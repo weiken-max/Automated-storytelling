@@ -1,0 +1,1317 @@
+Total lines in palette_studio.html: 2687
+
+--- Corrupted line at index 33 (Line 33):
+Content: <truncated 1243 bytes>
+Surrounding lines:
+    25:     if os.path.exists(_env_path):
+    26:         load_dotenv(dotenv_path=_env_path)
+    27:         print(f"[API 中控] 成功由根目录加载本地 .env 配置: {_env_path}")
+    28:     else:
+    29:         load_dotenv()
+    30:         print("[API 中控] 未在根目录发现 .env，执行默认全局加载模式。")
+    31: except Exception as e:
+    32:     print(f"⚠️ [API 中控] 加载 .e
+>>> 33: <truncated 1243 bytes>
+    34: TE = {
+    35:       }
+    36:     }
+    37:   </script>
+    38:   <style>
+    39:     body {
+    40:       font-family: 'Inter', sans-serif;
+    41:       text-rendering: optimizeLegibility;
+
+--- Corrupted line at index 48 (Line 48):
+Content: <truncated 37 bytes>
+Surrounding lines:
+    40:       font-family: 'Inter', sans-serif;
+    41:       text-rendering: optimizeLegibility;
+    42:       -webkit-font-smoothing: antialiased;
+    43:     }
+    44: 
+    45:     /* 调色盘色块物理气泡振颤 */
+    46:     @keyframes bubble-shake {
+    47:       0% { transform: translate(0, 0)
+>>> 48: <truncated 37 bytes>
+    49: form: translate(-1.5px, 1px) scale(1.08); }
+    50:       20% { transform: translate(-1.5px, 1px) scale(1.08); }
+    51:       40% { transform: translate(1px, -1.5px) scale(1.1); }
+    52:       60% { transform: translate(-1px, -1px) scale(1.08); }
+    53:       80% { transform: translate(1.5px, 1.5px) scale(1.1); }
+    54:       100% { transform: translate(0, 0) scale(1.08); }
+    55:     }
+    56:     .hover-shake-bubble:hover {
+
+--- Corrupted line at index 127 (Line 127):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    119:     global_style_prompt: str
+    120:     seed: int
+    121: 
+    122: class SingleFrameRenderRequest(BaseModel):
+    123:     target_id: str
+    124:     prompt: str
+    125:     seed: int
+    126:     style_lock: bool = True
+>>> 127: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    128: 
+    129:       <h3 id="modalTitle" class="text-base font-bold text-slate-100">通知标题</h3>
+    130:       <p id="modalDesc" class="text-xs text-slate-400 leading-relaxed">提示描述内容</p>
+    131:       <div class="pt-2 fl
+    132: <truncated 15214 bytes>
+    133: Category('voiceover')" id="catBtn-voiceover" class="w-full text-left p-4 rounded-xl border border-slate-900 bg-slate-950/20 text-slate-400 hover:text-slate-200 transition-all flex flex-col space-y-1">
+    134:           我知道了
+    135:         </button>
+
+--- Corrupted line at index 132 (Line 132):
+Content: <truncated 15214 bytes>
+Surrounding lines:
+    124:     prompt: str
+    125:     seed: int
+    126:     style_lock: bool = True
+    127: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    128: 
+    129:       <h3 id="modalTitle" class="text-base font-bold text-slate-100">通知标题</h3>
+    130:       <p id="modalDesc" class="text-xs text-slate-400 leading-relaxed">提示描述内容</p>
+    131:       <div class="pt-2 fl
+>>> 132: <truncated 15214 bytes>
+    133: Category('voiceover')" id="catBtn-voiceover" class="w-full text-left p-4 rounded-xl border border-slate-900 bg-slate-950/20 text-slate-400 hover:text-slate-200 transition-all flex flex-col space-y-1">
+    134:           我知道了
+    135:         </button>
+    136:       </div>
+    137:     </div>
+    138:   </div>
+    139: 
+    140:   <!-- 主应用大布局 -->
+
+--- Corrupted line at index 146 (Line 146):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    138:   </div>
+    139: 
+    140:   <!-- 主应用大布局 -->
+    141:   <div class="flex flex-1 h-full overflow-hidden">
+    142: 
+    143:     <!-- 左侧：核心演示操控台 -->
+    144:     <main class="flex-1 flex flex-col relative bg-[#03050C] overflow-hidden">
+    145: 
+>>> 146: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    147: 
+    148:       <!-- 高水准工作室页眉 -->
+    149:       <header class="h-16 px-8 border-b border-slate-900/60 flex items-center justify-between bg-[#03050C]/50 backdrop-blur-md shrink-0 z-20">
+    150:         <div class="flex items-center space-x-4">
+    151:           <div class="flex space-x-1.5">
+    152:             <span class="w-2.5 h-2.5 rounded-full bg-[#F43F5E] shadow-[0_0_10px_#F43F5E]"></span>
+    153:             <span class="w-2.5 h-2.5 rounded-full bg-[#F59E0B] shadow-[0_0_10px_#F59E0B]"></span>
+    154:             <span class="w-2.5 h-2.5 rounded-full bg-[#10B981] shadow-[0_0_10px_#10B981]"></span>
+
+--- Corrupted line at index 205 (Line 205):
+Content: <truncated 4664 bytes>
+Surrounding lines:
+    197:       <div class="overflow-y-auto flex-1 p-6 space-y-5 no-scrollbar">
+    198: 
+    199:         <!-- Row 1: name + emoji + color -->
+    200:         <div class="grid grid-cols-3 gap-4">
+    201:           <div class="col-span-1 space-y-1.5">
+    202:             <label class="text-[10px] tracking-widest text-slate-400 font-bold">频道图标 Emoji</label>
+    203:             <input id="chEditorEmojiInput" type="text" maxlength="2" placeholder="🎬"
+    204:               oninput="document.getElementById('chEditorEmoji').innerText=this.value
+>>> 205: <truncated 4664 bytes>
+    206: div class="flex items-center space-x-2">
+    207:               class="w-full bg-[#05070E] border border-slate-800 rounded-xl p-2.5 text-center text-2xl focus:border-indigo-500 focus:outline-none">
+    208:           </div>
+    209:           <div class="col-span-2 space-y-1.5">
+    210:             <label class="text-[10px] tracking-widest text-slate-400 font-bold">频道名称</label>
+    211:             <input id="chEditorName" type="text" maxlength="12" placeholder="例如：悬疑惊悚"
+    212:               class="w-full bg-[#05070E] border border-slate-800 rounded-xl p-2.5 text-sm text-slate-200 focus:border-indigo-500 focus:outline-none">
+    213:           </div>
+
+--- Corrupted line at index 225 (Line 225):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    217:         <div class="space-y-2">
+    218:           <label class="text-[10px] tracking-widest text-slate-400 font-bold">频道主色（气泡颜色）</label>
+    219:           <div id="chColorPalette" class="flex flex-wrap gap-2.5">
+    220:             <!-- Colors rendered by JS -->
+    221:           </div>
+    222:           <input type="hidden" id="chEditorColor" value="#EF4444">
+    223:         </div>
+    224: 
+>>> 225: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    226: 
+    227:         <!-- Divider -->
+    228:         <div class="border-t border-slate-900/80 pt-4 space-y-1">
+    229:           <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">🤖 频道专属提示词配置（可选，留空使用系统默认）</p>
+    230:         </div>
+    231: 
+    232:         <!-- Outline Prompt -->
+    233:         <div class="space-y-1.5">
+
+--- Corrupted line at index 255 (Line 255):
+Content: <truncated 318 bytes>
+Surrounding lines:
+    247: 
+    248:         <!-- Voiceover Prompt -->
+    249:         <div class="space-y-1.5">
+    250:           <label class="text-[10px] tracking-widest text-slate-400 font-bold">🎙️ 旁白 Prompt（旁白配音文案生成指令）</label>
+    251:           <textarea id="chEditorVoiceover" rows="3"
+    252:             placeholder="例如：你是一个极其冷峻、犀利的短视频旁白文案大师..."
+    253:             class="w-full bg-[#05070E] border border-slate-800 rounded-xl p-3.5 text-xs font-mono text-slate-200 focus:border-indigo-500 focus:outline-none leading-relaxed"></textarea>
+    254:         </
+>>> 255: <truncated 318 bytes>
+    256: 如：你是一位专业的资深编剧与剧本医生..."
+    257: 
+    258:         <!-- Polish Prompt -->
+    259:         <div class="space-y-1.5">
+    260:           <label class="text-[10px] tracking-widest text-slate-400 font-bold">✨ 润色 Prompt（剧本智能润色指令）</label>
+    261:           <textarea id="chEditorPolish" rows="3"
+    262:             placeholder="例如：你是一位专业的资深编剧与剧本医生..."
+    263:             class="w-full bg-[#05070E] border border-slate-800 rounded-xl p-3.5 text-xs font-mono text-slate-200 focus:border-indigo-500 focus:outline-none leading-relaxed"></textarea>
+
+--- Corrupted line at index 299 (Line 299):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    291:     </div>
+    292:   </div>
+    293: 
+    294:   <!-- 📊 右侧抽屉：后台引擎实时审计大盘 -->
+    295:   <div id="backstageDrawer" class="fixed top-0 right-0 bottom-0 w-96 bg-[#070A18]/95 border-l border-indigo-950/50 shadow-[-10px_0_30px_rgba(0,0,0,0.5)] z-40 transform translate-x-full transition-transform duration-500 backdrop-blur-xl flex flex-col">
+    296:     <!-- Drawer Header -->
+    297:     <div class="h-16 px-6 border-b border-slate-900/60 flex items-center justify-between shrink-0">
+    298:       <div class="flex items-center space-x-2.5">
+>>> 299: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    300: 
+    301: | 新增"美食"频道，填入定制 Prompt | 首页出现"美食"卡片，配色正确 |
+    302: | 点击"美食"频道进入 C1 | 剧本输入框旁显示"🎲 摇一摇脑暴剧本"按钮 |
+    303: | 点击摇一摇 | 后台使用美食频道专属 Prompt 生成大纲，填充到当前文本框 |
+    304: | 全流程完成视频 | 画面风格、旁白语气与"美食"频道配置一致 |
+    305: | 切换到"科普"频道 | 草稿、提示词完全独立，不受美食频道影响 |
+    306: | 尝试删除原厂"剧情故事"频道 | 系统拒绝，弹出保护提示 |
+    307: | 退出 App 重新启动 | 自建"美食"频道仍然存在，配置完好 |
+
+--- Corrupted line at index 343 (Line 343):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    335:       </div>
+    336:     </div>
+    337:   </div>
+    338: 
+    339:   <!-- 📊 右侧抽屉：后台引擎实时审计大盘 -->
+    340:   <div id="backstageDrawer" class="fixed top-0 right-0 bottom-0 w-96 bg-[#070A18]/95 border-l border-indigo-950/50 shadow-[-10px_0_30px_rgba(0,0,0,0.5)] z-40 transform translate-x-full transition-transform duration-500 backdrop-blur-xl flex flex-col">
+    341:     <!-- Drawer Header -->
+    342:     <div class="h-16 px-6 border-b border-slate-900/60 flex items-center justify-between shrink-0">
+>>> 343: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    344: 
+    345:               </div>
+    346: 
+    347:             </div>
+    348: 
+    349:           </div>
+    350: 
+    351:           <!-- 前后端 API 交互 Payload 实时快照预览区 -->
+
+--- Corrupted line at index 386 (Line 386):
+Content: <truncated 16936 bytes>
+Surrounding lines:
+    378:                   <span class="text-[9px] text-slate-500 font-bold self-center mr-1">快捷追加:</span>
+    379:                   <button onclick="appendPromptTag('cyberpunk style, vivid electric neon backlight')" class="px-2.5 py-1 bg-slate-900 border border-slate-800 hover:border-slate-700 text-[10px] rounded text-slate-300 hover:text-white">🌃 赛博朋克霓虹</button>
+    380:                   <button onclick="appendPromptTag('traditional Chinese ink washing painting style, gray mist')" class="px-2.5 py-1 bg-slate-900 border border-slate-800 hover:border-slate-700 text-[10px] rounded text-slate-300 hover:text-white">✍️ 国风写意水墨</button>
+    381:                   <button onclick="appendPromptTag('Ghibli animated style, gentle hand-drawn cartoon')" class="px-2.5 py-1 bg-slate-900 border border-slate-800 hover:border-slate-700 text-[10px] rounded text-slate-300 hover:text-white">🌲 吉卜力治愈动漫</button>
+    382:                 </div>
+    383:               </div>
+    384: 
+    385:               <!-- 2. LLM 剧
+>>> 386: <truncated 16936 bytes>
+    387: tion-300"></div>
+    388:           <div class="bg-slate-950 border border-slate-850 rounded-2xl p-5 space-y-3 shadow-inner">
+    389:             <div class="flex justify-between items-center border-b border-slate-900 pb-2">
+    390:               <span class="text-[10px] font-mono font-bold tracking-wider text-slate-400 uppercase flex items-center space-x-2">
+    391:                 <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+    392: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    393: 
+    394:                 <span>REAL-TIME API REQUEST BODY PREVIEW / 前后端请求报文实时快照</span>
+
+--- Corrupted line at index 392 (Line 392):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    384: 
+    385:               <!-- 2. LLM 剧
+    386: <truncated 16936 bytes>
+    387: tion-300"></div>
+    388:           <div class="bg-slate-950 border border-slate-850 rounded-2xl p-5 space-y-3 shadow-inner">
+    389:             <div class="flex justify-between items-center border-b border-slate-900 pb-2">
+    390:               <span class="text-[10px] font-mono font-bold tracking-wider text-slate-400 uppercase flex items-center space-x-2">
+    391:                 <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+>>> 392: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    393: 
+    394:                 <span>REAL-TIME API REQUEST BODY PREVIEW / 前后端请求报文实时快照</span>
+    395:               </span>
+    396:               <span class="text-[9px] text-slate-650 font-mono">POST /api/story/v1/compile</span>
+    397:             </div>
+    398: 
+    399:             <pre class="text-[10.5px] font-mono text-emerald-400/90 leading-relaxed overflow-x-auto max-h-[140px] no-scrollbar whitespace-pre" id="jsonPayloadViewer">
+    400: {
+
+--- Corrupted line at index 412 (Line 412):
+Content: <truncated 75 bytes>
+Surrounding lines:
+    404:           </div>
+    405: 
+    406:           <!-- 页底 -->
+    407:           <div class="flex justify-end space-x-4 pt-4 border-t border-slate-850">
+    408:             <button onclick="navigateTo('B')" class="px-5 py-2.5 text-xs text-slate-400 hover:text-white transition">
+    409:               放弃配置
+    410:             </button>
+    411:             <button onclick="savePresets()" class="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 font-bold text-white rounded-xl transition text-xs tracking-wider uppercase shadow-lg sh
+>>> 412: <truncated 75 bytes>
+    413:  (回流至C1)
+    414: <!-- MISSING LINE 384 -->
+    415:             </button>
+    416:           </div>
+    417: 
+    418:         </section>
+    419: 
+    420:         <!-- ==================== 界面 C1: 核心输入总控通道 ==================== -->
+
+--- Corrupted line at index 441 (Line 441):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    433:               <label class="text-[10px] tracking-widest text-slate-400">请写入您的原始叙事大纲 / 纪实文案</label>
+    434:               <button onclick="loadDemoScript()" class="text-xs text-indigo-400 hover:text-indigo-300 underline font-medium">
+    435:                 快速导入电影精选 Demo 剧本
+    436:               </button>
+    437:             </div>
+    438: 
+    439:             <textarea id="rawScriptTextarea" oninput="syncRawScriptToState()" rows="6" class="w-full bg-[#05070E] border border-slate-850 rounded-2xl p-4 text-slate-200 placeholder-slate-650 focus:border-red-500 focus:ring-1 focus:ring-red-500 focus:outline-none text-xs leading-relaxed" placeholder="例如：描述一个神秘的场景，并加入人物动机..."></textarea>
+    440: 
+>>> 441: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    442: 
+    443:             polish_flow: {
+    444:               enabled: true,
+    445:               system_prompt: state.presets.outline,
+    446:               feedback: feedback
+    447:             },
+    448:             voiceover_flow: { system_prompt: state.presets.voiceover },
+    449:             render_flow: {
+
+--- Corrupted line at index 495 (Line 495):
+Content: <truncated 1012 bytes>
+Surrounding lines:
+    487: 
+    488:           <!-- 页底 -->
+    489:           <div class="flex justify-end space-x-4 pt-4 border-t border-slate-850">
+    490:             <button onclick="navigateTo('B')" class="px-5 py-2.5 text-xs text-slate-400 hover:text-white transition">
+    491:               放弃配置
+    492:             </button>
+    493:             <button onclick="savePresets()" class="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 font-bold text-white rounded-xl transition text-xs tracking-wider uppercase shadow-lg shadow-indigo-500/10">
+    494:               确认并同步提示词预设 ➔
+>>> 495: <truncated 1012 bytes>
+    496:     <div class="flex items-center justify-between">
+    497:       }
+    498:     }"""
+    499: 
+    500: assert old_progress in html, "Could not find onBackendProgress function in palette_studio.html"
+    501: html = html.replace(old_progress, new_js, 1)
+    502: print("5. Added all JS logic including applyD2Feedback and backstage audit logs successfully.")
+    503: 
+
+--- Corrupted line at index 507 (Line 507):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    499: 
+    500: assert old_progress in html, "Could not find onBackendProgress function in palette_studio.html"
+    501: html = html.replace(old_progress, new_js, 1)
+    502: print("5. Added all JS logic including applyD2Feedback and backstage audit logs successfully.")
+    503: 
+    504: html_path.write_text(html, encoding="utf-8")
+    505: print("SUCCESS: patch_drawer_and_recovery.py script ran completely!")
+    506: 
+>>> 507: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    508: 
+    509: <!DOCTYPE html>
+    510: <html lang="zh-CN" class="h-full bg-[#03050C] text-slate-200">
+    511: <head>
+    512:   <meta charset="UTF-8">
+    513:   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    514:   <title>“调色板” AI 电影级多大模型联调平台</title>
+    515:   <!-- Tailwind CSS -->
+
+--- Corrupted line at index 906 (Line 906):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    898: 
+    899:         <!-- ==================== 界面 E: 影视级分镜底片大网格 (E) ==================== -->
+    900:         <section id="screenE" class="hidden w-full max-w-5xl glass-studio-panel p-8 rounded-3xl border border-slate-800 space-y-6 animate-fade-in">
+    901:           <div class="flex items-center justify-between border-b border-slate-850 pb-4">
+    902:             <div>
+    903:               <h3 class="text-lg font-bold tracking-wider text-slate-200 flex items-center space-x-2.5">
+    904:                 <span class="w-3.5 h-3.5 bg-yellow-500 rounded-sm">🎬</span>
+    905:                 <span>全局影视切片分镜底片 (E)</span>
+>>> 906: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    907: 
+    908: 
+    909:               <!-- 左侧：超高分辨率预览框 -->
+    910:               <div class="md:col-span-5 flex flex-col space-y-3">
+    911:                 <div class="flex justify-between items-center text-xs">
+    912:                   <span class="text-slate-450">🔍 分镜帧分辨率: 1080P HD</span>
+    913:                   <div class="flex space-x-1.5 bg-slate-950 p-1 rounded-lg border border-slate-850">
+    914:                     <button onclick="switchE1PreviewMode('new')" id="previewTabE1-new" class="px-2 py-1 bg-indigo-600 text-[10px] text-white rounded font-bold">✨ 最新生成图</button>
+
+--- Corrupted line at index 923 (Line 923):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    915:                     <button onclick="switchE1PreviewMode('old')" id="previewTabE1-old" class="px-2 py-1 text-[10px] text-slate-400 hover:text-slate-200 rounded">⏮️ 历史原始图</button>
+    916:                   </div>
+    917:                 </div>
+    918:                 <div class="bg-slate-950 rounded-2xl border border-slate-850 flex items-center justify-center p-4 min-h-[260px] relative" id="e1_PreviewArea">
+    919:                   <!-- SVG / PNG Canvas Preview -->
+    920:                 </div>
+    921:               </div>
+    922: 
+>>> 923: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    924: 
+    925:             </div>
+    926: 
+    927:           </div>
+    928: 
+    929:           <!-- 页底 -->
+    930:           <div class="flex items-center justify-between border-t border-slate-850 pt-5">
+    931:             <div class="flex space-x-6 items-center">
+
+--- Corrupted line at index 1036 (Line 1036):
+Content: <truncated 8333 bytes>
+Surrounding lines:
+    1028:       modePath: "RED", // RED, YELLOW, BLUE
+    1029:       polishEnabled: false,
+    1030:       defaultDownloadFolder: localStorage.getItem("palette_default_download_folder") || "",
+    1031: 
+    1032:       // 后台真实提示词预设组装库入库
+    1033:       presets: {
+    1034:         image: "High-quality 2D vector cartoon, bold black outlines, vibrant flat colors with soft cel-shading. Style inspired by Cyanide and Happiness but with professional lighting and detailed illustrated backgrounds. Character proportions: stick figure limbs, round bean heads.",
+    1035:         polish: "你是一位专业的资深编剧与剧本医生。\n任务：请阅读用户提供的原始素材（梗概、片段或小说节选均可），在【完全保留用户原始创意、情节走向和核心设定】的前提下，进行专业润色，并补充与盲盒梗概同规格的结构化字段。\n\n润色要求：\n1. 语言风格：使文字更具画面感（Visual Thinking），多用具象动词，少用空泛形容词；**禁止**强行套用「阶层跃迁」「利益算计」等固定套路，除非用户原文已包含类似内核。\n2. 节奏与体量：优化起承转合与悬念，整体梗概总长度须符合后续约 1700 字旁白体量的信息密度，且 synopsis 与 synopsis_acts 拼接总字符数不得超
+>>> 1036: <truncated 8333 bytes>
+    1037: class="px-2 py-0.5 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[9px] font-bold flex items-center space-x-1"><span>●</span> <span>失败</span></span>`;
+    1038:         </section>
+    1039: 
+    1040:       </div>
+    1041:     </main>
+    1042: 
+    1043:   </div>
+    1044: 
+
+--- Corrupted line at index 1072 (Line 1072):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    1064:       checkApiConnection();
+    1065:       detectRestorableSession();
+    1066:     });
+    1067:     setTimeout(checkApiConnection, 500);
+    1068:     setInterval(checkApiConnection, 5000);
+    1069:     function onBackendProgress(stage, percent, message) {
+    1070:       console.log('[Bridge] ' + stage + ' ' + percent + '% - ' + message);
+    1071:       var logEl = document.getElementById('assistantLogText');
+>>> 1072: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1073: 
+    1074: 
+    1075:       // 后台返回的真实编译结果
+    1076:       compiledVoiceover: "",
+    1077:       extractedEntities: [],
+    1078:       assets: [],      // 定妆照卡片
+    1079:       storyboards: [], // 分镜帧底片
+    1080:       relativeVideoPath: "", // 合成视频在 Runs 下的相对路径，如 "Run_xxx/output/narrative_v6_final_epic.mp4"
+
+--- Corrupted line at index 1108 (Line 1108):
+Content: <truncated 1187 bytes>
+Surrounding lines:
+    1100:     // ── 🎨 全局状态定义 ──
+    1101: 
+    1102:     // 出厂默认提示词（所有频道的 fallback）
+    1103:     const DEFAULT_PRESETS = {
+    1104:       image: "High-quality 2D vector cartoon, bold black outlines, vibrant flat colors with soft cel-shading. Style inspired by Cyanide and Happiness but with professional lighting and detailed illustrated backgrounds. Character proportions: stick figure limbs, round bean heads.",
+    1105:       polish: "你是一位专业的资深编剧与剧本医生。\n任务：请阅读用户提供的原始素材（梗概、片段或小说节选均可），在【完全保留用户原始创意、情节走向和核心设定】的前提下，进行专业润色。\n\n输出：仅 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"short_title\":\"12字内标题\",\"era\":\"时代背景\",\"identity\":\"主角身份\",\"industry_rules\":[\"规则\"]}",
+    1106:       voiceover: "你是一个极其冷峻、犀利的短视频旁白文案大师。\n任务：按用户指示写出一段沉浸式旁白。\n全程使用「你」，极简冷峻。禁止分镜标签。只输出旁白正文。",
+    1107:       outline: "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满利益算计、阶层跃迁与人性异化的第二人称人生副本梗概。\n分幕结构硬性：输出 synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n输出 JSON：\n{\"synopsis_acts\":[6个
+>>> 1108: <truncated 1187 bytes>
+    1109: 识的惊人事实或数字。\n2. 按"现象→原理→实验证据→颠覆性结论"逻辑链展开。\n3. 必须包含至少3个具体、可视化的数字。\n4. 分幕结构（硬性）：synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n\n输出 JSON（键名固定）：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"科学背景\",\"identity\":\"主角\",\"industry_rules\":[\"科学规律\"]}"
+    1110:       // 后台真实提示词预设组装库入库
+    1111:       presets: {
+    1112:         image: "High-quality 2D vector cartoon, bold black outlines, vibrant flat colors with soft cel-shading. Style inspired by Cyanide and Happiness but with professional lighting and detailed illustrated backgrounds. Character proportions: stick figure limbs, round bean heads.",
+    1113:         polish: "你是一位专业的资深编剧与剧本医生。\n任务：请阅读用户提供的原始素材（梗概、片段或小说节选均可），在【完全保留用户原始创意、情节走向和核心设定】的前提下，进行专业润色，并补充与盲盒梗概同规格的结构化字段。\n\n润色要求：\n1. 语言风格：使文字更具画面感（Visual Thinking），多用具象动词，少用空泛形容词；**禁止**强行套用「阶层跃迁」「利益算计」等固定套路，除非用户原文已包含类似内核。\n2. 节奏与体量：优化起承转合与悬念，整体梗概总长度须符合后续约 1700 字旁白体量的信息密度，且 synopsis 与 synopsis_acts 拼接总字符数不得超过 1500（汉字+标点）。\n3. 分幕结构：必须输出 synopsis_acts 数组，长度恰好为 6；每幕为连续叙事，幕内不要写「第X幕」小标题，按时间顺序串成一
+    1114: <truncated 2906 bytes>
+    1115: 的全文，必须与各幕内容完全一致\",\n  \"era\": \"时代背景\",\n  \"identity\": \"主角的终极身份\",\n  \"industry_rules\": [\"（揭露的1-2个行业深层潜规则）\"]\n}"
+    1116:     // ── 📊 后台大盘实时审计面板逻辑 ──
+
+--- Corrupted line at index 1114 (Line 1114):
+Content: <truncated 2906 bytes>
+Surrounding lines:
+    1106:       voiceover: "你是一个极其冷峻、犀利的短视频旁白文案大师。\n任务：按用户指示写出一段沉浸式旁白。\n全程使用「你」，极简冷峻。禁止分镜标签。只输出旁白正文。",
+    1107:       outline: "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满利益算计、阶层跃迁与人性异化的第二人称人生副本梗概。\n分幕结构硬性：输出 synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n输出 JSON：\n{\"synopsis_acts\":[6个
+    1108: <truncated 1187 bytes>
+    1109: 识的惊人事实或数字。\n2. 按"现象→原理→实验证据→颠覆性结论"逻辑链展开。\n3. 必须包含至少3个具体、可视化的数字。\n4. 分幕结构（硬性）：synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n\n输出 JSON（键名固定）：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"科学背景\",\"identity\":\"主角\",\"industry_rules\":[\"科学规律\"]}"
+    1110:       // 后台真实提示词预设组装库入库
+    1111:       presets: {
+    1112:         image: "High-quality 2D vector cartoon, bold black outlines, vibrant flat colors with soft cel-shading. Style inspired by Cyanide and Happiness but with professional lighting and detailed illustrated backgrounds. Character proportions: stick figure limbs, round bean heads.",
+    1113:         polish: "你是一位专业的资深编剧与剧本医生。\n任务：请阅读用户提供的原始素材（梗概、片段或小说节选均可），在【完全保留用户原始创意、情节走向和核心设定】的前提下，进行专业润色，并补充与盲盒梗概同规格的结构化字段。\n\n润色要求：\n1. 语言风格：使文字更具画面感（Visual Thinking），多用具象动词，少用空泛形容词；**禁止**强行套用「阶层跃迁」「利益算计」等固定套路，除非用户原文已包含类似内核。\n2. 节奏与体量：优化起承转合与悬念，整体梗概总长度须符合后续约 1700 字旁白体量的信息密度，且 synopsis 与 synopsis_acts 拼接总字符数不得超过 1500（汉字+标点）。\n3. 分幕结构：必须输出 synopsis_acts 数组，长度恰好为 6；每幕为连续叙事，幕内不要写「第X幕」小标题，按时间顺序串成一
+>>> 1114: <truncated 2906 bytes>
+    1115: 的全文，必须与各幕内容完全一致\",\n  \"era\": \"时代背景\",\n  \"identity\": \"主角的终极身份\",\n  \"industry_rules\": [\"（揭露的1-2个行业深层潜规则）\"]\n}"
+    1116:     // ── 📊 后台大盘实时审计面板逻辑 ──
+    1117:             <div id="videoPlaceholder" class="text-center space-y-4">
+    1118:               <span class="text-5xl animate-bounce inline-block">🍿</span>
+    1119:               <p class="text-xs text-slate-500 font-mono tracking-widest">LOADING EPIC MASTERPIECE...</p>
+    1120:             </div>
+    1121:           </div>
+    1122: 
+
+--- Corrupted line at index 1131 (Line 1131):
+Content: <truncated 2374 bytes>
+Surrounding lines:
+    1123:           <!-- 📀 功能控制按钮（带另存为与默认预设下载） -->
+    1124:           <div class="flex flex-col sm:flex-row justify-center items-center gap-4 border-t border-slate-850 pt-6">
+    1125:             <button onclick="downloadEpicVideo()" class="w-full sm:w-auto px-8 py-4 bg-emerald-650 hover:bg-emerald-500 font-bold text-white rounded-xl shadow-lg shadow-emerald-500/10 transition-all flex items-center justify-center space-x-2 text-xs tracking-widest uppercase">
+    1126:               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+    1127:               <span>💾 另存为视频文件 (下载)</span>
+    1128:             </button>
+    1129:             <button onclick="presetDownloadFolder()" class="w-full sm:w-auto px-6 py-4 bg-indigo-650 hover:bg-indigo-500 font-bold text-white rounded-xl shadow-lg shadow-indigo-500/10 transition-all flex items-center justify-center space-x-2 text-xs tracking-widest uppercase cursor-pointer">
+    1130:               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24
+>>> 1131: <truncated 2374 bytes>
+    1132: 式旁白。\n全程使用「你」，极简冷峻。禁止分镜标签。只输出旁白正文。",
+    1133:       polish: "你是一位专业的资深编剧与剧本医生。\n任务：请阅读用户提供的原始素材（梗概、片段或小说节选均可），在【完全保留用户原始创意、情节走向和核心设定】的前提下，进行专业润色。\n\n输出：仅 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"short_title\":\"12字内标题\",\"era\":\"时代背景\",\"identity\":\"主角身份\",\"industry_rules\":[\"规则\"]}",
+    1134:       voiceover: "你是一个极其冷峻、犀利的短视频旁白文案大师。\n任务：按用户指示写出一段沉浸式旁白。\n全程使用「你」，极简冷峻。禁止分镜标签。只输出旁白正文。",
+    1135:       outline: "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满利益算计、阶层跃迁与人性异化的第二人称人生副本梗概。\n分幕结构硬性：输出 synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n输出 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"时代\",\"identity\":\"主角终极身份\",\"industry_rules\":[\"潜规则\"]}",
+    1136:       storyboard: "【画风锚点】\nCyanide and Happiness comic style, 2D vector / flat graphic cartoon, bold black outlines, vivid flat color fills, pure 2D, no photoreal skin texture, no 3D/CGI. 允许卡通级光向（key direction, warm/cool, simple hard-edge shadow shapes），禁止电影级体积光与写实 subsurface skin。\n\n【分镜表现规则】\n★ 动态表情与肢体（核心要求：打破参考图的呆滞感！）：必须深度解析当前分镜的故事情节，强制赋予角色强烈且符合情境的情绪反应。\n1. 必须采用【核心情绪词 + 氰化物式五官拆解】组合。例如不要只写 mouth line，必须写：terrified expression, sharply angled frowning eyebrows, wide dilated dot eyes, screaming jagged mouth shape.\n2. 明确指令：绝不允许角
+    1137: <truncated 1088 bytes>
+    1138:         locked: true,
+    1139:         presets: null // null 表示使用 DEFAULT_PRESETS
+
+--- Corrupted line at index 1137 (Line 1137):
+Content: <truncated 1088 bytes>
+Surrounding lines:
+    1129:             <button onclick="presetDownloadFolder()" class="w-full sm:w-auto px-6 py-4 bg-indigo-650 hover:bg-indigo-500 font-bold text-white rounded-xl shadow-lg shadow-indigo-500/10 transition-all flex items-center justify-center space-x-2 text-xs tracking-widest uppercase cursor-pointer">
+    1130:               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24
+    1131: <truncated 2374 bytes>
+    1132: 式旁白。\n全程使用「你」，极简冷峻。禁止分镜标签。只输出旁白正文。",
+    1133:       polish: "你是一位专业的资深编剧与剧本医生。\n任务：请阅读用户提供的原始素材（梗概、片段或小说节选均可），在【完全保留用户原始创意、情节走向和核心设定】的前提下，进行专业润色。\n\n输出：仅 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"short_title\":\"12字内标题\",\"era\":\"时代背景\",\"identity\":\"主角身份\",\"industry_rules\":[\"规则\"]}",
+    1134:       voiceover: "你是一个极其冷峻、犀利的短视频旁白文案大师。\n任务：按用户指示写出一段沉浸式旁白。\n全程使用「你」，极简冷峻。禁止分镜标签。只输出旁白正文。",
+    1135:       outline: "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满利益算计、阶层跃迁与人性异化的第二人称人生副本梗概。\n分幕结构硬性：输出 synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n输出 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"时代\",\"identity\":\"主角终极身份\",\"industry_rules\":[\"潜规则\"]}",
+    1136:       storyboard: "【画风锚点】\nCyanide and Happiness comic style, 2D vector / flat graphic cartoon, bold black outlines, vivid flat color fills, pure 2D, no photoreal skin texture, no 3D/CGI. 允许卡通级光向（key direction, warm/cool, simple hard-edge shadow shapes），禁止电影级体积光与写实 subsurface skin。\n\n【分镜表现规则】\n★ 动态表情与肢体（核心要求：打破参考图的呆滞感！）：必须深度解析当前分镜的故事情节，强制赋予角色强烈且符合情境的情绪反应。\n1. 必须采用【核心情绪词 + 氰化物式五官拆解】组合。例如不要只写 mouth line，必须写：terrified expression, sharply angled frowning eyebrows, wide dilated dot eyes, screaming jagged mouth shape.\n2. 明确指令：绝不允许角
+>>> 1137: <truncated 1088 bytes>
+    1138:         locked: true,
+    1139:         presets: null // null 表示使用 DEFAULT_PRESETS
+    1140:       },
+    1141:     const DEFAULT_CHANNELS = [
+    1142:       {
+    1143:         id: "ch_drama",
+    1144:         name: "剧情故事",
+    1145:         emoji: "🎭",
+
+--- Corrupted line at index 1162 (Line 1162):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    1154:         color: "#F59E0B",
+    1155:         locked: true,
+    1156:         presets: {
+    1157:       outline: "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满利益算计、阶层跃迁与人性异化的第二人称人生副本梗概。\n分幕结构硬性：输出 synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n输出 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"时代\",\"identity\":\"主角终极身份\",\"industry_rules\":[\"潜规则\"]}",
+    1158:       storyboard: "【画风锚点】\nCyanide and Happiness comic style, 2D vector / flat graphic cartoon, bold black outlines, vivid flat color fills, pure 2D, no photoreal skin texture, no 3D/CGI. 允许卡通级光向（key direction, warm/cool, simple hard-edge shadow shapes），禁止电影级体积光与写实 subsurface skin。\n\n【分镜表现规则】\n★ 动态表情与肢体（核心要求：打破参考图的呆滞感！）：必须深度解析当前分镜的故事情节，强制赋予角色强烈且符合情境的情绪反应。\n1. 必须采用【核心情绪词 + 氰化物式五官拆解】组合。例如不要只写 mouth line，必须写：terrified expression, sharply angled frowning eyebrows, wide dilated dot eyes, screaming jagged mouth shape.\n2. 明确指令：绝不允许角色保持中立或被参考图的默认表情带偏（DO NOT copy the neutral expression from reference）。\n3. 肢体辅助：情绪必须配合夸张的肢体动作（如 recoiling in horror, pointing aggressively, slumping in defeat）。\n4. 脸部特写：当情绪是当前帧重点时，明确写明 close-up on explicit facial expression。"
+    1159:     };
+    1160: 
+    1161:     // 出厂原厂频道（locked=true 不可删除）
+>>> 1162: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1163: 
+    1164:     const DEFAULT_CHANNELS = [
+    1165:       {
+    1166:         id: "ch_drama",
+    1167:         channelType: "drama",
+    1168:         name: "剧情故事",
+    1169:         emoji: "🎭",
+    1170:         color: "#EF4444",
+
+--- Corrupted line at index 1223 (Line 1223):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    1215:       if (!channel.presets) return { ...DEFAULT_PRESETS };
+    1216:       return {
+    1217:         image:      channel.presets.image      || DEFAULT_PRESETS.image,
+    1218:         polish:     channel.presets.polish     || DEFAULT_PRESETS.polish,
+    1219:         voiceover:  channel.presets.voiceover  || DEFAULT_PRESETS.voiceover,
+    1220:         outline:    channel.presets.outline    || DEFAULT_PRESETS.outline,
+    1221:         storyboard: channel.presets.storyboard || DEFAULT_PRESETS.storyboard
+    1222:       };
+>>> 1223: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1224: 
+    1225:       polishEnabled: false,
+    1226:       defaultDownloadFolder: localStorage.getItem("palette_default_do
+    1227: <truncated 242 bytes>
+    1228:       // 后画后悔药对比备份
+    1229:       assetHistory: {}, // {card_id: {new_url, old_url}}
+    1230:       frameHistory: {}, // {frame_idx: {new_url, old_url}}
+    1231:     };
+
+--- Corrupted line at index 1227 (Line 1227):
+Content: <truncated 242 bytes>
+Surrounding lines:
+    1219:         voiceover:  channel.presets.voiceover  || DEFAULT_PRESETS.voiceover,
+    1220:         outline:    channel.presets.outline    || DEFAULT_PRESETS.outline,
+    1221:         storyboard: channel.presets.storyboard || DEFAULT_PRESETS.storyboard
+    1222:       };
+    1223: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1224: 
+    1225:       polishEnabled: false,
+    1226:       defaultDownloadFolder: localStorage.getItem("palette_default_do
+>>> 1227: <truncated 242 bytes>
+    1228:       // 后画后悔药对比备份
+    1229:       assetHistory: {}, // {card_id: {new_url, old_url}}
+    1230:       frameHistory: {}, // {frame_idx: {new_url, old_url}}
+    1231:     };
+    1232: 
+    1233:       presets: {
+    1234:         image: "High-quality 2D vector cartoon, bold black outlines, vibrant flat colors with soft cel-shading. Style inspired by Cyanide and Happiness but with professional lighting and detailed illustrated backgrounds. Character proportions: stick figure limbs, round bean heads.",
+    1235:         polish: "你是一位专业的资深编剧与剧本医生。\n任务：请阅读用户提供的原始素材（梗概、片段或小说节选均可），在【完全保留用户原始创意、情节走向和核心设定】的前提下，进行专业润色，并补充与盲盒梗概同规格的结构化字段。\n\n润色要求：\n1. 语言风格：使文字更具画面感（Visual Thinking），多用具象动词，少用空泛形容词；**禁止**强行套用「阶层跃迁」「利益算计」等固定套路，除非用户原文已包含类似内核。\n2. 节奏与体量：优化起承转合与悬念，整体梗概总长度须符合后续约 1700 字旁白体量的信息密度，且 synopsis 与 synopsis_acts 拼接总字符数不得超过 1500（汉字+标点）。\n3. 分幕结构：必须输出 synopsis_acts 数组，长度恰好为 6；每幕为连续叙事，幕内不要写「第X幕」小标题，按时间顺序串成一条故事线。\n4. **行业潜规则 industry_rules**：与盲盒大纲一致，输出 1～4 条数组，概括本作可被影像化的矛盾机制或环境张力（非教条）。\n\n输出：**仅** JSON（键名固定）：\n{\n  \"synopsis_acts\": [共6个字符串，依次为第1幕…第6幕],\n  \"synopsis\": \"将 synopsis_acts 用两个换行符拼接的全文，与各幕一致\",\n  \"short_title\": \"12字以内的短片标题，用于飞书卡片抬头\",\n  \"era\": \"时代背景\",\n  \"identity\": \"主角身份或称谓\",\n  \"industry_rules\": [\"……\"]\n}",
+
+--- Corrupted line at index 1236 (Line 1236):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    1228:       // 后画后悔药对比备份
+    1229:       assetHistory: {}, // {card_id: {new_url, old_url}}
+    1230:       frameHistory: {}, // {frame_idx: {new_url, old_url}}
+    1231:     };
+    1232: 
+    1233:       presets: {
+    1234:         image: "High-quality 2D vector cartoon, bold black outlines, vibrant flat colors with soft cel-shading. Style inspired by Cyanide and Happiness but with professional lighting and detailed illustrated backgrounds. Character proportions: stick figure limbs, round bean heads.",
+    1235:         polish: "你是一位专业的资深编剧与剧本医生。\n任务：请阅读用户提供的原始素材（梗概、片段或小说节选均可），在【完全保留用户原始创意、情节走向和核心设定】的前提下，进行专业润色，并补充与盲盒梗概同规格的结构化字段。\n\n润色要求：\n1. 语言风格：使文字更具画面感（Visual Thinking），多用具象动词，少用空泛形容词；**禁止**强行套用「阶层跃迁」「利益算计」等固定套路，除非用户原文已包含类似内核。\n2. 节奏与体量：优化起承转合与悬念，整体梗概总长度须符合后续约 1700 字旁白体量的信息密度，且 synopsis 与 synopsis_acts 拼接总字符数不得超过 1500（汉字+标点）。\n3. 分幕结构：必须输出 synopsis_acts 数组，长度恰好为 6；每幕为连续叙事，幕内不要写「第X幕」小标题，按时间顺序串成一条故事线。\n4. **行业潜规则 industry_rules**：与盲盒大纲一致，输出 1～4 条数组，概括本作可被影像化的矛盾机制或环境张力（非教条）。\n\n输出：**仅** JSON（键名固定）：\n{\n  \"synopsis_acts\": [共6个字符串，依次为第1幕…第6幕],\n  \"synopsis\": \"将 synopsis_acts 用两个换行符拼接的全文，与各幕一致\",\n  \"short_title\": \"12字以内的短片标题，用于飞书卡片抬头\",\n  \"era\": \"时代背景\",\n  \"identity\": \"主角身份或称谓\",\n  \"industry_rules\": [\"……\"]\n}",
+>>> 1236: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1237: 
+    1238:     // ── 🔄 历史会话检测与一键断点恢复逻辑 ──
+    1239:     let restorableSessionData = null;
+    1240: 
+    1241:       } else {
+    1242:         document.getElementById("connectionBadge").className = "flex items-center space-x-2 text-[10px] font-mono tracking-widest px-3 py-1.5 rounded bg-slate-900 border border-slate-800 text-red-500";
+    1243:         document.getElementById("badgeLight").className = "w-2 h-2 rounded-full bg-red-500 animate-pulse";
+    1244:         document.getElementById("badgeText").innerText = "STATUS: OFFLINE (BRIDGE NOT READY)";
+
+--- Corrupted line at index 1293 (Line 1293):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    1285:       if (logEl && message) { logEl.innerText = message; }
+    1286:     }
+    1287: 
+    1288:     // ── 📊 后台大盘实时审计面板逻辑 ──
+    1289:     let backstageInterval = null;
+    1290: 
+    1291:     function toggleBackstageDrawer() {
+    1292:       const drawer = document.getElementById("backstageDrawer");
+>>> 1293: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1294: 
+    1295:           d1VoiceoverEl.innerText = res.synopsis.synopsis || "";
+    1296:         }
+    1297:       }
+    1298: 
+    1299:       assetHistory: {}, // {card_id: {new_url, old_url}}
+    1300:       frameHistory: {}, // {frame_idx: {new_url, old_url}}
+    1301:     };
+
+--- Corrupted line at index 1325 (Line 1325):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    1317:       detectRestorableSession();
+    1318:     });
+    1319:     setTimeout(checkApiConnection, 500);
+    1320:     setInterval(checkApiConnection, 5000);
+    1321:     function onBackendProgress(stage, percent, message) {
+    1322:       console.log('[Bridge] ' + stage + ' ' + percent + '% - ' + message);
+    1323:       var logEl = document.getElementById('assistantLogText');
+    1324:       if (logEl && message) { logEl.innerText = message; }
+>>> 1325: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1326: 
+    1327:         state.relativeVideoPath = res.relative_video_path;
+    1328:         state.videoUrl = res.video_url;
+    1329: 
+    1330:         const vPlayer = document.getElementById("epicVideoPlayer");
+    1331:         const vPlaceholder = document.getElementById("videoPlaceholder");
+    1332:         if (vPlaceholder) vPlaceholder.classList.add("hidden");
+    1333:         if (vPlayer) {
+
+--- Corrupted line at index 1337 (Line 1337):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    1329: 
+    1330:         const vPlayer = document.getElementById("epicVideoPlayer");
+    1331:         const vPlaceholder = document.getElementById("videoPlaceholder");
+    1332:         if (vPlaceholder) vPlaceholder.classList.add("hidden");
+    1333:         if (vPlayer) {
+    1334:           vPlayer.src = res.video_url;
+    1335:           vPlayer.classList.remove("hidden");
+    1336:         }
+>>> 1337: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1338: 
+    1339:         return;
+    1340:       }
+    1341: 
+    1342:       const feedbackInput = document.getElementById("d2FeedbackInput");
+    1343:       const feedback = feedbackInput.value.trim();
+    1344: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1345: 
+
+--- Corrupted line at index 1344 (Line 1344):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    1336:         }
+    1337: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1338: 
+    1339:         return;
+    1340:       }
+    1341: 
+    1342:       const feedbackInput = document.getElementById("d2FeedbackInput");
+    1343:       const feedback = feedbackInput.value.trim();
+>>> 1344: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1345: 
+    1346:               render_flow: { style_presets: state.presets.image, seed: state.seed }
+    1347:             }
+    1348:           })
+    1349:         });
+    1350: 
+    1351:         const cData = await compRes.json();
+    1352:         if (cData.status !== "success") {
+
+--- Corrupted line at index 1361 (Line 1361):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    1353:           throw new Error("编译旁白接口返回异常");
+    1354:         }
+    1355: 
+    1356:         state.compiledVoiceover = cData.data.compiled_voiceover;
+    1357:         state.extractedEntities = cData.data.extracted_entities;
+    1358: 
+    1359:         p1Bar.style.width = "100%";
+    1360:         p1Val.innerText = "100%";
+>>> 1361: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1362: 
+    1363:       }
+    1364: 
+    1365:       // 3. 恢复分镜
+    1366:       if (res.grids && res.grids.length > 0) {
+    1367:         state.storyboardGrids = res.grids;
+    1368: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1369: 
+
+--- Corrupted line at index 1368 (Line 1368):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    1360:         p1Val.innerText = "100%";
+    1361: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1362: 
+    1363:       }
+    1364: 
+    1365:       // 3. 恢复分镜
+    1366:       if (res.grids && res.grids.length > 0) {
+    1367:         state.storyboardGrids = res.grids;
+>>> 1368: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1369: 
+    1370:           }
+    1371:           if (txtEl) txtEl.innerText = frm.text;
+    1372:           if (timeEl) timeEl.innerText = frm.time_range;
+    1373:         });
+    1374:         document.getElementById("p2StatusText").className = "text-slate-350";
+    1375:         p2Bar.style.width = "20%";
+    1376:         p2Val.innerText = "20%";
+
+--- Corrupted line at index 1466 (Line 1466):
+Content: <truncated 128 bytes>
+Surrounding lines:
+    1458:       }
+    1459: 
+    1460:       // 3. 恢复定妆卡片
+    1461:       if (res.assets && res.assets.length > 0) {
+    1462:         state.assets = res.assets;
+    1463:         state.assets.forEach((ast, idx) => {
+    1464:           const nameEl = document.getElementById(`cardName${idx}`);
+    1465:           const promptE
+>>> 1466: <truncated 128 bytes>
+    1467: 
+    1468: 
+    1469:           if (nameEl) nameEl.innerText = ast.name || "";
+    1470:           if (nameEl) nameEl.innerText = ast.name || "";
+    1471:       document.getElementById("sessionRestoreModal").classList.add("hidden");
+    1472:       performSessionRecovery(restorableSessionData);
+    1473:     }
+    1474: 
+
+--- Corrupted line at index 1559 (Line 1559):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    1551: 
+    1552:     finally:
+    1553:         print("[系统] 软件已完全退出。再见，导演！")
+    1554: 
+    1555: 
+    1556: if __name__ == "__main__":
+    1557:     main()
+    1558: 
+>>> 1559: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1560: 
+    1561:       } finally {
+    1562:         state.isRunning = false;
+    1563:         btn.disabled = false;
+    1564:         btn.innerHTML = oldHtml;
+    1565:       }
+    1566:     }
+    1567: 
+
+--- Corrupted line at index 1574 (Line 1574):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    1566:     }
+    1567: 
+    1568:     // ── 📝 初始化启动逻辑 ──
+    1569:     function initApp() {
+    1570:       // 1. 激活默认频道（注入提示词）
+    1571:       const firstCh = state.channels[0];
+    1572:       if (firstCh) {
+    1573:         state.activeChannelId = firstCh.id;
+>>> 1574: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1575: 
+    1576:           } else {
+    1577:             state.presets = parsed;
+    1578:           }
+    1579:         } catch(e){}
+    1580:       }
+    1581: 
+    1582:       // 初始化提示词文本区内容
+
+--- Corrupted line at index 1736 (Line 1736):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    1728:       if (pol) pol.value = presets.polish || DEFAULT_PRESETS.polish;
+    1729:       if (voi) voi.value = presets.voiceover || DEFAULT_PRESETS.voiceover;
+    1730:       if (out) out.value = presets.outline || DEFAULT_PRESETS.outline;
+    1731:       updateJsonPayloadViewer();
+    1732:     }
+    1733: 
+    1734:     // ── 🛠️ 弹窗与吐司通知 ──
+    1735:     function showToast(text, duration = 3000) {
+>>> 1736: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1737: 
+    1738:               <span style="font-size:1.875rem; line-height:1;">${ch.emoji || '🎬'}</span>
+    1739:               <button onclick="event.stopPropagation(); openChannelEditor('${ch.id}')"
+    1740:                 style="opacity:0; padding:6px; border-radius:8px; background:#0f172a; border:none; color:#94a3b8; font-size:0.75rem; cursor:pointer; transition:opacity 0.2s;"
+    1741:                 onmouseover="this.style.opacity='1'; this.style.background='#1e293b'; this.style.color='#e2e8f0';"
+    1742:                 onmouseout="this.style.opacity='0';"
+    1743:                 class="edit-btn">✏️</button>
+    1744:             </div>
+
+--- Corrupted line at index 1748 (Line 1748):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    1740:                 style="opacity:0; padding:6px; border-radius:8px; background:#0f172a; border:none; color:#94a3b8; font-size:0.75rem; cursor:pointer; transition:opacity 0.2s;"
+    1741:                 onmouseover="this.style.opacity='1'; this.style.background='#1e293b'; this.style.color='#e2e8f0';"
+    1742:                 onmouseout="this.style.opacity='0';"
+    1743:                 class="edit-btn">✏️</button>
+    1744:             </div>
+    1745: 
+    1746:             <!-- 频道名 -->
+    1747:             <div>
+>>> 1748: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1749: 
+    1750:           }
+    1751: 
+    1752:           showToast("💾 正在为您将视频文件拷贝拷贝至指定位置...");
+    1753: 
+    1754:           // 2. 将此物理绝对路径发送给 API 中控进行安全复制
+    1755:           const response = await fetch("http://127.0.0.1:8000/api/story/v1/download", {
+    1756:             method: "POST",
+
+--- Corrupted line at index 1835 (Line 1835):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    1827:     // ── ✏️ 频道编辑器弹窗 ──
+    1828:     const CHANNEL_COLORS = [
+    1829:       "#EF4444","#F59E0B","#10B981","#3B82F6","#8B5CF6",
+    1830:       "#EC4899","#06B6D4","#F97316","#84CC16","#6366F1"
+    1831:     ];
+    1832:     let _editingChannelId = null;
+    1833: 
+    1834:     function openChannelEditor(channelId) {
+>>> 1835: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1836: 
+    1837:       // 安全直出锁标志
+    1838:       document.getElementById("d1LockBadge").innerText = state.polishEnabled ? "✨ SMART_POLISH_FLOW" : "🔒 ORIGINAL_TEXT_LOCKED";
+    1839:       document.getElementById("d1LockBadge").className = state.polishEnabled ? "px-2 py-0.5 text-[9px] tracking-widest uppercase font-bold rounded bg-indigo-950 border border-indigo-800 text-indigo-200" : "px-2 py-0.5 text-[9px] tracking-widest uppercase font-bold rounded bg-red-950 border border-red-800/80 text-red-200";
+    1840: 
+    1841:         const editBtn = card.querySelector('.edit-btn');
+    1842:         if (editBtn) {
+    1843:           card.addEventListener('mouseenter', () => editBtn.style.opacity = '1');
+
+--- Corrupted line at index 1882 (Line 1882):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    1874: 
+    1875:     // ── 🔍 获取当前激活频道对象 ──
+    1876:     function getActiveChannel() {
+    1877:       return state.channels.find(c => c.id === state.activeChannelId) || state.channels[0];
+    1878:     }
+    1879: 
+    1880:     // ── 💾 频道持久化存储 ──
+    1881:     function saveChannelsToStorage() {
+>>> 1882: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1883: 
+    1884:       rebuildBtn.disabled = true;
+    1885:       rebuildBtn.innerText = "🎨 生图引擎重绘中...";
+    1886: 
+    1887:       try {
+    1888:         const res = await pywebview.api.render_single_frame({
+    1889:             target_id: ast.id,
+    1890:             prompt: newPrompt,
+
+--- Corrupted line at index 1924 (Line 1924):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    1916:       localStorage.setItem("palette_channels_v3", JSON.stringify(state.channels));
+    1917:       // 异步同步到后台（双轨备份，失败不影响前端）
+    1918:       if (typeof pywebview !== 'undefined' && pywebview.api && pywebview.api.save_channels) {
+    1919:         pywebview.api.save_channels(state.channels).catch(() => {});
+    1920:       }
+    1921:     }
+    1922: 
+    1923:     // ── 📝 频道草稿隔离读写 ──
+>>> 1924: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1925: 
+    1926:       `).join("");
+    1927:       document.getElementById("chEditorColor").value = selectedColor;
+    1928: 
+    1929:       if (channelId)
+    1930: <truncated 493 bytes>
+    1931: sets(ch);
+    1932:         const ch = state.channels.find(c => c.id === channelId);
+
+--- Corrupted line at index 1930 (Line 1930):
+Content: <truncated 493 bytes>
+Surrounding lines:
+    1922: 
+    1923:     // ── 📝 频道草稿隔离读写 ──
+    1924: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    1925: 
+    1926:       `).join("");
+    1927:       document.getElementById("chEditorColor").value = selectedColor;
+    1928: 
+    1929:       if (channelId)
+>>> 1930: <truncated 493 bytes>
+    1931: sets(ch);
+    1932:         const ch = state.channels.find(c => c.id === channelId);
+    1933:         if (!ch) return;
+    1934:         document.getElementById("chEditorTitle").innerText = `编辑频道：${ch.name}`;
+    1935:         document.getElementById("chEditorEmoji").innerText = ch.emoji || '🎬';
+    1936:         document.getElementById("chEditorEmojiInput").value = ch.emoji || '';
+    1937:         document.getElementById("chEditorName").value = ch.name;
+    1938:         const presets = getChannelPresets(ch);
+
+--- Corrupted line at index 1974 (Line 1974):
+Content: <truncated 822 bytes>
+Surrounding lines:
+    1966:         document.getElementById("chEditorTitle").innerText = `编辑频道：${ch.name}`;
+    1967:         document.getElementById("chEditorEmoji").innerText = ch.emoji || '🎬';
+    1968:         document.getElementById("chEditorEmojiInput").value = ch.emoji || '';
+    1969:         document.getElementById("chEditorName").value = ch.name;
+    1970:         const presets = getChannelPresets(ch);
+    1971:         document.getElementById("chEditorOutline").value   = ch.presets?.outline   || presets.outline || '';
+    1972:         document.getElementById("chEditorImage").value     = ch.presets?.image     || '';
+    1973:         document.getElementById("chEditorVoiceover").value = c
+>>> 1974: <truncated 822 bytes>
+    1975: :         // 有备份时才显示回滚按钮
+    1976:         document.getElementById(
+    1977: <truncated 522 bytes>
+    1978:  = "";
+    1979:       _editingChannelId = null;
+    1980:     }
+    1981: 
+    1982:     function saveChannelFromEditor() {
+
+--- Corrupted line at index 1977 (Line 1977):
+Content: <truncated 522 bytes>
+Surrounding lines:
+    1969:         document.getElementById("chEditorName").value = ch.name;
+    1970:         const presets = getChannelPresets(ch);
+    1971:         document.getElementById("chEditorOutline").value   = ch.presets?.outline   || presets.outline || '';
+    1972:         document.getElementById("chEditorImage").value     = ch.presets?.image     || '';
+    1973:         document.getElementById("chEditorVoiceover").value = c
+    1974: <truncated 822 bytes>
+    1975: :         // 有备份时才显示回滚按钮
+    1976:         document.getElementById(
+>>> 1977: <truncated 522 bytes>
+    1978:  = "";
+    1979:       _editingChannelId = null;
+    1980:     }
+    1981: 
+    1982:     function saveChannelFromEditor() {
+    1983:       const name = document.getElementById("chEditorName").value.trim();
+    1984:       if (!name) { showToast("⚠️ 请填写频道名称！"); return; }
+    1985:       if (state.channels.length >= 8 && !_editingChannelId) {
+
+--- Corrupted line at index 2051 (Line 2051):
+Content: <truncated 552 bytes>
+Surrounding lines:
+    2043:         showToast("⚠️ 最多创建 8 个频道！"); return;
+    2044:       }
+    2045: 
+    2046:       const emoji = document.getElementById("chEditorEmojiInput").value.trim() || "🎬";
+    2047:       const color = document.getElementById("chEditorColor").value || "#6366F1";
+    2048:       const outline = document.getElementById("chEditorOutline").value.trim();
+    2049:       const image = document.getElementById("chEditorImage").value.trim();
+    2050:       const voiceover = document.getElementById("chEditorVoiceover").v
+>>> 2051: <truncated 552 bytes>
+    2052:  !== -1) {
+    2053:           if (state.channels[idx].presets) {
+    2054:             state.channels[idx].presetsBackup = JSON.parse(JSON.stringify(state.channels[idx].presets));
+    2055:           }
+    2056:           state.channels[idx].name = name;
+    2057:           state.channels[idx].emoji = emoji;
+    2058:           // 颖定频道只更新提示词，不更新颜色
+    2059:           if (!state.channels[idx].locked) {
+
+--- Corrupted line at index 2094 (Line 2094):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    2086:       // 如果修改的是当前激活频道，同时刷新 state.presets
+    2087:       if (_editingChannelId === state.activeChannelId) {
+    2088:         const ch = state.channels.find(c => c.id === _editingChannelId);
+    2089:         if (ch) state.presets = getChannelPresets(ch);
+    2090:       }
+    2091: 
+    2092:       saveChannelsToStorage();
+    2093:       closeChannelEditor();
+>>> 2094: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    2095: 
+    2096: 
+    2097:     // ── 🔒 剧本锁定开关切换 ──
+    2098:     function togglePolishSwitch() {
+    2099:       const toggle = document.getElementById("polishToggle");
+    2100:       state.polishEnabled = toggle.checked;
+    2101: 
+    2102:       const tag = document.getElementById("polishStatusTag");
+
+--- Corrupted line at index 2106 (Line 2106):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    2098:     function togglePolishSwitch() {
+    2099:       const toggle = document.getElementById("polishToggle");
+    2100:       state.polishEnabled = toggle.checked;
+    2101: 
+    2102:       const tag = document.getElementById("polishStatusTag");
+    2103:       const desc = document.getElementById("polishDesc");
+    2104: 
+    2105:       if (toggle.checked) {
+>>> 2106: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    2107: 
+    2108:             style_presets: state.presets.image,
+    2109:             seed: state.seed
+    2110:           }
+    2111:         }
+    2112:       };
+    2113:       document.getElementById("jsonPayloadViewer").innerText = JSON.stringify(payload, null, 2);
+    2114:     }
+
+--- Corrupted line at index 2143 (Line 2143):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    2135:           mode_path: state.modePath,
+    2136:           original_text: "请根据本频道的创作方向，为我随机生成一个精彩的短视频故事大纲。",
+    2137:           pipeline_config: {
+    2138:             polish_flow: { enabled: true, system_prompt: outlinePrompt },
+    2139:             voiceover_flow: { system_prompt: state.presets.voiceover },
+    2140:             render_flow: { style_presets: state.presets.image, seed: Date.now() % 99999 }
+    2141:           }
+    2142:         });
+>>> 2143: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    2144: 
+    2145: 
+    2146:           vPlaceholder.classList.add("hidden");
+    2147:           vPlayer.src = res.video_url;
+    2148:           vPlayer.classList.remove("hidden");
+    2149:           vPlayer.play();
+    2150: 
+    2151:           showToast("🎉 全盘多轨视频物理拼装合成大获成功！请导演欣赏大作！");
+
+--- Corrupted line at index 2155 (Line 2155):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    2147:           vPlayer.src = res.video_url;
+    2148:           vPlayer.classList.remove("hidden");
+    2149:           vPlayer.play();
+    2150: 
+    2151:           showToast("🎉 全盘多轨视频物理拼装合成大获成功！请导演欣赏大作！");
+    2152:         } else {
+    2153:           showCustomModal("⚠️ 合成失败", "FFmpeg 合成大师运行发生阻碍，请重试！");
+    2154:         }
+>>> 2155: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    2156: 
+    2157:         "🗑️ 确认删除频道",
+    2158:         `即将删除频道「${ch.name}」，该频道的专属提示词与草稿将一并清除，此操作不可撤销。`,
+    2159:         "确认删除",
+    2160:         true,
+    2161:         if (!ch.presets) ch.presets = {};
+    2162:         ch.presets.image     = state.presets.image;
+    2163:         ch.presets.polish    = state.presets.polish;
+
+--- Corrupted line at index 2197 (Line 2197):
+Content: <truncated 106 bytes>
+Surrounding lines:
+    2189:           }
+    2190:         }
+    2191:       };
+    2192:       document.getElementById("jsonPayloadViewer").innerText = JSON.stringify(payload, null, 2);
+    2193:     }
+    2194: 
+    2195:     // ── 🎲 摇一摇盲盒 ──
+    2196:     // ── 🎲 C1 内联版：摇一摇脑暴剧本（
+>>> 2197: <truncated 106 bytes>
+    2198: hake() {
+    2199:       const p2Val = document.getElementById("p2Val");
+    2200:       if (state.isRunning) { showToast("⏳ 上一个请求还在运行中，请稍候！"); return; }
+    2201: 
+    2202:       const ch = getActiveChannel();
+    2203:       } else {
+    2204:         area.value = area.value.trim() + ", " + tag;
+    2205:       }
+
+--- Corrupted line at index 2234 (Line 2234):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    2226:         ch.presets.outline   = state.presets.outline;
+    2227:         saveChannelsToStorage();
+    2228:       }
+    2229:       showToast(`💾 「${ch ? ch.name : '当前频道'}」的提示词预设已同步！`);
+    2230:       setTimeout(() => navigateTo("C1"), 800);
+    2231:     }
+    2232: 
+    2233:     function updateJsonPayloadViewer() {
+>>> 2234: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    2235: 
+    2236:       const payload = {
+    2237:         app_id: "palette-cinema-id",
+    2238:         mode_path: state.modePath,
+    2239:         original_text: state.rawScript || "等待输入...",
+    2240:         pipeline_config: {
+    2241:           polish_flow: {
+    2242:             enabled: state.polishEnabled,
+
+--- Corrupted line at index 2251 (Line 2251):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    2243:             system_prompt: state.polishEnabled ? state.presets.polish : "",
+    2244:             immutable_lock: !state.polishEnabled
+    2245:           },
+    2246:           voiceover_flow: {
+    2247:             system_prompt: state.presets.voiceover
+    2248:           },
+    2249:           render_flow: {
+    2250:             style_presets: state.presets.image,
+>>> 2251: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    2252: 
+    2253:         document.getElementById("p2StatusText").className = "text-slate-350";
+    2254:         p2Bar.style.width = "20%";
+    2255:         p2Val.innerText = "20%";
+    2256: 
+    2257:         // 定时改变生图日志
+    2258: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    2259: 
+
+--- Corrupted line at index 2258 (Line 2258):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    2250:             style_presets: state.presets.image,
+    2251: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    2252: 
+    2253:         document.getElementById("p2StatusText").className = "text-slate-350";
+    2254:         p2Bar.style.width = "20%";
+    2255:         p2Val.innerText = "20%";
+    2256: 
+    2257:         // 定时改变生图日志
+>>> 2258: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    2259: 
+    2260:         let logSec = 0;
+    2261:         const logTimer = setInterval(() => {
+    2262:           logSec += 3;
+    2263:           if (logSec === 3) logText.innerText = `[第2步] 正在由画画引擎全力绘制【${state.extractedEntities[0] || '角色'}】定妆三视图...`;
+    2264:           else if (logSec === 9) logText.innerText = `[第2步] 正在绘制【${state.extractedEntities[1] || '场景'}】电影大场景立绘...`;
+    2265:           else if (logSec === 15) logText.innerText = `[第2步] 正在绘制【${state.extractedEntities[2] || '道具'}】线索道具图...`;
+    2266: 
+
+--- Corrupted line at index 2307 (Line 2307):
+Content: <truncated 441 bytes>
+Surrounding lines:
+    2299:         if (p2Dot) p2Dot.className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
+    2300:         const p2Txt = document.getElementById("p2StatusText");
+    2301:         if (p2Txt) {
+    2302:           p2Txt.className = "text-emerald-400";
+    2303:           p2Txt.innerText = "2. 角色及美术场景定妆大画卡集已绘制成功！";
+    2304:         }
+    2305: 
+    2306:         if (logText) logText.innerText = "🎉 恭喜！旁白与定妆画已就绪，大卡片画廊已解锁！";
+>>> 2307: <truncated 441 bytes>
+    2308: ;
+    2309:         document.getElementById("p1StatusText").innerText = "1. 第三人称解说词文本已就绪！";
+    2310: 
+    2311:         document.getElementById("d1VoiceoverOutput").innerText = state.compiledVoiceover;
+    2312: 
+    2313:         // [第2步] 生成定妆卡片
+    2314:         logText.innerText = "[第2步] 解说词已全部编译就绪！正在物理派生生图引擎绘制 3 大核心资产 (预计 20 秒)...";
+    2315:         document.getElementById("p2StatusDot").className = "w-2.5 h-2.5 rounded-full bg-indigo-500 animate-ping";
+
+--- Corrupted line at index 2348 (Line 2348):
+Content: <truncated 4218 bytes>
+Surrounding lines:
+    2340:         logText.innerText = "[第1步] 正在呼唤大模型提炼大纲并编译解说旁白文本 (预计 5 秒)...";
+    2341:         p1Bar.style.width = "40%";
+    2342:         p1Val.innerText = "40%";
+    2343: 
+    2344:         const cData = await pywebview.api.compile_story({
+    2345:             app_id: "palette-cinema-id",
+    2346:             mode_path: state.modePath,
+    2347:             original_tex
+>>> 2348: <truncated 4218 bytes>
+    2349: 0px_rgba(99,102,241,0.15)] flex flex-col space-y-3 w-full";
+    2350:             pipeline_config: {
+    2351:               polish_flow: {
+    2352:                 enabled: state.polishEnabled,
+    2353:                 system_prompt: state.polishEnabled ? state.presets.polish : "",
+    2354:                 immutable_lock: !state.polishEnabled
+    2355:               },
+    2356:               voiceover_flow: { system_prompt: state.presets.voiceover },
+
+--- Corrupted line at index 2414 (Line 2414):
+Content: <truncated 2071 bytes>
+Surrounding lines:
+    2406:         if (aData.status !== "success") {
+    2407:           throw new Error(aData.detail || "定妆照生图失败");
+    2408:         }
+    2409: 
+    2410:         state.assets = aData.assets;
+    2411: 
+    2412:         // 渲染定妆照卡片
+    2413: 
+>>> 2414: <truncated 2071 bytes>
+    2415: t.prompt;
+    2416:     // ── 🎬 E 页面分镜底片生成 ──
+    2417:     async function handleD1Next() {
+    2418:       if (state.storyboardGrids && state.storyboardGrids.length > 0) {
+    2419:         navigateTo("E");
+    2420:         showToast("🎞️ 已恢复已生成的分镜底片大网格。");
+    2421:         return;
+    2422:       }
+
+--- Corrupted line at index 2446 (Line 2446):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    2438:         p2Bar.style.width = "100%";
+    2439:         p2Val.innerText = "100%";
+    2440:         document.getElementById("p2StatusDot").className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
+    2441:         document.getElementById("p2StatusText").className = "text-emerald-400";
+    2442:         document.getElementById("p2StatusText").innerText = "2. 角色及美术场景定妆大画卡集已绘制成功！";
+    2443: 
+    2444:         logText.innerText = "🎉 恭喜！大纲编译及资产三视图绘制圆满通过，大卡片画廊已解锁！";
+    2445:         document.getElementById("d1ResultArea").classList.remove("hidden");
+>>> 2446: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    2447: 
+    2448:           state.storyboardGrids = res.grids;
+    2449: 
+    2450:           // 渲染底片
+    2451:           renderStoryboardGrids();
+    2452:           showToast("🎞️ 16宫格切图大网格渲染完毕！");
+    2453: 
+    2454:       // 页签重置
+
+--- Corrupted line at index 2488 (Line 2488):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    2480: 
+    2481:       if (mode === "new") {
+    2482:         tabNew.className = "px-2 py-1 bg-indigo-600 text-[10px] text-white rounded font-bold";
+    2483:         tabOld.className = "px-2 py-1 text-[10px] text-slate-400 hover:text-slate-200 rounded";
+    2484:         img.src = hist.new_url;
+    2485:       } else {
+    2486:         tabOld.className = "px-2 py-1 bg-indigo-600 text-[10px] text-white rounded font-bold";
+    2487:         tabNew.className = "px-2 py-1 text-[10px] text-slate-400 hover:text-slate-200 rounded";
+>>> 2488: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    2489: 
+    2490:         img.src = hist.old_url;
+    2491:       }
+    2492:     }
+    2493: 
+    2494:     async function rebuildAssetCard() {
+    2495:       const ast = state.assets[activeCardIndex];
+    2496:       const newPrompt = document.getElementById("d1_1_PromptInput").value;
+
+--- Corrupted line at index 2540 (Line 2540):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    2532:       }
+    2533:     }
+    2534: 
+    2535:     function closeD1_1(event) {
+    2536:       if (event.target.id === "overlayD1_1") {
+    2537:         closeD1_1_Force();
+    2538:       }
+    2539:     }
+>>> 2540: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    2541: 
+    2542: 
+    2543:         state.compiledVoiceover = cData.data.compiled_voiceover;
+    2544:         state.lastCompiledText = text;
+    2545:         state.extractedEntities = cData.data.extracted_entities;
+    2546: 
+    2547:         p1Bar.style.width = "100%";
+    2548:         p1Val.innerText = "100%";
+
+--- Corrupted line at index 2552 (Line 2552):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    2544:         state.lastCompiledText = text;
+    2545:         state.extractedEntities = cData.data.extracted_entities;
+    2546: 
+    2547:         p1Bar.style.width = "100%";
+    2548:         p1Val.innerText = "100%";
+    2549:         document.getElementById("p1StatusDot").className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
+    2550:         document.getElementById("p1StatusText").className = "text-emerald-400";
+    2551:         document.getElementById("p1StatusText").innerText = "1. 第三人称解说词文本已就绪！";
+>>> 2552: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    2553: 
+    2554:         const nBtn = document.getElementById("d1NextBtn");
+    2555:         nBtn.disabled = false;
+    2556:         nBtn.className = "px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition-all text-xs tracking-wider uppercase";
+    2557: 
+    2558:       } catch(err) {
+    2559:         handleApiError(err, () => handleC1Launch(text));
+    2560:       }
+
+--- Corrupted line at index 2624 (Line 2624):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    2616:       if (event.target.id === "overlayD1_1") {
+    2617:         closeD1_1_Force();
+    2618:       }
+    2619:     }
+    2620:     function closeD1_1_Force() {
+    2621:       document.getElementById("overlayD1_1").classList.add("hidden");
+    2622:     }
+    2623: 
+>>> 2624: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    2625: 
+    2626:             prompt: newPrompt,
+    2627:             seed: state.seed,
+    2628:             style_lock: true
+    2629:           });
+    2630:         if (res.status === "success") {
+    2631:           // 更新后悔药
+    2632:           state.assetHistory[ast.id].old_url = ast.image_url;
+
+--- Corrupted line at index 2686 (Line 2686):
+Content: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+Surrounding lines:
+    2678:       showToast("🎞️ 正在物理切切旁白并插值生图分镜大宫格...");
+    2679: 
+    2680:       // 初始化骨架状态
+    2681:       const container = document.getElementById("storyboardGrid");
+    2682:       if (container) {
+    2683:         container.className = "flex items-center justify-center py-20 w-full";
+    2684:         container.innerHTML = `
+    2685:           <div class="text-center space-y-4">
+>>> 2686: The above content does NOT show the entire file contents. If you need to view any lines of the file which were not shown to complete your task, call this tool again to view those lines.
+    2687: 

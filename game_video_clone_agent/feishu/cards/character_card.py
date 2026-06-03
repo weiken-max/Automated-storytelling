@@ -46,6 +46,15 @@ class CharacterCard(BaseCard):
 
     def body_elements(self) -> list[dict]:
         els = []
+
+        # ── 修改意见引导 ──
+        els.append(self.make_md(
+            "💡 **修改意见**：复制下方角色标注行，接上意见即可触发重画。\n"
+            "　如：`Lang · 主角 · 青年期（youth）帽子改成鸭舌帽，衣服换成浅灰色`"
+        ))
+        hr = {"tag": "hr"}
+        els.append(hr)
+
         if self.ref_slots:
             els.append(self.make_md(
                 "**定妆参考图**（主角各阶段 + 配角）。"

@@ -1,0 +1,1685 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full bg-[#03050C] text-slate-200">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>“调色板” AI 电影级多大模型联调平台</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            studio: {
+              bg: '#03050C',
+              card: '#080C1E',
+              accent: '#6366F1',
+              neonRed: '#F43F5E',
+              neonYellow: '#F59E0B',
+              neonBlue: '#3B82F6',
+              border: '#1E293B'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      text-rendering: optimizeLegibility;
+      -webkit-font-smoothing: antialiased;
+    }
+    
+    /* 调色盘色块物理气泡振颤 */
+    @keyframes bubble-shake {
+      0% { transform: translate(0, 0) scale(1.08); }
+      20% { transform: translate(-1.5px, 1px) scale(1.08); }
+      40% { transform: translate(1px, -1.5px) scale(1.1); }
+      60% { transform: translate(-1px, -1px) scale(1.08); }
+      80% { transform: translate(1.5px, 1.5px) scale(1.1); }
+      100% { transform: translate(0, 0) scale(1.08); }
+    }
+    .hover-shake-bubble:hover {
+      animation: bubble-shake 0.35s infinite linear;
+      box-shadow: 0 0 30px var(--glow-color);
+      border-color: rgba(255, 255, 255, 0.7) !important;
+      cursor: pointer;
+    }
+
+    /* 空间吞没扩散特效 */
+    .space-splash {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      pointer-events: none;
+      z-index: 5;
+    }
+    .splash-circle {
+      position: absolute;
+      border-radius: 50%;
+      width: 10px;
+      height: 10px;
+      transform: translate(-50%, -50%) scale(0);
+      transition: transform 1.1s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .splash-circle.active {
+      transform: translate(-50%, -50%) scale(380);
+    }
+
+    /* 高品质哑光毛玻璃 */
+    .glass-studio-panel {
+      background: rgba(8, 12, 30, 0.6);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="h-full flex flex-col overflow-hidden text-slate-200">
+
+  <!-- 全屏转场色彩层 -->
+  <div class="space-splash">
+    <div id="splashCircle" class="splash-circle"></div>
+  </div>
+
+  <!-- 全局自定义通知吐司 -->
+  <div id="toastNotification" class="fixed top-8 left-1/2 transform -translate-x-1/2 z-50 hidden transition-all duration-500">
+    <div class="bg-slate-900 border border-slate-800 text-slate-100 px-6 py-3.5 rounded-xl shadow-2xl flex items-center space-x-3 backdrop-blur-xl">
+      <span id="toastDot" class="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>
+      <span id="toastText" class="font-medium text-xs tracking-wide">提示信息</span>
+    </div>
+  </div>
+
+  <!-- 全局自定义异常/通知模态弹窗 -->
+  <div id="customModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+    <div id="modalBox" class="w-full max-w-md bg-[#0D1127] border border-red-500/20 rounded-2xl shadow-2xl p-6 text-center space-y-4">
+      <div id="modalIcon" class="w-12 h-12 bg-red-500/10 text-red-400 rounded-full flex items-center justify-center mx-auto text-xl border border-red-500/20">
+        ⚠️
+      </div>
+      <h3 id="modalTitle" class="text-base font-bold text-slate-100">通知标题</h3>
+      <p id="modalDesc" class="text-xs text-slate-400 leading-relaxed">提示描述内容</p>
+      <div class="pt-2 flex justify-center space-x-3">
+        <button id="modalSecBtn" onclick="closeCustomModal()" class="hidden px-5 py-2 bg-slate-850 hover:bg-slate-800 text-slate-400 font-semibold text-xs rounded-lg transition-all border border-slate-800">
+          取消
+        </button>
+        <button id="modalPrimaryBtn" onclick="closeCustomModal()" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs rounded-lg transition-all">
+          我知道了
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 主应用大布局 -->
+  <div class="flex flex-1 h-full overflow-hidden">
+    
+    <!-- 左侧：核心演示操控台 -->
+    <main class="flex-1 flex flex-col relative bg-[#03050C] overflow-hidden">
+      
+      <!-- 高水准工作室页眉 -->
+      <header class="h-16 px-8 border-b border-slate-900/60 flex items-center justify-between bg-[#03050C]/50 backdrop-blur-md shrink-0 z-20">
+        <div class="flex items-center space-x-4">
+          <div class="flex space-x-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-[#F43F5E] shadow-[0_0_10px_#F43F5E]"></span>
+            <span class="w-2.5 h-2.5 rounded-full bg-[#F59E0B] shadow-[0_0_10px_#F59E0B]"></span>
+            <span class="w-2.5 h-2.5 rounded-full bg-[#10B981] shadow-[0_0_10px_#10B981]"></span>
+          </div>
+          <span class="h-4 w-[1px] bg-slate-800"></span>
+          <span class="text-xs font-bold tracking-[0.25em] text-slate-400">PALETTE PIPELINE STUDIO</span>
+        </div>
+        <div class="flex items-center space-x-4">
+          <!-- 🔌 真实连通指示灯 -->
+          <div id="connectionBadge" class="flex items-center space-x-2 text-[10px] font-mono tracking-widest px-3 py-1.5 rounded bg-slate-900 border border-slate-800 text-red-400">
+            <span id="badgeLight" class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+            <span id="badgeText">STATUS: DISCONNECTED</span>
+          </div>
+          <div id="activeStateBadge" class="text-[10px] font-mono tracking-widest px-3 py-1.5 rounded bg-slate-900 border border-slate-800 text-slate-400">
+            STATUS: SCREEN_A
+          </div>
+        </div>
+      </header>
+
+      <!-- 画布显示区 -->
+      <div class="flex-1 flex items-center justify-center p-8 relative z-10 overflow-y-auto no-scrollbar">
+        
+        <!-- ==================== 界面 A: 初始立体调色盘 ==================== -->
+        <section id="screenA" class="w-full max-w-4xl flex flex-col items-center justify-center space-y-16 py-6">
+          <div class="text-center space-y-4 max-w-lg">
+            <h1 class="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-100 to-slate-500">
+              开始你的故事
+            </h1>
+            <p class="text-xs tracking-wider text-slate-400 leading-relaxed font-light">
+              点击下方艺术调色盘上的颜色气泡。不同色彩映射不同的内容生成与编译算法，带您进入全沉浸式的精控 AI 视频导演空间。
+            </p>
+          </div>
+
+          <!-- 精致立体浮动调色盘 UI -->
+          <div class="relative w-[420px] h-[340px] bg-gradient-to-br from-slate-900/40 to-slate-950/80 rounded-[3rem] border border-slate-800/40 shadow-[0_20px_50px_rgba(0,0,0,0.8)] flex items-center justify-center p-8 backdrop-blur-sm">
+            <div class="absolute top-12 right-12 w-14 h-20 bg-[#03050C] rounded-full border border-slate-900 shadow-inner transform rotate-[35deg]"></div>
+            
+            <!-- 气泡1: 猩红剧本 -->
+            <button onclick="handleColorClick(event, 'red', '#EF4444', '猩红剧本模式')" 
+                    style="--glow-color: rgba(239, 68, 68, 0.4)"
+                    class="hover-shake-bubble absolute top-12 left-16 w-20 h-20 rounded-full bg-gradient-to-br from-[#FF5A5A] to-[#C00000] border border-white/10 shadow-lg flex flex-col items-center justify-center">
+              <span class="text-xs font-bold text-white tracking-widest drop-shadow-md">剧本</span>
+            </button>
+
+            <!-- 气泡2: 金秋科普 -->
+            <button onclick="handleColorClick(event, 'yellow', '#F59E0B', '金秋科普模式')" 
+                    style="--glow-color: rgba(245, 158, 11, 0.4)"
+                    class="hover-shake-bubble absolute top-40 left-8 w-20 h-20 rounded-full bg-gradient-to-br from-[#FBBF24] to-[#A15C07] border border-white/10 shadow-lg flex flex-col items-center justify-center">
+              <span class="text-xs font-bold text-white tracking-widest drop-shadow-md">科普</span>
+            </button>
+
+            <!-- 气泡3: 碧海随机 -->
+            <button onclick="handleColorClick(event, 'blue', '#3B82F6', '碧海随机模式')" 
+                    style="--glow-color: rgba(59, 130, 246, 0.4)"
+                    class="hover-shake-bubble absolute bottom-10 left-36 w-20 h-20 rounded-full bg-gradient-to-br from-[#60A5FA] to-[#1447E6] border border-white/10 shadow-lg flex flex-col items-center justify-center">
+              <span class="text-xs font-bold text-white tracking-widest drop-shadow-md">随机</span>
+            </button>
+            
+            <div class="absolute bottom-8 right-12 text-[9px] text-slate-500 font-mono tracking-widest">PROMPT-PIPELINE V2.0</div>
+          </div>
+
+          <p class="text-[10px] text-slate-500 font-mono tracking-widest">TIPS: 悬停节点激活立体物理气泡震颤，点击即可将颜色作为全屏视窗展开</p>
+        </section>
+
+        <!-- ==================== 界面 B: 色彩转场过渡页 ==================== -->
+        <section id="screenB" class="hidden w-full max-w-md flex flex-col items-center space-y-8 glass-studio-panel p-10 rounded-3xl border border-white/10 shadow-2xl">
+          <div class="text-center space-y-2">
+            <span class="text-[10px] tracking-[0.3em] font-bold text-indigo-400 uppercase">SELECTED SPACE</span>
+            <h2 id="selectedModeTitle" class="text-2xl font-black tracking-wide text-white">猩红剧本模式</h2>
+          </div>
+
+          <div class="w-full flex flex-col space-y-4">
+            <button onclick="navigateTo('C1')" class="w-full py-4 bg-white hover:bg-slate-100 text-[#03050C] font-bold rounded-xl transition-all flex items-center justify-center space-x-2 shadow-lg">
+              <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              <span class="tracking-wider text-xs">开始故事主进程 (开始)</span>
+            </button>
+            <button onclick="navigateTo('C2')" class="w-full py-4 bg-slate-900/60 text-slate-300 font-semibold rounded-xl border border-slate-800 hover:border-slate-700 transition-all flex items-center justify-center space-x-2 text-xs">
+              <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+              <span class="tracking-wider">大模型提示词参数组装库 (修改预设)</span>
+            </button>
+          </div>
+
+          <button onclick="resetToHome()" class="text-xs text-slate-500 hover:text-slate-350 underline tracking-wider transition">
+            返回调色板首页
+          </button>
+        </section>
+
+        <!-- ==================== 界面 C2: 多轨大模型 System Prompt 组装库 ==================== -->
+        <section id="screenC2" class="hidden w-full max-w-5xl glass-studio-panel p-8 rounded-[2rem] border border-slate-800 space-y-6">
+          
+          <div class="flex items-center justify-between border-b border-slate-850 pb-4">
+            <div class="flex items-center space-x-3">
+              <span class="w-3 h-3 rounded-full bg-indigo-500 animate-pulse"></span>
+              <h3 class="text-sm font-bold tracking-widest text-slate-100">PROMPT PRESET STUDIO / 多阶段系统提示词管理 (C2)</h3>
+            </div>
+            <span class="text-[10px] text-slate-500 font-mono">BACKEND API COMPATIBLE</span>
+          </div>
+
+          <!-- 双栏大布局：左侧 System Prompt 维度页签，右侧提示词编辑域 -->
+          <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            <!-- 左侧：高精密大模型阶段选择页签 (占 4/12) -->
+            <div class="lg:col-span-4 flex flex-col space-y-2.5">
+              <span class="text-[10px] tracking-widest text-slate-400 font-bold uppercase mb-1">🎯 调控大模型阶段 (LLM Stage)</span>
+              
+              <!-- 页签按钮组 -->
+              <button onclick="switchPromptCategory('image')" id="catBtn-image" class="w-full text-left p-4 rounded-xl border border-indigo-500/20 bg-indigo-950/20 text-slate-200 transition-all flex flex-col space-y-1">
+                <span class="text-xs font-bold flex items-center space-x-2">
+                  <span>🎨 1. 画面视觉风格提示词</span>
+                </span>
+                <span class="text-[10px] text-slate-400 font-light">控制 SD/MJ 画布风格与材质</span>
+              </button>
+
+              <button onclick="switchPromptCategory('polish')" id="catBtn-polish" class="w-full text-left p-4 rounded-xl border border-slate-900 bg-slate-950/20 text-slate-400 hover:text-slate-200 transition-all flex flex-col space-y-1">
+                <span class="text-xs font-bold flex items-center space-x-2">
+                  <span>✨ 2. LLM 剧本润色系统预置</span>
+                </span>
+                <span class="text-[10px] text-slate-550 font-light">控制剧本初稿文本扩写扩建规则</span>
+              </button>
+
+              <button onclick="switchPromptCategory('voiceover')" id="catBtn-voiceover" class="w-full text-left p-4 rounded-xl border border-slate-900 bg-slate-950/20 text-slate-400 hover:text-slate-200 transition-all flex flex-col space-y-1">
+                <span class="text-xs font-bold flex items-center space-x-2">
+                  <span>🎙️ 3. LLM 旁白解说编译预置</span>
+                </span>
+                <span class="text-[10px] text-slate-550 font-light">控制生成第三人称视频配音脚本逻辑</span>
+              </button>
+
+              <button onclick="switchPromptCategory('outline')" id="catBtn-outline" class="w-full text-left p-4 rounded-xl border border-slate-900 bg-slate-950/20 text-slate-400 hover:text-slate-200 transition-all flex flex-col space-y-1">
+                <span class="text-xs font-bold flex items-center space-x-2">
+                  <span>🔮 4. LLM 随机大纲抽取预置</span>
+                </span>
+                <span class="text-[10px] text-slate-550 font-light">控制摇一摇故事方向的创意大纲生成</span>
+              </button>
+            </div>
+
+            <!-- 右侧：对应阶段的大模型 System Prompt 定制域 (占 8/12) -->
+            <div class="lg:col-span-8 flex flex-col justify-between space-y-4">
+              
+              <!-- 1. 画面视觉风格预置 -->
+              <div id="promptArea-image" class="space-y-4">
+                <div class="flex justify-between items-center">
+                  <span class="text-xs font-bold text-slate-300">✍️ 画面全局画面风格提示词 (C2-Visual)</span>
+                  <button onclick="resetSelectedPrompt('image')" class="text-[10px] text-indigo-400 hover:underline">恢复出厂默认</button>
+                </div>
+                <textarea id="promptText-image" oninput="syncPromptToState('image')" rows="6" class="w-full bg-[#05070E] border border-slate-800 rounded-xl p-4 text-xs font-mono text-slate-200 focus:border-indigo-500 focus:outline-none leading-relaxed"></textarea>
+                <div class="flex flex-wrap gap-2 pt-1">
+                  <span class="text-[9px] text-slate-500 font-bold self-center mr-1">快捷追加:</span>
+                  <button onclick="appendPromptTag('cyberpunk style, vivid electric neon backlight')" class="px-2.5 py-1 bg-slate-900 border border-slate-800 hover:border-slate-700 text-[10px] rounded text-slate-300 hover:text-white">🌃 赛博朋克霓虹</button>
+                  <button onclick="appendPromptTag('traditional Chinese ink washing painting style, gray mist')" class="px-2.5 py-1 bg-slate-900 border border-slate-800 hover:border-slate-700 text-[10px] rounded text-slate-300 hover:text-white">✍️ 国风写意水墨</button>
+                  <button onclick="appendPromptTag('Ghibli animated style, gentle hand-drawn cartoon')" class="px-2.5 py-1 bg-slate-900 border border-slate-800 hover:border-slate-700 text-[10px] rounded text-slate-300 hover:text-white">🌲 吉卜力治愈动漫</button>
+                </div>
+              </div>
+
+              <!-- 2. LLM 剧本润色系统预置 -->
+              <div id="promptArea-polish" class="hidden space-y-4">
+                <div class="flex justify-between items-center">
+                  <span class="text-xs font-bold text-slate-300">✨ LLM 剧本润色 System Prompt (C2-Polish)</span>
+                  <button onclick="resetSelectedPrompt('polish')" class="text-[10px] text-indigo-400 hover:underline">恢复出厂默认</button>
+                </div>
+                <textarea id="promptText-polish" oninput="syncPromptToState('polish')" rows="8" class="w-full bg-[#05070E] border border-slate-800 rounded-xl p-4 text-xs font-mono text-slate-200 focus:border-indigo-500 focus:outline-none leading-relaxed"></textarea>
+                <p class="text-[10px] text-slate-500 leading-normal font-light">★ 本提示词是在 C1 界面勾选“开启剧本润色”时，送往后端的 System 变量。未开启润色时，该请求体将被隔离关闭。</p>
+              </div>
+
+              <!-- 3. LLM 旁白解说编译预置 -->
+              <div id="promptArea-voiceover" class="hidden space-y-4">
+                <div class="flex justify-between items-center">
+                  <span class="text-xs font-bold text-slate-300">🎙️ LLM 旁白编译 System Prompt (C2-Voiceover)</span>
+                  <button onclick="resetSelectedPrompt('voiceover')" class="text-[10px] text-indigo-400 hover:underline">恢复出厂默认</button>
+                </div>
+                <textarea id="promptText-voiceover" oninput="syncPromptToState('voiceover')" rows="8" class="w-full bg-[#05070E] border border-slate-800 rounded-xl p-4 text-xs font-mono text-slate-200 focus:border-indigo-500 focus:outline-none leading-relaxed"></textarea>
+                <p class="text-[10px] text-slate-500 leading-normal font-light">★ 在 D1 阶段系统自动启动。若 C1 界面未勾选润色，后端接收到该编译任务时将自动通过提示词安全拦截，不擅改任何原始字句。</p>
+              </div>
+
+              <!-- 4. LLM 随机大纲抽取预置 -->
+              <div id="promptArea-outline" class="hidden space-y-4">
+                <div class="flex justify-between items-center">
+                  <span class="text-xs font-bold text-slate-300">🔮 LLM 随机抽取故事大纲 System Prompt (C2-Outline)</span>
+                  <button onclick="resetSelectedPrompt('outline')" class="text-[10px] text-indigo-400 hover:underline">恢复出厂默认</button>
+                </div>
+                <textarea id="promptText-outline" oninput="syncPromptToState('outline')" rows="8" class="w-full bg-[#05070E] border border-slate-800 rounded-xl p-4 text-xs font-mono text-slate-200 focus:border-indigo-500 focus:outline-none leading-relaxed"></textarea>
+                <p class="text-[10px] text-slate-500 leading-normal font-light">★ 在用户使用“摇一摇”时调用。此 System Prompt 会限制大模型生成的文本长度，确保生成的骨架文本能被前端顺畅预览。</p>
+              </div>
+
+            </div>
+
+          </div>
+
+          <!-- 前后端 API 交互 Payload 实时快照预览区 -->
+          <div class="bg-slate-950 border border-slate-850 rounded-2xl p-5 space-y-3 shadow-inner">
+            <div class="flex justify-between items-center border-b border-slate-900 pb-2">
+              <span class="text-[10px] font-mono font-bold tracking-wider text-slate-400 uppercase flex items-center space-x-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>REAL-TIME API REQUEST BODY PREVIEW / 前后端请求报文实时快照</span>
+              </span>
+              <span class="text-[9px] text-slate-650 font-mono">POST /api/story/v1/compile</span>
+            </div>
+            
+            <pre class="text-[10.5px] font-mono text-emerald-400/90 leading-relaxed overflow-x-auto max-h-[140px] no-scrollbar whitespace-pre" id="jsonPayloadViewer">
+{
+  "api_compatible": true
+}
+            </pre>
+          </div>
+
+          <!-- 页底 -->
+          <div class="flex justify-end space-x-4 pt-4 border-t border-slate-850">
+            <button onclick="navigateTo('B')" class="px-5 py-2.5 text-xs text-slate-400 hover:text-white transition">
+              放弃配置
+            </button>
+            <button onclick="savePresets()" class="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 font-bold text-white rounded-xl transition text-xs tracking-wider uppercase shadow-lg shadow-indigo-500/10">
+              确认并同步提示词预设 ➔ (回流至C1)
+            </button>
+          </div>
+
+        </section>
+
+        <!-- ==================== 界面 C1: 核心输入总控通道 ==================== -->
+        <section id="screenC1" class="hidden w-full max-w-2xl glass-studio-panel p-8 rounded-3xl border border-slate-800 space-y-6">
+          <div class="flex items-center justify-between border-b border-slate-850 pb-4">
+            <div class="flex items-center space-x-3">
+              <span id="c1ModeIndicator" class="w-3 h-3 rounded-full bg-red-500"></span>
+              <h3 class="text-sm font-bold tracking-widest text-slate-200">输入您的核心剧本或原始大纲 (C1)</h3>
+            </div>
+            <span class="text-[10px] text-slate-500 font-mono">DIRECTOR_INPUT_PANEL</span>
+          </div>
+
+          <!-- 剧本手动输入模块 -->
+          <div id="c1ManualInputArea" class="space-y-4">
+            <div class="flex items-center justify-between">
+              <label class="text-[10px] tracking-widest text-slate-400">请写入您的原始叙事大纲 / 纪实文案</label>
+              <button onclick="loadDemoScript()" class="text-xs text-indigo-400 hover:text-indigo-300 underline font-medium">
+                快速导入电影精选 Demo 剧本
+              </button>
+            </div>
+            
+            <textarea id="rawScriptTextarea" oninput="syncRawScriptToState()" rows="6" class="w-full bg-[#05070E] border border-slate-850 rounded-2xl p-4 text-slate-200 placeholder-slate-650 focus:border-red-500 focus:ring-1 focus:ring-red-500 focus:outline-none text-xs leading-relaxed" placeholder="例如：描述一个神秘的场景，并加入人物动机..."></textarea>
+            
+            <!-- 剧本绝对锁定开关 (原稿直出，大红线安全拦截) -->
+            <div class="bg-slate-950/80 rounded-2xl p-5 border border-slate-850 flex items-center justify-between shadow-inner">
+              <div class="space-y-1.5 pr-6">
+                <div class="flex items-center space-x-2">
+                  <span class="text-xs font-bold text-slate-100">AI 剧本细节修饰与润色</span>
+                  <span id="polishStatusTag" class="px-2 py-0.5 bg-slate-900 border border-slate-800 text-[9px] text-slate-400 rounded">已关闭 (原稿锁死)</span>
+                </div>
+                <p id="polishDesc" class="text-[11px] text-slate-400 leading-relaxed font-light">
+                  当前处于“🔒 原始锁死直出机制”：系统将直接解析原著，AI 在生成解说词时绝对不增删、篡改您的任何文字。
+                </p>
+              </div>
+              
+              <!-- 开关 -->
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="polishToggle" onchange="togglePolishSwitch()" class="sr-only peer">
+                <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-400 after:border-slate-350 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600 peer-checked:after:bg-white"></div>
+              </label>
+            </div>
+          </div>
+
+          <!-- 路径二：摇一摇抽奖盲盒 -->
+          <div id="c1ShakeArea" class="hidden flex flex-col items-center py-6 space-y-6">
+            <p class="text-xs text-slate-400 text-center max-w-sm">
+              摇动水晶气泡球，系统会从奇幻电影、赛博废土等百套大片预设中为您随机分配故事题材大纲：
+            </p>
+            
+            <button onclick="triggerShake()" class="relative group w-36 h-36 rounded-full bg-slate-950 border border-indigo-500/30 flex flex-col items-center justify-center cursor-pointer transition hover:scale-105 active:scale-95 shadow-[0_0_35px_rgba(99,102,241,0.15)] hover:border-indigo-500">
+              <div id="shakeBallIcon" class="text-5xl transition group-hover:rotate-12 duration-300">🔮</div>
+              <span class="text-[10px] tracking-widest font-bold text-indigo-300 mt-3 uppercase">SHAKE WELL</span>
+            </button>
+            <span class="text-[9px] font-mono tracking-[0.25em] text-indigo-400 animate-pulse">SHAKE ENGINE INITIATED</span>
+          </div>
+
+          <!-- 下方进度发射控制器 -->
+          <div class="flex items-center justify-between border-t border-slate-850/60 pt-5">
+            <button onclick="navigateTo('B')" class="text-xs text-slate-500 hover:text-white transition">
+              ‹ 返回
+            </button>
+            
+            <button id="c1LaunchBtn" onclick="handleC1Launch()" class="px-8 py-3.5 bg-red-650 hover:bg-red-500 font-bold text-white rounded-xl shadow-lg transition-all flex items-center space-x-2 tracking-wider text-xs uppercase">
+              <span>生成视频资产编译集 (下一步)</span>
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 5l7 7-7 7M5 5l7 7-7 7"/></svg>
+            </button>
+          </div>
+        </section>
+
+        <!-- ==================== 界面 D2: 随机大纲审核面板 ==================== -->
+        <section id="screenD2" class="hidden w-full max-w-xl glass-studio-panel p-8 rounded-3xl border border-slate-800 space-y-6">
+          <div class="flex items-center justify-between border-b border-slate-850 pb-4">
+            <div class="flex items-center space-x-2">
+              <span class="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span>
+              <h3 class="text-sm font-bold tracking-widest text-slate-200">摇一摇故事大纲审核 (D2)</h3>
+            </div>
+            <span class="text-[10px] text-slate-500 font-mono">RANDOM_OUTLINE_REVIEW</span>
+          </div>
+
+          <div class="space-y-4">
+            <div class="bg-slate-950/80 p-5 rounded-2xl border border-slate-850 text-xs leading-relaxed text-slate-300 shadow-inner">
+              <span class="text-[9px] tracking-widest text-indigo-400 font-bold uppercase block mb-3">● AI PREVIEW OUTLINE</span>
+              <p id="shakeOutlineContent" class="italic font-light">
+                正在加载灵感方案...
+              </p>
+            </div>
+
+            <div class="space-y-2">
+              <label class="block text-[10px] tracking-widest text-slate-400 font-bold">对该灵感方案有何补充建议：</label>
+              <input type="text" id="d2FeedbackInput" class="w-full bg-[#05070E] border border-slate-850 rounded-xl p-3.5 text-xs text-slate-200 focus:border-blue-500 focus:outline-none" placeholder="例如：加一个猫咪助手 / 背景换成赛博朋克废土风格">
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between border-t border-slate-850/60 pt-5">
+            <button onclick="triggerShake()" class="px-5 py-2.5 bg-slate-950 border border-slate-850 text-xs font-bold text-indigo-300 hover:text-white rounded-lg transition flex items-center space-x-1">
+              <span>🔄 摇一颗新故事</span>
+            </button>
+            <button onclick="submitD2ToD1()" class="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white rounded-lg transition-all tracking-wider uppercase">
+              <span>确认当前方案，进入D1文案处理</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- ==================== 界面 D1: 核心资产大画廊展示区 ==================== -->
+        <section id="screenD1" class="hidden w-full max-w-6xl glass-studio-panel p-8 rounded-[2rem] border border-slate-800 space-y-8 transition-all">
+          
+          <!-- 编译区主头部 -->
+          <div class="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-850/80 pb-6 gap-4">
+            <div>
+              <div class="flex items-center space-x-2">
+                <span id="d1LockBadge" class="px-2 py-0.5 text-[9px] tracking-widest uppercase font-bold rounded bg-red-950 border border-red-800/80 text-red-200">🔒 ORIGINAL_TEXT_LOCKED</span>
+                <h3 class="text-xl font-bold tracking-wide text-slate-100">核心视觉定妆照与配音旁白处理区 (D1)</h3>
+              </div>
+              <p class="text-xs text-slate-400 mt-1.5 font-light">
+                系统严格按序编译数据流：首先，大模型在后台拆解编写解说旁白；随后，提炼实体词，调用图片引擎渲染高保真定妆照大卡。
+              </p>
+            </div>
+            <span class="text-xs text-slate-500 font-mono tracking-widest hidden md:inline">SYSTEM: PIPELINE_STAGE_1</span>
+          </div>
+
+          <!-- 双进度异步运行仪表盘 -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 bg-[#04060E]/60 p-6 rounded-2xl border border-slate-850 shadow-inner">
+            
+            <!-- 步骤 1 进度条 -->
+            <div class="space-y-3">
+              <div class="flex justify-between items-center text-xs">
+                <span class="font-bold flex items-center space-x-2.5">
+                  <span id="p1StatusDot" class="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>
+                  <span id="p1StatusText" class="text-slate-300">1. 第三人称解说词文本生成中...</span>
+                </span>
+                <span id="p1Val" class="font-mono text-slate-400">0%</span>
+              </div>
+              <div class="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden">
+                <div id="p1Bar" class="bg-gradient-to-r from-red-650 via-indigo-650 to-indigo-500 h-full w-0 transition-all duration-300"></div>
+              </div>
+            </div>
+
+            <!-- 步骤 2 进度条 -->
+            <div class="space-y-3">
+              <div class="flex justify-between items-center text-xs">
+                <span class="font-bold flex items-center space-x-2.5">
+                  <span id="p2StatusDot" class="w-2.5 h-2.5 rounded-full bg-slate-800"></span>
+                  <span id="p2StatusText" class="text-slate-500">2. 角色及美术场景定妆照大图绘制中...</span>
+                </span>
+                <span id="p2Val" class="font-mono text-slate-550">0%</span>
+              </div>
+              <div class="w-full bg-slate-950 rounded-full h-2.5 overflow-hidden">
+                <div id="p2Bar" class="bg-gradient-to-r from-indigo-600 via-purple-650 to-emerald-500 h-full w-0 transition-all duration-300"></div>
+              </div>
+            </div>
+
+          </div>
+          
+          <!-- 💬 进度文字小助手日志 -->
+          <div class="bg-slate-950/60 border border-slate-900 rounded-xl p-3.5 px-5 flex items-center space-x-3 shadow-inner">
+            <span class="text-[10px] font-mono font-bold text-indigo-400 uppercase tracking-widest animate-pulse">Assistant Log:</span>
+            <p id="assistantLogText" class="text-[11px] text-slate-400 font-light">等待发射指令...</p>
+          </div>
+
+          <!-- 编译生成大结果区 -->
+          <div id="d1ResultArea" class="hidden grid grid-cols-1 lg:grid-cols-12 gap-8 pt-4 animate-fade-in">
+            
+            <!-- 左侧：解说旁白字幕区 -->
+            <div class="lg:col-span-4 flex flex-col space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-850 pb-2">
+                <label class="text-xs font-bold tracking-widest text-slate-400">🎙️ 旁白字幕文本预看 (E帧分镜拆解基础)</label>
+                <span class="text-[9px] font-mono text-indigo-400 uppercase">Script Track</span>
+              </div>
+              <div class="flex-1 bg-slate-950/80 p-5 rounded-2xl border border-slate-850 text-xs leading-relaxed text-slate-300 overflow-y-auto max-h-[360px] font-mono whitespace-pre-wrap shadow-inner" id="d1VoiceoverOutput">
+                <!-- 动态文本 -->
+              </div>
+            </div>
+
+            <!-- 右侧：影视级定妆照大展示中心 -->
+            <div class="lg:col-span-8 flex flex-col space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-850 pb-2">
+                <label class="text-xs font-bold tracking-widest text-slate-400">🎭 角色、道具、美术场景大画卡集 (点击卡片精修 D1.1)</label>
+                <span class="text-[9px] font-mono text-slate-500 uppercase">Portfolio Cast</span>
+              </div>
+              
+              <!-- 横向大卡片画廊网格 (3张超高颜值大卡片) -->
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                
+                <!-- 卡片0: 核心角色 -->
+                <div onclick="openD1_1(0)" class="group relative bg-[#0D1227] border border-slate-800 hover:border-indigo-500/80 rounded-2xl shadow-2xl p-4 cursor-pointer transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_15px_30px_rgba(99,102,241,0.15)] flex flex-col space-y-3">
+                  <!-- 顶部发光微小装饰 -->
+                  <div class="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  
+                  <div class="relative w-full aspect-[4/3] bg-slate-950 rounded-xl border border-slate-850 overflow-hidden flex items-center justify-center" id="cardImg0">
+                    <div class="text-xs text-slate-600 animate-pulse">Awaiting Protagonist</div>
+                  </div>
+                  
+                  <div class="space-y-1">
+                    <div class="flex justify-between items-center">
+                      <span class="text-xs font-bold text-slate-100" id="cardName0">角色：主角</span>
+                      <span class="px-1.5 py-0.5 bg-indigo-900/40 text-[9px] font-bold text-indigo-300 rounded font-mono">CAST ID: 01</span>
+                    </div>
+                    <p class="text-[10px] text-slate-400 line-clamp-2 leading-relaxed" id="cardPrompt0">Generating...</p>
+                  </div>
+                  <div class="pt-2 border-t border-slate-850 flex items-center justify-between text-[10px] text-indigo-400 font-bold group-hover:text-indigo-300">
+                    <span>提示词精整</span>
+                    <span>点击调优 ›</span>
+                  </div>
+                </div>
+
+                <!-- 卡片1: 核心大场景 -->
+                <div onclick="openD1_1(1)" class="group relative bg-[#0D1227] border border-slate-800 hover:border-indigo-500/80 rounded-2xl shadow-2xl p-4 cursor-pointer transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_15px_30px_rgba(99,102,241,0.15)] flex flex-col space-y-3">
+                  <div class="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  
+                  <div class="relative w-full aspect-[4/3] bg-slate-950 rounded-xl border border-slate-850 overflow-hidden flex items-center justify-center" id="cardImg1">
+                    <div class="text-xs text-slate-600 animate-pulse">Awaiting Scene</div>
+                  </div>
+                  
+                  <div class="space-y-1">
+                    <div class="flex justify-between items-center">
+                      <span class="text-xs font-bold text-slate-100" id="cardName1">场景：核心场景</span>
+                      <span class="px-1.5 py-0.5 bg-indigo-900/40 text-[9px] font-bold text-indigo-300 rounded font-mono">CAST ID: 02</span>
+                    </div>
+                    <p class="text-[10px] text-slate-400 line-clamp-2 leading-relaxed" id="cardPrompt1">Generating...</p>
+                  </div>
+                  <div class="pt-2 border-t border-slate-850 flex items-center justify-between text-[10px] text-indigo-400 font-bold group-hover:text-indigo-300">
+                    <span>提示词精整</span>
+                    <span>点击调优 ›</span>
+                  </div>
+                </div>
+
+                <!-- 卡片2: 核心道具 -->
+                <div onclick="openD1_1(2)" class="group relative bg-[#0D1227] border border-slate-800 hover:border-indigo-500/80 rounded-2xl shadow-2xl p-4 cursor-pointer transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_15px_30px_rgba(99,102,241,0.15)] flex flex-col space-y-3">
+                  <div class="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-indigo-500 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  
+                  <div class="relative w-full aspect-[4/3] bg-slate-950 rounded-xl border border-slate-850 overflow-hidden flex items-center justify-center" id="cardImg2">
+                    <div class="text-xs text-slate-600 animate-pulse">Awaiting Prop</div>
+                  </div>
+                  
+                  <div class="space-y-1">
+                    <div class="flex justify-between items-center">
+                      <span class="text-xs font-bold text-slate-100" id="cardName2">道具：核心道具</span>
+                      <span class="px-1.5 py-0.5 bg-indigo-900/40 text-[9px] font-bold text-indigo-300 rounded font-mono">CAST ID: 03</span>
+                    </div>
+                    <p class="text-[10px] text-slate-400 line-clamp-2 leading-relaxed" id="cardPrompt2">Generating...</p>
+                  </div>
+                  <div class="pt-2 border-t border-slate-850 flex items-center justify-between text-[10px] text-indigo-400 font-bold group-hover:text-indigo-300">
+                    <span>提示词精整</span>
+                    <span>点击调优 ›</span>
+                  </div>
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+          <!-- 页脚控制面板 -->
+          <div class="flex items-center justify-between border-t border-slate-850 pt-6">
+            <button onclick="navigateTo('C1')" class="text-xs text-slate-400 hover:text-white transition">
+              ‹ 返回文本投喂处
+            </button>
+            <button id="d1NextBtn" disabled onclick="handleD1Next()" class="px-8 py-3.5 bg-slate-800 text-slate-500 font-bold rounded-xl shadow-lg cursor-not-allowed transition-all text-xs tracking-wider uppercase">
+              角色场景已确定，生成分镜底片大网格 (下一步) ➔
+            </button>
+          </div>
+        </section>
+
+        <!-- ==================== 界面 D1.1: 资产细节精修沉浸式弹窗 ==================== -->
+        <div id="overlayD1_1" class="hidden fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/85 backdrop-blur-md" onclick="closeD1_1(event)">
+          <div class="w-full max-w-4xl bg-[#090D20] border border-slate-800 rounded-3xl shadow-2xl overflow-hidden glass-studio-panel" onclick="event.stopPropagation()">
+            
+            <div class="flex items-center justify-between px-8 py-5 border-b border-slate-850">
+              <h4 id="d1_1_Title" class="font-bold text-slate-200 tracking-wider">定妆画资产细节深度精整 (D1.1)</h4>
+              <button onclick="closeD1_1_Force()" class="text-slate-400 hover:text-white text-lg">✕</button>
+            </div>
+
+            <!-- 卡片局部与修改意见左右大开合布局 -->
+            <div class="p-8 grid grid-cols-1 md:grid-cols-12 gap-8">
+              
+              <!-- 左侧：超高分辨率预览框 (支持新旧后悔药对比) -->
+              <div class="md:col-span-5 flex flex-col space-y-3">
+                <div class="flex justify-between items-center text-xs">
+                  <span class="text-slate-450">🔍 分辨率: HD vector</span>
+                  <!-- ⚖️ 新旧对比后悔药 Tab 页签 -->
+                  <div class="flex space-x-1.5 bg-slate-950 p-1 rounded-lg border border-slate-850">
+                    <button onclick="switchD1_1PreviewMode('new')" id="previewTab-new" class="px-2 py-1 bg-indigo-600 text-[10px] text-white rounded font-bold">✨ 最新生成图</button>
+                    <button onclick="switchD1_1PreviewMode('old')" id="previewTab-old" class="px-2 py-1 text-[10px] text-slate-400 hover:text-slate-200 rounded">⏮️ 历史原始图</button>
+                  </div>
+                </div>
+                <div class="bg-slate-950 rounded-2xl border border-slate-850 flex items-center justify-center p-4 min-h-[260px] relative" id="d1_1_PreviewArea">
+                  <!-- SVG / PNG Canvas Preview -->
+                </div>
+              </div>
+
+              <!-- 右侧：提示词精雕及参数控制 (占 7/12) -->
+              <div class="md:col-span-7 flex flex-col justify-between space-y-6">
+                <div class="space-y-4">
+                  <div>
+                    <label class="block text-[10px] tracking-widest text-slate-400 font-bold mb-2">当前资产大底片提示词 (Prompt)</label>
+                    <textarea id="d1_1_PromptInput" rows="5" class="w-full bg-[#05070E] border border-slate-850 rounded-2xl p-4 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none leading-relaxed font-mono"></textarea>
+                  </div>
+
+                  <div class="flex items-center space-x-2.5 text-xs text-slate-500">
+                    <span class="inline-block w-2.5 h-2.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                    <span class="font-light">系统重画时会自动锚定一致性 Seed 种子，绝对保持角色五官及风格细节。</span>
+                  </div>
+                </div>
+
+                <div class="pt-4 border-t border-slate-850 flex justify-end space-x-4">
+                  <button onclick="closeD1_1_Force()" class="px-5 py-2.5 text-xs text-slate-400 hover:text-white transition">
+                    取消
+                  </button>
+                  <button id="rebuildAssetBtn" onclick="rebuildAssetCard()" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 font-bold text-white rounded-xl transition text-xs tracking-wider uppercase">
+                    💡 确定更新并进行局部重画
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+            <div class="px-8 py-4 bg-slate-950/40 border-t border-slate-850 text-[10px] text-slate-500 flex justify-between">
+              <span>* 点击弹窗外部非核心区同样可实现无缝瞬间闪回</span>
+              <span>ASSET_METADATA: REFINE_MODE</span>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ==================== 界面 E: 影视级分镜底片大网格 (E) ==================== -->
+        <section id="screenE" class="hidden w-full max-w-5xl glass-studio-panel p-8 rounded-3xl border border-slate-800 space-y-6 animate-fade-in">
+          <div class="flex items-center justify-between border-b border-slate-850 pb-4">
+            <div>
+              <h3 class="text-lg font-bold tracking-wider text-slate-200 flex items-center space-x-2.5">
+                <span class="w-3.5 h-3.5 bg-yellow-500 rounded-sm">🎬</span>
+                <span>全局影视切片分镜底片 (E)</span>
+              </h3>
+              <p class="text-xs text-slate-400 mt-1 font-light">系统根据您锁定旁白的句数时长，将其科学切片为 4 帧电影单镜。点击单个分镜以唤起 E1 精雕面板。</p>
+            </div>
+            <span class="text-[10px] text-slate-500 font-mono">STORYBOARD_GRID</span>
+          </div>
+
+          <!-- 分镜单格高拟真底带 -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6" id="storyboardGrid">
+            
+            <!-- 动态生成 4 帧分镜底片 -->
+            <!-- 帧 1 -->
+            <div onclick="openE1(0)" class="group bg-[#0B0F20] border border-slate-800 hover:border-indigo-500/80 rounded-2xl overflow-hidden cursor-pointer p-3 space-y-3 transition-all hover:-translate-y-1.5 duration-300 flex flex-col justify-between">
+              <div>
+                <div class="relative w-full aspect-[4/3] bg-slate-950 rounded-xl border border-slate-850 flex items-center justify-center overflow-hidden" id="framePreviewImg0">
+                  <span class="absolute top-2 left-2 px-1.5 py-0.5 bg-black/80 text-[8px] font-bold rounded text-amber-500 font-mono">F-01</span>
+                  <div class="text-[10px] text-slate-700 animate-pulse">Rendering...</div>
+                </div>
+                <p class="text-[11px] leading-relaxed text-slate-350 mt-2 line-clamp-2" id="frameTextPreview0">老钟表匠坐在布满齿轮的机械坊。</p>
+              </div>
+              <div class="flex items-center justify-between pt-2 border-t border-slate-850/60 text-[9px] text-slate-500">
+                <span id="frameTime0">0.0s - 3.5s</span>
+                <span class="text-indigo-400 group-hover:underline">修改单镜 ›</span>
+              </div>
+            </div>
+
+            <!-- 帧 2 -->
+            <div onclick="openE1(1)" class="group bg-[#0B0F20] border border-slate-800 hover:border-indigo-500/80 rounded-2xl overflow-hidden cursor-pointer p-3 space-y-3 transition-all hover:-translate-y-1.5 duration-300 flex flex-col justify-between">
+              <div>
+                <div class="relative w-full aspect-[4/3] bg-slate-950 rounded-xl border border-slate-850 flex items-center justify-center overflow-hidden" id="framePreviewImg1">
+                  <span class="absolute top-2 left-2 px-1.5 py-0.5 bg-black/80 text-[8px] font-bold rounded text-amber-500 font-mono">F-02</span>
+                  <div class="text-[10px] text-slate-700 animate-pulse">Rendering...</div>
+                </div>
+                <p class="text-[11px] leading-relaxed text-slate-350 mt-2 line-clamp-2" id="frameTextPreview1">擦拭着手里的一枚神秘的发光怀表。</p>
+              </div>
+              <div class="flex items-center justify-between pt-2 border-t border-slate-850/60 text-[9px] text-slate-500">
+                <span id="frameTime1">3.5s - 7.0s</span>
+                <span class="text-indigo-400 group-hover:underline">修改单镜 ›</span>
+              </div>
+            </div>
+
+            <!-- 帧 3 -->
+            <div onclick="openE1(2)" class="group bg-[#0B0F20] border border-slate-800 hover:border-indigo-500/80 rounded-2xl overflow-hidden cursor-pointer p-3 space-y-3 transition-all hover:-translate-y-1.5 duration-300 flex flex-col justify-between">
+              <div>
+                <div class="relative w-full aspect-[4/3] bg-slate-950 rounded-xl border border-slate-850 flex items-center justify-center overflow-hidden" id="framePreviewImg2">
+                  <span class="absolute top-2 left-2 px-1.5 py-0.5 bg-black/80 text-[8px] font-bold rounded text-amber-500 font-mono">F-03</span>
+                  <div class="text-[10px] text-slate-700 animate-pulse">Rendering...</div>
+                </div>
+                <p class="text-[11px] leading-relaxed text-slate-350 mt-2 line-clamp-2" id="frameTextPreview2">表盘指针开始诡异地逆时针旋转。</p>
+              </div>
+              <div class="flex items-center justify-between pt-2 border-t border-slate-850/60 text-[9px] text-slate-500">
+                <span id="frameTime2">7.0s - 10.5s</span>
+                <span class="text-indigo-400 group-hover:underline">修改单镜 ›</span>
+              </div>
+            </div>
+
+            <!-- 帧 4 -->
+            <div onclick="openE1(3)" class="group bg-[#0B0F20] border border-slate-800 hover:border-indigo-500/80 rounded-2xl overflow-hidden cursor-pointer p-3 space-y-3 transition-all hover:-translate-y-1.5 duration-300 flex flex-col justify-between">
+              <div>
+                <div class="relative w-full aspect-[4/3] bg-slate-950 rounded-xl border border-slate-850 flex items-center justify-center overflow-hidden" id="framePreviewImg3">
+                  <span class="absolute top-2 left-2 px-1.5 py-0.5 bg-black/80 text-[8px] font-bold rounded text-amber-500 font-mono">F-04</span>
+                  <div class="text-[10px] text-slate-700 animate-pulse">Rendering...</div>
+                </div>
+                <p class="text-[11px] leading-relaxed text-slate-350 mt-2 line-clamp-2" id="frameTextPreview3">记忆深处的星空誓言再次浮现在眼前。</p>
+              </div>
+              <div class="flex items-center justify-between pt-2 border-t border-slate-850/60 text-[9px] text-slate-500">
+                <span id="frameTime3">10.5s - 14.0s</span>
+                <span class="text-indigo-400 group-hover:underline">修改单镜 ›</span>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- 页底 -->
+          <div class="flex items-center justify-between border-t border-slate-850 pt-5">
+            <button onclick="navigateTo('D1')" class="text-xs text-slate-400 hover:text-white transition">
+              ‹ 返回定妆画大画廊
+            </button>
+            <button id="synthesizeBtn" onclick="handleSynthesize()" class="px-8 py-3.5 bg-emerald-650 hover:bg-emerald-500 font-bold text-white rounded-xl shadow-lg transition-all text-xs tracking-wider uppercase flex items-center space-x-2">
+              <span>🎬 全盘合成多轨，送入放映室 (下一步) ➔</span>
+            </button>
+          </div>
+        </section>
+
+        <!-- ==================== 界面 E1: 单帧细节重画弹窗 ==================== -->
+        <div id="overlayE1" class="hidden fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/85 backdrop-blur-md" onclick="closeE1(event)">
+          <div class="w-full max-w-4xl bg-[#090D20] border border-slate-800 rounded-3xl shadow-2xl overflow-hidden glass-studio-panel" onclick="event.stopPropagation()">
+            
+            <div class="flex items-center justify-between px-8 py-5 border-b border-slate-850">
+              <h4 id="e1_Title" class="font-bold text-slate-200 tracking-wider">分镜单帧大底片重绘 (E1)</h4>
+              <button onclick="closeE1_Force()" class="text-slate-400 hover:text-white text-lg">✕</button>
+            </div>
+
+            <!-- 卡片局部与修改意见左右大开合布局 -->
+            <div class="p-8 grid grid-cols-1 md:grid-cols-12 gap-8">
+              
+              <!-- 左侧：超高分辨率预览框 -->
+              <div class="md:col-span-5 flex flex-col space-y-3">
+                <div class="flex justify-between items-center text-xs">
+                  <span class="text-slate-450">🔍 分镜帧分辨率: 1080P HD</span>
+                  <div class="flex space-x-1.5 bg-slate-950 p-1 rounded-lg border border-slate-850">
+                    <button onclick="switchE1PreviewMode('new')" id="previewTabE1-new" class="px-2 py-1 bg-indigo-600 text-[10px] text-white rounded font-bold">✨ 最新生成图</button>
+                    <button onclick="switchE1PreviewMode('old')" id="previewTabE1-old" class="px-2 py-1 text-[10px] text-slate-400 hover:text-slate-200 rounded">⏮️ 历史原始图</button>
+                  </div>
+                </div>
+                <div class="bg-slate-950 rounded-2xl border border-slate-850 flex items-center justify-center p-4 min-h-[260px] relative" id="e1_PreviewArea">
+                  <!-- SVG / PNG Canvas Preview -->
+                </div>
+              </div>
+
+              <!-- 右侧：提示词精雕及参数控制 (占 7/12) -->
+              <div class="md:col-span-7 flex flex-col justify-between space-y-6">
+                <div class="space-y-4">
+                  <div>
+                    <label class="block text-[10px] tracking-widest text-slate-400 font-bold mb-2">当前分镜单独提示词 (Prompt)</label>
+                    <textarea id="e1_PromptInput" rows="5" class="w-full bg-[#05070E] border border-slate-850 rounded-2xl p-4 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none leading-relaxed font-mono"></textarea>
+                  </div>
+
+                  <div class="flex items-center space-x-2.5 text-xs text-slate-500">
+                    <span class="inline-block w-2.5 h-2.5 rounded-full bg-yellow-500 animate-pulse"></span>
+                    <span class="font-light">重画时系统会自动锚定 C2 中的全局画面风格参数，保证成片画风百分百一致。</span>
+                  </div>
+                </div>
+
+                <div class="pt-4 border-t border-slate-850 flex justify-end space-x-4">
+                  <button onclick="closeE1_Force()" class="px-5 py-2.5 text-xs text-slate-400 hover:text-white transition">
+                    取消
+                  </button>
+                  <button id="rebuildFrameBtn" onclick="rebuildFrameCard()" class="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 font-bold text-white rounded-xl transition text-xs tracking-wider uppercase">
+                    💡 确定更新并重新画本帧
+                  </button>
+                </div>
+              </div>
+
+            </div>
+
+            <div class="px-8 py-4 bg-slate-950/40 border-t border-slate-850 text-[10px] text-slate-500 flex justify-between">
+              <span>* 点击弹窗外部非核心区同样可实现无缝瞬间闪回</span>
+              <span>STORYBOARD_METADATA: RENDER_MODE</span>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ==================== 界面 F: 最终多轨合并与电影放映室 ==================== -->
+        <section id="screenF" class="hidden w-full max-w-4xl glass-studio-panel p-10 rounded-[2.5rem] border border-slate-800 space-y-8 animate-fade-in">
+          
+          <div class="text-center space-y-3">
+            <span class="text-[10px] tracking-[0.4em] font-bold text-emerald-400 uppercase animate-pulse">● CINEMA THEATER</span>
+            <h2 class="text-3xl font-black tracking-wide text-white bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
+              电影放映室
+            </h2>
+            <p class="text-xs text-slate-400 font-light">大导演，视频已通过 FFmpeg 装配完毕！请欣赏属于您的 AI 电影：</p>
+          </div>
+
+          <!-- 🎬 视频播放器区域 -->
+          <div class="relative w-full aspect-video bg-black rounded-3xl border border-slate-800 shadow-2xl overflow-hidden flex items-center justify-center" id="theaterScreen">
+            <video id="epicVideoPlayer" controls class="w-full h-full object-contain hidden"></video>
+            <div id="videoPlaceholder" class="text-center space-y-4">
+              <span class="text-5xl animate-bounce inline-block">🍿</span>
+              <p class="text-xs text-slate-500 font-mono tracking-widest">LOADING EPIC MASTERPIECE...</p>
+            </div>
+          </div>
+
+          <!-- 📀 功能控制按钮（带另存为物理拷贝下载） -->
+          <div class="flex flex-col sm:flex-row justify-center items-center gap-4 border-t border-slate-850 pt-6">
+            <button onclick="downloadEpicVideo()" class="w-full sm:w-auto px-10 py-4 bg-emerald-650 hover:bg-emerald-500 font-bold text-white rounded-xl shadow-lg shadow-emerald-500/10 transition-all flex items-center justify-center space-x-2 text-xs tracking-widest uppercase">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+              <span>💾 另存为视频文件 (下载)</span>
+            </button>
+            <button onclick="resetToHome()" class="w-full sm:w-auto px-8 py-4 bg-slate-900 border border-slate-800 hover:border-slate-700 font-semibold text-slate-350 rounded-xl transition text-xs tracking-wider uppercase">
+              退出并重置归档 ➔
+            </button>
+          </div>
+
+        </section>
+
+      </div>
+    </main>
+
+  </div>
+
+  <!-- JavaScript 核心状态逻辑 -->
+  <script>
+    // ── 🎨 全局状态定义 ──
+    const state = {
+      appState: "SCREEN_A",
+      selectedColor: "",
+      modePath: "RED", // RED, YELLOW, BLUE
+      polishEnabled: false,
+
+      // 后台真实提示词预设组装库入库
+      presets: {
+        image: "High-quality 2D vector cartoon, bold black outlines, vibrant flat colors with soft cel-shading. Style inspired by Cyanide and Happiness but with professional lighting and detailed illustrated backgrounds. Character proportions: stick figure limbs, round bean heads.",
+        polish: "你是一位专业的资深编剧与剧本医生。\n任务：请阅读用户提供的原始素材（梗概、片段或小说节选均可），在【完全保留用户原始创意、情节走向和核心设定】的前提下，进行专业润色，并补充与盲盒梗概同规格的结构化字段。\n\n润色要求：\n1. 语言风格：使文字更具画面感（Visual Thinking），多用具象动词，少用空泛形容词；**禁止**强行套用「阶层跃迁」「利益算计」等固定套路，除非用户原文已包含类似内核。\n2. 节奏与体量：优化起承转合与悬念，整体梗概总长度须符合后续约 1700 字旁白体量的信息密度，且 synopsis 与 synopsis_acts 拼接总字符数不得超过 1500（汉字+标点）。\n3. 分幕结构：必须输出 synopsis_acts 数组，长度恰好为 6；每幕为连续叙事，幕内不要写「第X幕」小标题，按时间顺序串成一条故事线。\n4. **行业潜规则 industry_rules**：与盲盒大纲一致，输出 1～4 条数组，概括本作可被影像化的矛盾机制或环境张力（非教条）。\n\n输出：**仅** JSON（键名固定）：\n{\n  \"synopsis_acts\": [共6个字符串，依次为第1幕…第6幕],\n  \"synopsis\": \"将 synopsis_acts 用两个换行符拼接的全文，与各幕一致\",\n  \"short_title\": \"12字以内的短片标题，用于飞书卡片抬头\",\n  \"era\": \"时代背景\",\n  \"identity\": \"主角身份或称谓\",\n  \"industry_rules\": [\"……\"]\n}",
+        voiceover: "你是一个极其冷峻、犀利的短视频旁白文案大师。\n任务：按用户指示写出**一段**沉浸式旁白（不是全文，只是连续叙事中的一段）。\n\n【写作铁律】\n1. **一镜到底**：禁止使用段落小标题（如 Level、第一阶段）。用时间流逝、场景升级、数字与利益推进。\n2. **第二人称**：全程使用「你」，极简冷峻，少用形容词。\n3. **纯净文本**：禁止 <subshot>、禁止 [CUT]、禁止任何分镜标签。\n4. **本段体量**：本段目标约 {seg_target} 字（允许 ±10%）。\n\n输出要求：**只输出旁白正文**，不要标题、不要 JSON、不要代码围栏、不要解释。",
+        outline: "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满【利益算计】、【阶层跃迁】与【人性异化】的第二人称人生副本梗概。\n\n要求：\n1. **隐性阶层结构**：故事在底层逻辑上必须包含清晰的跃迁轨迹（入局 -> 进阶 -> 掌权 -> 巅峰与反噬），但绝不使用任何等级或Level标签。\n2. **核心科普（潜规则拆解）**：将该行业的核心运作机制、灰产逻辑或权力分配规则，作为主角晋升的关键武器。不要枯燥说教，要通过主角的“具体决定”和“利益交换”来展现。\n3. **数字与代价**：故事推进必须伴随具体的数字（金钱、份额、时间）以及主角为了权力所抛弃的底线。\n4. **结局闭环**：巅峰时刻必须伴随绝对的冷酷与孤独，主角最终要彻底沦为庞大系统的“宿命囚徒”或面临命运的黑色幽默式反噬。\n5. **分幕结构（硬性）**：必须输出 synopsis_acts 数组，长度恰好为 6，每个元素对应一幕的连续叙事；幕内不要用「第X幕」等小标题；时间顺序从第 1 幕到最后一幕衔接成一条故事线。\n6. **总字数**：`synopsis` 与 `synopsis_acts` 拼接后的总字符数（汉字+标点）不得超过 1500，逻辑必须极其严密。\n\n请输出 JSON 格式（键名固定）：\n{\n  \"synopsis_acts\": [共6个字符串，依次为第1幕…第6幕梗概正文],\n  \"synopsis\": \"将 synopsis_acts 用两个换行符拼接成的全文，必须与各幕内容完全一致\",\n  \"era\": \"时代背景\",\n  \"identity\": \"主角的终极身份\",\n  \"industry_rules\": [\"（揭露的1-2个行业深层潜规则）\"]\n}"
+      },
+
+      // 后台返回的真实编译结果
+      compiledVoiceover: "",
+      extractedEntities: [],
+      assets: [],      // 定妆照卡片
+      storyboards: [], // 分镜帧底片
+      relativeVideoPath: "", // 合成视频在 Runs 下的相对路径，如 "Run_xxx/output/narrative_v6_final_epic.mp4"
+      
+      // 后画后悔药对比备份
+      assetHistory: {}, // {card_id: {new_url, old_url}}
+      frameHistory: {}, // {frame_idx: {new_url, old_url}}
+    };
+
+    // ── 🔌 连接保活状态灯 ──
+    function checkApiConnection() {
+      fetch("http://127.0.0.1:8000/api/health")
+        .then(res => res.json())
+        .then(data => {
+          if (data.status === "success") {
+            document.getElementById("connectionBadge").className = "flex items-center space-x-2 text-[10px] font-mono tracking-widest px-3 py-1.5 rounded bg-slate-900 border border-slate-800 text-emerald-400";
+            document.getElementById("badgeLight").className = "w-2 h-2 rounded-full bg-emerald-500 animate-pulse";
+            document.getElementById("badgeText").innerText = "STATUS: LIVE (API CONNECTED)";
+          }
+        })
+        .catch(err => {
+          document.getElementById("connectionBadge").className = "flex items-center space-x-2 text-[10px] font-mono tracking-widest px-3 py-1.5 rounded bg-slate-900 border border-slate-800 text-red-500";
+          document.getElementById("badgeLight").className = "w-2 h-2 rounded-full bg-red-500 animate-pulse";
+          document.getElementById("badgeText").innerText = "STATUS: OFFLINE (API DISCONNECTED)";
+        });
+    }
+    
+    // 初始化定时检测
+    setInterval(checkApiConnection, 5000);
+    checkApiConnection();
+
+    // ── 📝 自动草稿箱机制 ──
+    window.addEventListener("load", () => {
+      // 载入草稿
+      const savedScript = localStorage.getItem("palette_draft_raw_script");
+      if (savedScript) {
+        document.getElementById("rawScriptTextarea").value = savedScript;
+        state.rawScript = savedScript;
+      }
+      
+      // 载入提示词预设
+      const savedPresets = localStorage.getItem("palette_draft_presets");
+      if (savedPresets) {
+        try {
+          const parsed = JSON.parse(savedPresets);
+          // 自愈迁移：如果检测到旧的占位提示词，直接升级为真实的后台提示词
+          if (parsed.image === "cinematic realism, commercial grading, 35mm photograph" || 
+              !parsed.image || 
+              (parsed.polish && parsed.polish.includes("按时间顺序切分为恰好 4 段"))) {
+            console.log("[自愈迁移] 检测到旧版占位提示词，自动升级为后台真实提示词。");
+            localStorage.setItem("palette_draft_presets", JSON.stringify(state.presets));
+          } else {
+            state.presets = parsed;
+          }
+        } catch(e){}
+      }
+      
+      // 初始化提示词文本区内容
+      document.getElementById("promptText-image").value = state.presets.image;
+      document.getElementById("promptText-polish").value = state.presets.polish;
+      document.getElementById("promptText-voiceover").value = state.presets.voiceover;
+      document.getElementById("promptText-outline").value = state.presets.outline;
+      
+      updateJsonPayloadViewer();
+    });
+
+    function syncRawScriptToState() {
+      const text = document.getElementById("rawScriptTextarea").value;
+      state.rawScript = text;
+      localStorage.setItem("palette_draft_raw_script", text);
+      updateJsonPayloadViewer();
+    }
+
+    function syncPromptToState(cat) {
+      const text = document.getElementById(`promptText-${cat}`).value;
+      state.presets[cat] = text;
+      localStorage.setItem("palette_draft_presets", JSON.stringify(state.presets));
+      updateJsonPayloadViewer();
+    }
+
+    // ── 🛠️ 弹窗与吐司通知 ──
+    function showToast(text, duration = 3000) {
+      const toast = document.getElementById("toastNotification");
+      document.getElementById("toastText").innerText = text;
+      toast.classList.remove("hidden");
+      setTimeout(() => toast.classList.add("hidden"), duration);
+    }
+
+    function showCustomModal(title, desc, primaryText = "我知道了", showCancel = false, primaryCallback = null) {
+      document.getElementById("modalTitle").innerText = title;
+      document.getElementById("modalDesc").innerText = desc;
+      
+      const pBtn = document.getElementById("modalPrimaryBtn");
+      pBtn.innerText = primaryText;
+      pBtn.onclick = () => {
+        closeCustomModal();
+        if (primaryCallback) primaryCallback();
+      };
+
+      const sBtn = document.getElementById("modalSecBtn");
+      if (showCancel) {
+        sBtn.classList.remove("hidden");
+      } else {
+        sBtn.classList.add("hidden");
+      }
+
+      document.getElementById("customModal").classList.remove("hidden");
+    }
+
+    function closeCustomModal() {
+      document.getElementById("customModal").classList.add("hidden");
+    }
+
+    // ── 🔄 页面导航状态机 ──
+    function navigateTo(targetState) {
+      const screens = ["screenA", "screenB", "screenC1", "screenC2", "screenD1", "screenD2", "screenE", "screenF"];
+      screens.forEach(s => document.getElementById(s).classList.add("hidden"));
+      
+      document.getElementById(`screen${targetState}`).classList.remove("hidden");
+      state.appState = `SCREEN_${targetState}`;
+      document.getElementById("activeStateBadge").innerText = `STATUS: SCREEN_${targetState}`;
+      
+      // 色彩模式的UI自适应
+      if (targetState === "C1") {
+        const indicator = document.getElementById("c1ModeIndicator");
+        const launchBtn = document.getElementById("c1LaunchBtn");
+        
+        if (state.modePath === "RED") {
+          indicator.className = "w-3 h-3 rounded-full bg-red-500";
+          launchBtn.className = "px-8 py-3.5 bg-red-650 hover:bg-red-500 font-bold text-white rounded-xl shadow-lg transition-all flex items-center space-x-2 tracking-wider text-xs uppercase";
+          document.getElementById("c1ManualInputArea").classList.remove("hidden");
+          document.getElementById("c1ShakeArea").classList.add("hidden");
+        } else if (state.modePath === "YELLOW") {
+          indicator.className = "w-3 h-3 rounded-full bg-yellow-500";
+          launchBtn.className = "px-8 py-3.5 bg-yellow-600 hover:bg-yellow-500 font-bold text-white rounded-xl shadow-lg transition-all flex items-center space-x-2 tracking-wider text-xs uppercase";
+          document.getElementById("c1ManualInputArea").classList.remove("hidden");
+          document.getElementById("c1ShakeArea").classList.add("hidden");
+        } else if (state.modePath === "BLUE") {
+          indicator.className = "w-3 h-3 rounded-full bg-blue-500";
+          launchBtn.className = "px-8 py-3.5 bg-blue-600 hover:bg-blue-500 font-bold text-white rounded-xl shadow-lg transition-all flex items-center space-x-2 tracking-wider text-xs uppercase";
+          document.getElementById("c1ManualInputArea").classList.add("hidden");
+          document.getElementById("c1ShakeArea").classList.remove("hidden");
+        }
+      }
+    }
+
+    function handleColorClick(event, color, colorHex, title) {
+      state.selectedColor = colorHex;
+      state.modePath = color.toUpperCase();
+      document.getElementById("selectedModeTitle").innerText = title;
+      
+      // 触发吞没特效
+      const splash = document.getElementById("splashCircle");
+      splash.style.left = `${event.clientX}px`;
+      splash.style.top = `${event.clientY}px`;
+      splash.style.backgroundColor = colorHex;
+      splash.classList.add("active");
+      
+      setTimeout(() => {
+        navigateTo("B");
+        splash.classList.remove("active");
+      }, 1000);
+    }
+
+    function resetToHome() {
+      navigateTo("A");
+    }
+
+    // ── 📝 载入精选故事剧本 Demo ──
+    function loadDemoScript() {
+      let script = "";
+      if (state.modePath === "RED") {
+        script = "在 2098 年的霓虹雨夜，老钟表匠擦拭着手里的一枚神秘发光怀表。表盘的指针发生了诡异的逆向旋转，记忆深处的星空誓言再次浮现在眼前。他要在机械坊彻底被大财阀吞噬前，完成最后的时光锁定装置。";
+      } else {
+        script = "我们每天看到的太阳光，实际上需要穿过极其庞大、密集的太阳内部粒子堆。光子在太阳内部通过『随机漫步』不断折射碰撞，最终在经历约十万年的艰难求索后，才在短短 8 分钟内跨越真空，抵达我们的双眼。";
+      }
+      document.getElementById("rawScriptTextarea").value = script;
+      state.rawScript = script;
+      syncRawScriptToState();
+      showToast("🎬 电影精选剧本 Demo 已成功载入！");
+    }
+
+    // ── 🔒 剧本锁定开关切换 ──
+    function togglePolishSwitch() {
+      const toggle = document.getElementById("polishToggle");
+      state.polishEnabled = toggle.checked;
+      
+      const tag = document.getElementById("polishStatusTag");
+      const desc = document.getElementById("polishDesc");
+      
+      if (toggle.checked) {
+        tag.innerText = "✨ 润色已开启 (智能修饰)";
+        tag.className = "px-2 py-0.5 bg-indigo-900 border border-indigo-800 text-[9px] text-indigo-300 rounded";
+        desc.innerText = "智能修饰模式：允许大模型对您的原文大纲进行扩写润色，丰富文学色彩，产生更高级的电影分镜。";
+      } else {
+        tag.innerText = "已关闭 (原稿锁死)";
+        tag.className = "px-2 py-0.5 bg-slate-900 border border-slate-800 text-[9px] text-slate-400 rounded";
+        desc.innerText = "锁死直出模式：系统将直接物理切片分析您的文字，大模型生成旁白时绝不篡改、增删任何字词，原汁原味透传！";
+      }
+      
+      updateJsonPayloadViewer();
+    }
+
+    // ── 🔌 C2 大模型 Prompt 调试组装逻辑 ──
+    function switchPromptCategory(cat) {
+      const cats = ["image", "polish", "voiceover", "outline"];
+      cats.forEach(c => {
+        document.getElementById(`promptArea-${c}`).classList.add("hidden");
+        document.getElementById(`catBtn-${c}`).className = "w-full text-left p-4 rounded-xl border border-slate-900 bg-slate-950/20 text-slate-400 hover:text-slate-200 transition-all flex flex-col space-y-1";
+      });
+      
+      document.getElementById(`promptArea-${cat}`).classList.remove("hidden");
+      document.getElementById(`catBtn-${cat}`).className = "w-full text-left p-4 rounded-xl border border-indigo-500/20 bg-indigo-950/20 text-slate-200 transition-all flex flex-col space-y-1";
+    }
+
+    function appendPromptTag(tag) {
+      const area = document.getElementById("promptText-image");
+      if (area.value.trim().endsWith(",")) {
+        area.value = area.value.trim() + " " + tag;
+      } else if (area.value.trim() === "") {
+        area.value = tag;
+      } else {
+        area.value = area.value.trim() + ", " + tag;
+      }
+      syncPromptToState("image");
+    }
+
+    function resetSelectedPrompt(cat) {
+      let defaults = {
+        image: "High-quality 2D vector cartoon, bold black outlines, vibrant flat colors with soft cel-shading. Style inspired by Cyanide and Happiness but with professional lighting and detailed illustrated backgrounds. Character proportions: stick figure limbs, round bean heads.",
+        polish: "你是一位专业的资深编剧与剧本医生。\n任务：请阅读用户提供的原始素材（梗概、片段或小说节选均可），在【完全保留用户原始创意、情节走向和核心设定】的前提下，进行专业润色，并补充与盲盒梗概同规格 of 结构化字段。\n\n润色要求：\n1. 语言风格：使文字更具画面感（Visual Thinking），多用具象动词，少用空泛形容词；**禁止**强行套用「阶层跃迁」「利益算计」等固定套路，除非用户原文已包含类似内核。\n2. 节奏与体量：优化起承转合与悬念，整体梗概总长度须符合后续约 1700 字旁白体量的信息密度，且 synopsis 与 synopsis_acts 拼接总字符数不得超过 1500（汉字+标点）。\n3. 分幕结构：必须输出 synopsis_acts 数组，长度恰好为 6；每幕为连续叙事，幕内不要写「第X幕」小标题，按时间顺序串成一条故事线。\n4. **行业潜规则 industry_rules**：与盲盒大纲一致，输出 1～4 条数组，概括本作可被影像化的矛盾机制或环境张力（非教条）。\n\n输出：**仅** JSON（键名固定）：\n{\n  \"synopsis_acts\": [共6个字符串，依次为第1幕…第6幕],\n  \"synopsis\": \"将 synopsis_acts 用两个换行符拼接的全文，与各幕一致\",\n  \"short_title\": \"12字以内的短片标题，用于飞书卡片抬头\",\n  \"era\": \"时代背景\",\n  \"identity\": \"主角身份或称谓\",\n  \"industry_rules\": [\"……\"]\n}",
+        voiceover: "你是一个极其冷峻、犀利的短视频旁白文案大师。\n任务：按用户指示写出**一段**沉浸式旁白（不是全文，只是连续叙事中的一段）。\n\n【写作铁律】\n1. **一镜到底**：禁止使用段落小标题（如 Level、第一阶段）。用时间流逝、场景升级、数字与利益推进。\n2. **第二人称**：全程使用「你」，极简冷峻，少用形容词。\n3. **纯净文本**：禁止 <subshot>、禁止 [CUT]、禁止任何分镜标签。\n4. **本段体量**：本段目标约 {seg_target} 字（允许 ±10%）。\n\n输出要求：**只输出旁白正文**，不要标题、不要 JSON、不要代码围栏、不要解释。",
+        outline: "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满【利益算计】、【阶层跃迁】与【人性异化】的第二人称人生副本梗概。\n\n要求：\n1. **隐性阶层结构**：故事在底层逻辑上必须包含清晰的跃迁轨迹（入局 -> 进阶 -> 掌权 -> 巅峰与反噬），但绝不使用任何等级或Level标签。\n2. **核心科普（潜规则拆解）**：将该行业的核心运作机制、灰产逻辑或权力分配规则，作为主角晋升的关键武器。不要枯燥说教，要通过主角的“具体决定”和“利益交换”来展现。\n3. **数字与代价**：故事推进必须伴随具体的数字（金钱、份额、时间）以及主角为了权力所抛弃的底线。\n4. **结局闭环**：巅峰时刻必须伴随绝对的冷酷与孤独，主角最终要彻底沦为庞大系统的“宿命囚徒”或面临命运的黑色幽默式反噬。\n5. **分幕结构（硬性）**：必须输出 synopsis_acts 数组，长度恰好为 6，每个元素对应一幕的连续叙事；幕内不要用「第X幕」等小标题；时间顺序从第 1 幕到最后一幕衔接成一条故事线。\n6. **总字数**：`synopsis` 与 `synopsis_acts` 拼接后的总字符数（汉字+标点）不得超过 1500，逻辑必须极其严密。\n\n请输出 JSON 格式（键名固定）：\n{\n  \"synopsis_acts\": [共6个字符串，依次为第1幕…第6幕梗概正文],\n  \"synopsis\": \"将 synopsis_acts 用两个换行符拼接成的全文，必须与各幕内容完全一致\",\n  \"era\": \"时代背景\",\n  \"identity\": \"主角的终极身份\",\n  \"industry_rules\": [\"（揭露的1-2个行业深层潜规则）\"]\n}"
+      };
+      
+      document.getElementById(`promptText-${cat}`).value = defaults[cat];
+      state.presets[cat] = defaults[cat];
+      syncPromptToState(cat);
+      showToast("🔄 参数已重置为出厂默认设置。");
+    }
+
+    function savePresets() {
+      showToast("💾 大模型系统提示词参数已全部同步！");
+      setTimeout(() => navigateTo("C1"), 800);
+    }
+
+    function updateJsonPayloadViewer() {
+      const payload = {
+        app_id: "palette-cinema-id",
+        mode_path: state.modePath,
+        original_text: state.rawScript || "等待输入...",
+        pipeline_config: {
+          polish_flow: {
+            enabled: state.polishEnabled,
+            system_prompt: state.polishEnabled ? state.presets.polish : "",
+            immutable_lock: !state.polishEnabled
+          },
+          voiceover_flow: {
+            system_prompt: state.presets.voiceover
+          },
+          render_flow: {
+            style_presets: state.presets.image,
+            seed: state.seed
+          }
+        }
+      };
+      document.getElementById("jsonPayloadViewer").innerText = JSON.stringify(payload, null, 2);
+    }
+
+    // ── 🎲 摇一摇盲盒 ──
+    async function triggerShake() {
+      showToast("🔮 选题盲盒抽取中...");
+      
+      // 摇晃球动画
+      const ball = document.getElementById("shakeBallIcon");
+      ball.classList.add("animate-bounce");
+      
+      try {
+        const response = await fetch("http://127.0.0.1:8000/api/story/v1/compile", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            app_id: "palette-cinema-id",
+            mode_path: "BLUE",
+            original_text: "请为我随机生成一个赛博朋克废土风格的电影梗概故事大纲。",
+            pipeline_config: {
+              polish_flow: { enabled: true, system_prompt: state.presets.outline },
+              voiceover_flow: { system_prompt: state.presets.voiceover },
+              render_flow: { style_presets: state.presets.image, seed: 12345 }
+            }
+          })
+        });
+        const res = await response.json();
+        if (res.status === "success") {
+          state.rawScript = res.data.compiled_voiceover;
+          document.getElementById("shakeOutlineContent").innerText = res.data.compiled_voiceover;
+          navigateTo("D2");
+        } else {
+          showCustomModal("⚠️ 后端排队中", "选题抽取失败，请重试！");
+        }
+      } catch(err) {
+        handleApiError(err, triggerShake);
+      } finally {
+        ball.classList.remove("animate-bounce");
+      }
+    }
+
+    function submitD2ToD1() {
+      const feedback = document.getElementById("d2FeedbackInput").value;
+      if (feedback.trim()) {
+        showToast("💡 大纲修订建议已录入...");
+      }
+      setTimeout(() => {
+        handleC1Launch(state.rawScript);
+      }, 800);
+    }
+
+    // ── ⚡ 核心 Pipeline 处理 ──
+    async function handleC1Launch(directText = null) {
+      const text = directText || state.rawScript;
+      if (!text.trim()) {
+        showCustomModal("⚠️ 提示", "大导演，剧本内容不能为空哦，请输入您的创意大纲！");
+        return;
+      }
+
+      navigateTo("D1");
+      
+      // 开启双进度条模拟 + 真实交互
+      const p1Bar = document.getElementById("p1Bar");
+      const p1Val = document.getElementById("p1Val");
+      const p2Bar = document.getElementById("p2Bar");
+      const p2Val = document.getElementById("p2Val");
+      const logText = document.getElementById("assistantLogText");
+      
+      p1Bar.style.width = "0%";
+      p1Val.innerText = "0%";
+      p2Bar.style.width = "0%";
+      p2Val.innerText = "0%";
+
+      // 安全直出锁标志
+      document.getElementById("d1LockBadge").innerText = state.polishEnabled ? "✨ SMART_POLISH_FLOW" : "🔒 ORIGINAL_TEXT_LOCKED";
+      document.getElementById("d1LockBadge").className = state.polishEnabled ? "px-2 py-0.5 text-[9px] tracking-widest uppercase font-bold rounded bg-indigo-950 border border-indigo-800 text-indigo-200" : "px-2 py-0.5 text-[9px] tracking-widest uppercase font-bold rounded bg-red-950 border border-red-800/80 text-red-200";
+
+      try {
+        // [第1步] 发送文本编译请求
+        logText.innerText = "[第1步] 正在呼唤大模型提炼大纲并编译解说旁白文本 (预计 5 秒)...";
+        p1Bar.style.width = "40%";
+        p1Val.innerText = "40%";
+
+        const compRes = await fetch("http://127.0.0.1:8000/api/story/v1/compile", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            app_id: "palette-cinema-id",
+            mode_path: state.modePath,
+            original_text: text,
+            pipeline_config: {
+              polish_flow: {
+                enabled: state.polishEnabled,
+                system_prompt: state.polishEnabled ? state.presets.polish : "",
+                immutable_lock: !state.polishEnabled
+              },
+              voiceover_flow: { system_prompt: state.presets.voiceover },
+              render_flow: { style_presets: state.presets.image, seed: state.seed }
+            }
+          })
+        });
+        
+        const cData = await compRes.json();
+        if (cData.status !== "success") {
+          throw new Error("编译旁白接口返回异常");
+        }
+
+        state.compiledVoiceover = cData.data.compiled_voiceover;
+        state.extractedEntities = cData.data.extracted_entities;
+
+        p1Bar.style.width = "100%";
+        p1Val.innerText = "100%";
+        document.getElementById("p1StatusDot").className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
+        document.getElementById("p1StatusText").className = "text-emerald-400";
+        document.getElementById("p1StatusText").innerText = "1. 第三人称解说词文本已就绪！";
+        
+        document.getElementById("d1VoiceoverOutput").innerText = state.compiledVoiceover;
+
+        // [第2步] 生成定妆卡片
+        logText.innerText = "[第2步] 解说词已全部编译就绪！正在物理派生生图引擎绘制 3 大核心资产 (预计 20 秒)...";
+        document.getElementById("p2StatusDot").className = "w-2.5 h-2.5 rounded-full bg-indigo-500 animate-ping";
+        document.getElementById("p2StatusText").className = "text-slate-350";
+        p2Bar.style.width = "20%";
+        p2Val.innerText = "20%";
+
+        // 定时改变生图日志
+        let logSec = 0;
+        const logTimer = setInterval(() => {
+          logSec += 3;
+          if (logSec === 3) logText.innerText = `[第2步] 正在由画画引擎全力绘制【${state.extractedEntities[0] || '角色'}】定妆三视图...`;
+          else if (logSec === 9) logText.innerText = `[第2步] 正在绘制【${state.extractedEntities[1] || '场景'}】电影大场景立绘...`;
+          else if (logSec === 15) logText.innerText = `[第2步] 正在绘制【${state.extractedEntities[2] || '道具'}】线索道具图...`;
+          
+          let curPercent = Math.min(85, 20 + logSec * 3);
+          p2Bar.style.width = `${curPercent}%`;
+          p2Val.innerText = `${curPercent}%`;
+        }, 1500);
+
+        const assetRes = await fetch("http://127.0.0.1:8000/api/assets/v1/generate", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            entities: state.extractedEntities,
+            global_style_prompt: state.presets.image,
+            seed: state.seed
+          })
+        });
+        
+        clearInterval(logTimer);
+        const aData = await assetRes.json();
+        if (aData.status !== "success") {
+          throw new Error("资产定妆照生图接口返回异常");
+        }
+
+        state.assets = aData.assets;
+
+        // 渲染定妆照卡片
+        state.assets.forEach((ast, idx) => {
+          document.getElementById(`cardName${idx}`).innerText = ast.name;
+          document.getElementById(`cardPrompt${idx}`).innerText = ast.prompt;
+          document.getElementById(`cardImg${idx}`).innerHTML = `<img src="${ast.image_url}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />`;
+        });
+
+        p2Bar.style.width = "100%";
+        p2Val.innerText = "100%";
+        document.getElementById("p2StatusDot").className = "w-2.5 h-2.5 rounded-full bg-emerald-500";
+        document.getElementById("p2StatusText").className = "text-emerald-400";
+        document.getElementById("p2StatusText").innerText = "2. 角色及美术场景定妆大画卡集已绘制成功！";
+        
+        logText.innerText = "🎉 恭喜！大纲编译及资产三视图绘制圆满通过，大卡片画廊已解锁！";
+        document.getElementById("d1ResultArea").classList.remove("hidden");
+        
+        // 允许下一步
+        const nBtn = document.getElementById("d1NextBtn");
+        nBtn.disabled = false;
+        nBtn.className = "px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl shadow-lg transition-all text-xs tracking-wider uppercase";
+
+      } catch(err) {
+        handleApiError(err, () => handleC1Launch(text));
+      }
+    }
+
+    // ── 🎭 D1.1 定妆细节精修逻辑 (支持新旧后悔药) ──
+    let activeCardIndex = 0;
+    let activeD1_1PreviewMode = "new";
+
+    function openD1_1(index) {
+      activeCardIndex = index;
+      activeD1_1PreviewMode = "new";
+      const ast = state.assets[index];
+      
+      document.getElementById("d1_1_Title").innerText = `定妆画资产细节深度精整 - [${ast.name}] (D1.1)`;
+      document.getElementById("d1_1_PromptInput").value = ast.prompt;
+      
+      // 页签重置
+      document.getElementById("previewTab-new").className = "px-2 py-1 bg-indigo-600 text-[10px] text-white rounded font-bold";
+      document.getElementById("previewTab-old").className = "px-2 py-1 text-[10px] text-slate-400 hover:text-slate-200 rounded";
+
+      // 画布
+      document.getElementById("d1_1_PreviewArea").innerHTML = `<img id="d1_1_preview_img" src="${ast.image_url}" class="max-w-full max-h-[300px] object-contain rounded-lg shadow-xl" />`;
+      
+      // 后悔药机制备份
+      if (!state.assetHistory[ast.id]) {
+        state.assetHistory[ast.id] = {
+          new_url: ast.image_url,
+          old_url: ast.image_url
+        };
+      }
+
+      document.getElementById("overlayD1_1").classList.remove("hidden");
+    }
+
+    function switchD1_1PreviewMode(mode) {
+      activeD1_1PreviewMode = mode;
+      const ast = state.assets[activeCardIndex];
+      const hist = state.assetHistory[ast.id];
+      
+      const tabNew = document.getElementById("previewTab-new");
+      const tabOld = document.getElementById("previewTab-old");
+      const img = document.getElementById("d1_1_preview_img");
+
+      if (mode === "new") {
+        tabNew.className = "px-2 py-1 bg-indigo-600 text-[10px] text-white rounded font-bold";
+        tabOld.className = "px-2 py-1 text-[10px] text-slate-400 hover:text-slate-200 rounded";
+        img.src = hist.new_url;
+      } else {
+        tabOld.className = "px-2 py-1 bg-indigo-600 text-[10px] text-white rounded font-bold";
+        tabNew.className = "px-2 py-1 text-[10px] text-slate-400 hover:text-slate-200 rounded";
+        img.src = hist.old_url;
+      }
+    }
+
+    async function rebuildAssetCard() {
+      const ast = state.assets[activeCardIndex];
+      const newPrompt = document.getElementById("d1_1_PromptInput").value;
+      
+      const rebuildBtn = document.getElementById("rebuildAssetBtn");
+      rebuildBtn.disabled = true;
+      rebuildBtn.innerText = "🎨 生图引擎重绘中...";
+
+      try {
+        const response = await fetch("http://127.0.0.1:8000/api/render/v1/single-frame", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            target_id: ast.id,
+            prompt: newPrompt,
+            seed: state.seed,
+            style_lock: true
+          })
+        });
+        const res = await response.json();
+        if (res.status === "success") {
+          // 更新后悔药
+          state.assetHistory[ast.id].old_url = ast.image_url;
+          state.assetHistory[ast.id].new_url = res.render_url;
+          
+          ast.image_url = res.render_url;
+          ast.prompt = newPrompt;
+          
+          // 更新前端卡片
+          document.getElementById(`cardPrompt${activeCardIndex}`).innerText = newPrompt;
+          document.getElementById(`cardImg${activeCardIndex}`).innerHTML = `<img src="${res.render_url}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />`;
+          
+          // 更新弹窗图
+          switchD1_1PreviewMode("new");
+          showToast("✨ 定妆卡片局部重绘成功！");
+        } else {
+          showCustomModal("⚠️ 生图失败", "重绘失败，请重试！");
+        }
+      } catch(err) {
+        handleApiError(err, rebuildAssetCard);
+      } finally {
+        rebuildBtn.disabled = false;
+        rebuildBtn.innerText = "💡 确定更新并进行局部重画";
+      }
+    }
+
+    function closeD1_1(event) {
+      if (event.target.id === "overlayD1_1") {
+        closeD1_1_Force();
+      }
+    }
+    function closeD1_1_Force() {
+      document.getElementById("overlayD1_1").classList.add("hidden");
+    }
+
+    // ── 🎬 E 页面分镜底片生成 ──
+    async function handleD1Next() {
+      navigateTo("E");
+      showToast("🎞️ 正在物理切切旁白并插值生图分镜大宫格...");
+      
+      // 初始化骨架状态
+      for (let i = 0; i < 4; i++) {
+        document.getElementById(`framePreviewImg${i}`).innerHTML = `
+          <span class="absolute top-2 left-2 px-1.5 py-0.5 bg-black/80 text-[8px] font-bold rounded text-amber-500 font-mono">F-0${i+1}</span>
+          <div class="text-[10px] text-slate-700 animate-pulse">Rendering...</div>
+        `;
+      }
+      
+      try {
+        const response = await fetch("http://127.0.0.1:8000/api/story/v1/generate-storyboard", {
+          method: "POST"
+        });
+        const res = await response.json();
+        if (res.status === "success") {
+          state.storyboards = res.frames;
+          
+          // 渲染底片
+          state.storyboards.forEach((frm, idx) => {
+            document.getElementById(`framePreviewImg${idx}`).innerHTML = `
+              <span class="absolute top-2 left-2 px-1.5 py-0.5 bg-black/80 text-[8px] font-bold rounded text-amber-500 font-mono">F-0${idx+1}</span>
+              <img src="${frm.image_url}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
+            `;
+            document.getElementById(`frameTextPreview${idx}`).innerText = frm.text;
+            document.getElementById(`frameTime${idx}`).innerText = frm.time_range;
+          });
+          
+          showToast("🎞️ 分镜底片及16宫格切图渲染完毕！");
+        } else {
+          showCustomModal("⚠️ 生成失败", "底片插值失败，请重试！");
+        }
+      } catch(err) {
+        handleApiError(err, handleD1Next);
+      }
+    }
+
+    // ── 🎞️ E1 分镜单帧细节重画 (支持新旧后悔药) ──
+    let activeFrameIndex = 0;
+    let activeE1PreviewMode = "new";
+
+    function openE1(index) {
+      activeFrameIndex = index;
+      activeE1PreviewMode = "new";
+      const frm = state.storyboards[index];
+      
+      document.getElementById("e1_Title").innerText = `分镜单帧大底片重绘 - [分镜帧 F-0${index+1}] (E1)`;
+      document.getElementById("e1_PromptInput").value = frm.prompt;
+      
+      // 页签重置
+      document.getElementById("previewTabE1-new").className = "px-2 py-1 bg-indigo-600 text-[10px] text-white rounded font-bold";
+      document.getElementById("previewTabE1-old").className = "px-2 py-1 text-[10px] text-slate-400 hover:text-slate-200 rounded";
+
+      // 画布
+      document.getElementById("e1_PreviewArea").innerHTML = `<img id="e1_preview_img" src="${frm.image_url}" class="max-w-full max-h-[300px] object-contain rounded-lg shadow-xl" />`;
+      
+      // 后悔药备份
+      const frame_id = `frame_0${index+1}`;
+      if (!state.frameHistory[frame_id]) {
+        state.frameHistory[frame_id] = {
+          new_url: frm.image_url,
+          old_url: frm.image_url
+        };
+      }
+
+      document.getElementById("overlayE1").classList.remove("hidden");
+    }
+
+    function switchE1PreviewMode(mode) {
+      activeE1PreviewMode = mode;
+      const frm = state.storyboards[activeFrameIndex];
+      const frame_id = `frame_0${activeFrameIndex+1}`;
+      const hist = state.frameHistory[frame_id];
+      
+      const tabNew = document.getElementById("previewTabE1-new");
+      const tabOld = document.getElementById("previewTabE1-old");
+      const img = document.getElementById("e1_preview_img");
+
+      if (mode === "new") {
+        tabNew.className = "px-2 py-1 bg-indigo-600 text-[10px] text-white rounded font-bold";
+        tabOld.className = "px-2 py-1 text-[10px] text-slate-400 hover:text-slate-200 rounded";
+        img.src = hist.new_url;
+      } else {
+        tabOld.className = "px-2 py-1 bg-indigo-600 text-[10px] text-white rounded font-bold";
+        tabNew.className = "px-2 py-1 text-[10px] text-slate-400 hover:text-slate-200 rounded";
+        img.src = hist.old_url;
+      }
+    }
+
+    async function rebuildFrameCard() {
+      const frm = state.storyboards[activeFrameIndex];
+      const newPrompt = document.getElementById("e1_PromptInput").value;
+      const frame_id = `frame_0${activeFrameIndex+1}`;
+
+      const rebuildBtn = document.getElementById("rebuildFrameBtn");
+      rebuildBtn.disabled = true;
+      rebuildBtn.innerText = "🎨 生图引擎单帧重绘中...";
+
+      try {
+        const response = await fetch("http://127.0.0.1:8000/api/render/v1/single-frame", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({
+            target_id: frame_id,
+            prompt: newPrompt,
+            seed: state.seed,
+            style_lock: true
+          })
+        });
+        const res = await response.json();
+        if (res.status === "success") {
+          // 更新后悔药
+          state.frameHistory[frame_id].old_url = frm.image_url;
+          state.frameHistory[frame_id].new_url = res.render_url;
+          
+          frm.image_url = res.render_url;
+          frm.prompt = newPrompt;
+          
+          // 更新前端底片网格
+          document.getElementById(`framePreviewImg${activeFrameIndex}`).innerHTML = `
+            <span class="absolute top-2 left-2 px-1.5 py-0.5 bg-black/80 text-[8px] font-bold rounded text-amber-500 font-mono">F-0${activeFrameIndex+1}</span>
+            <img src="${res.render_url}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
+          `;
+          
+          // 更新弹窗图
+          switchE1PreviewMode("new");
+          showToast("✨ 分镜单帧重画渲染完成！");
+        } else {
+          showCustomModal("⚠️ 生图失败", "重绘单帧失败，请重试！");
+        }
+      } catch(err) {
+        handleApiError(err, rebuildFrameCard);
+      } finally {
+        rebuildBtn.disabled = false;
+        rebuildBtn.innerText = "💡 确定更新并重新画本帧";
+      }
+    }
+
+    function closeE1(event) {
+      if (event.target.id === "overlayE1") {
+        closeE1_Force();
+      }
+    }
+    function closeE1_Force() {
+      document.getElementById("overlayE1").classList.add("hidden");
+    }
+
+    // ── 🎥 F 页面全盘多轨物理装配 ──
+    async function handleSynthesize() {
+      navigateTo("F");
+      
+      const vPlayer = document.getElementById("epicVideoPlayer");
+      const vPlaceholder = document.getElementById("videoPlaceholder");
+      
+      vPlayer.classList.add("hidden");
+      vPlaceholder.classList.remove("hidden");
+
+      try {
+        const response = await fetch("http://127.0.0.1:8000/api/story/v1/synthesize", {
+          method: "POST"
+        });
+        const res = await response.json();
+        if (res.status === "success") {
+          state.relativeVideoPath = res.relative_path;
+          
+          vPlaceholder.classList.add("hidden");
+          vPlayer.src = res.video_url;
+          vPlayer.classList.remove("hidden");
+          vPlayer.play();
+          
+          showToast("🎉 全盘多轨视频物理拼装合成大获成功！请导演欣赏大作！");
+        } else {
+          showCustomModal("⚠️ 合成失败", "FFmpeg 合成大师运行发生阻碍，请重试！");
+        }
+      } catch(err) {
+        handleApiError(err, handleSynthesize);
+      }
+    }
+
+    // ── 💾 另存为原生系统对话框下载 ──
+    async function downloadEpicVideo() {
+      if (!state.relativeVideoPath) {
+        showToast("⚠️ 未找到已生成的视频源，请先完成物理合成！");
+        return;
+      }
+
+      // 检测 pywebview 原生 JS 桥梁是否就绪
+      if (typeof pywebview !== "undefined" && pywebview.api) {
+        try {
+          const defaultFilename = `director_cut_${state.modePath.toLowerCase()}_${Date.now()}.mp4`;
+          
+          // 1. 调用 Python 原生 Save File Dialog 对话框，获得用户选择的保存物理路径
+          const savePath = await pywebview.api.select_save_path(defaultFilename);
+          
+          if (!savePath) {
+            showToast("⏮️ 已取消保存另存为。");
+            return;
+          }
+
+          showToast("💾 正在为您将视频文件拷贝拷贝至指定位置...");
+
+          // 2. 将此物理绝对路径发送给 API 中控进行安全复制
+          const response = await fetch("http://127.0.0.1:8000/api/story/v1/download", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({
+              source_file_relative_path: state.relativeVideoPath,
+              target_absolute_path: savePath
+            })
+          });
+          const res = await response.json();
+          if (res.status === "success") {
+            showCustomModal("🎉 保存成功！", `大导演，您的电影大作已成功下载并导出至：\n\n${savePath}`);
+          } else {
+            showCustomModal("⚠️ 保存失败", "文件物理拷贝失败，请核对写入权限后重试！");
+          }
+        } catch(e) {
+          showCustomModal("⚠️ 对话框异常", "桌面系统接口交互异常，请重试！");
+        }
+      } else {
+        // 兜底（以防是在普通浏览器里进行测试联调，而不是桌面 App 壳子中）
+        window.open(`http://127.0.0.1:8000/static/runs/${state.relativeVideoPath}`, "_blank");
+        showToast("🍿 已通过浏览器直接为您弹开视频下载！");
+      }
+    }
+
+    // ── 🩺 容灾报错与重试拦截机制 ──
+    function handleApiError(err, retryCallback) {
+      console.error("[API ERROR] Catch-Guard:", err);
+      
+      // 抛出异常时，前端本地状态（输入文本、调好的 presets 参数等）绝对保留！
+      // 弹出一个高质感对话框，提供“一键无缝重试”
+      showCustomModal(
+        "⚠️ 本地生图显卡/API 队列排队中",
+        "由于本地大模型服务可能正在全力拼装或 GPU 生图显存较挤，出现响应超时。请点击下方一键重试，系统将原样重新发起刚才的工作流请求，无需刷新！",
+        "💡 立即发起一键重试",
+        true, // 显示取消按钮，留存状态
+        retryCallback
+      );
+    }
+  </script>
+</body>
+</html>

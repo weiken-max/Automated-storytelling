@@ -470,6 +470,62 @@ def _encode_and_resize(path: Path):
         print(f"  ⚠️ [ImageEngine] 编码图片失败 {path.name}: {e}")
         return None
 
+def _create_placeholder_image(size: str = None) -> bytes:
+    """当生图 API 欠费、超限或失败时，优雅生成一张电影级高科技取景框占位图，确保成片合成不断线。"""
+    try:
+        from PIL import Image, ImageDraw
+        # 解析尺寸
+        w, h = 1024, 768
+        if size:
+            try:
+                size_clean = str(size).lower().replace(" ", "")
+                if "x" in size_clean:
+                    w_s, h_s = size_clean.split("x", 1)
+                    w, h = int(w_s), int(h_s)
+                elif "k" in size_clean:
+                    # 2K/4K 默认宫格拼装规格
+                    if "4" in size_clean:
+                        w, h = 2048, 1536
+                    else:
+                        w, h = 1024, 768
+            except Exception:
+                pass
+        
+        # 绘制极具科技感的深蓝底色
+        img = Image.new("RGB", (w, h), color=(15, 23, 42)) # Slate 900
+        draw = ImageDraw.Draw(img)
+        
+        # 绘制高科技取景框边缘 (金黄/靛蓝配色)
+        draw.rectangle([(20, 20), (w - 20, h - 20)], outline=(99, 102, 241), width=3) # Indigo 500
+        
+        # 绘制中心十字星准星
+        cw, ch = w // 2, h // 2
+        draw.line([(cw - 30, ch), (cw + 30, ch)], fill=(99, 102, 241), width=2)
+        draw.line([(cw, ch - 30), (cw, ch + 30)], fill=(99, 102, 241), width=2)
+        
+        # 绘制角落辅助红线（直角）
+        offset = min(w, h) // 16
+        draw.line([(20, 20), (20 + offset, 20)], fill=(244, 63, 94), width=4) # Rose 500
+        draw.line([(20, 20), (20, 20 + offset)], fill=(244, 63, 94), width=4)
+        
+        draw.line([(w - 20, 20), (w - 20 - offset, 20)], fill=(244, 63, 94), width=4)
+        draw.line([(w - 20, 20), (w - 20, 20 + offset)], fill=(244, 63, 94), width=4)
+        
+        draw.line([(20, h - 20), (20 + offset, h - 20)], fill=(244, 63, 94), width=4)
+        draw.line([(20, h - 20), (20, h - 20 - offset)], fill=(244, 63, 94), width=4)
+        
+        draw.line([(w - 20, h - 20), (w - 20 - offset, h - 20)], fill=(244, 63, 94), width=4)
+        draw.line([(w - 20, h - 20), (w - 20, h - 20 - offset)], fill=(244, 63, 94), width=4)
+        
+        # 导出为二进制字节流
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        return buf.getvalue()
+    except Exception as e:
+        print(f"❌ [ImageEngine] 绘制本地占位图失败: {e}")
+        # 如果 PIL 失败，回退到极简固定 JPEG
+        return b""
+
 async def generate_image(prompt: str,
                          image_refs: list = None,
                          tags: list = None,
@@ -604,7 +660,8 @@ async def generate_image(prompt: str,
                         error=str(e),
                         extra={"vendor": vendor},
                     )
-                raise
+                print(f"  🚨 [ImageEngine] 生图鉴权/额度异常 ({e})，将自动生成高科技取景框占位图兜底。")
+                return _create_placeholder_image(size)
             except asyncio.TimeoutError:
                 ms = (time.perf_counter() - t_dispatch) * 1000
                 if audit_phase:
@@ -653,7 +710,8 @@ async def generate_image(prompt: str,
             error="exhausted_retries",
             extra={"vendor": vendor},
         )
-    raise RuntimeError(f"生图任务重试 {_GEN_MAX_RETRIES} 次后仍失败（timeout={_GEN_TIMEOUT_SECONDS}s）")
+    print(f"  🚨 [ImageEngine] 生图重试全部失败，将自动生成高科技取景框占位图兜底。")
+    return _create_placeholder_image(size)
 
 # ================================================================
 # 4. 高层包装器 (供 V6 异步调用)

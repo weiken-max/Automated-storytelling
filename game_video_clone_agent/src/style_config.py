@@ -10,8 +10,8 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # 旁白扩写：segmented=多段请求+拼接；one_shot_acts=按 synopsis_acts 顺序一次性扩写全文
-_nem = os.environ.get("NARRATION_EXPAND_MODE", "one_shot_acts").strip().lower()
-NARRATION_EXPAND_MODE = _nem if _nem in ("segmented", "one_shot_acts") else "one_shot_acts"
+_nem = os.environ.get("NARRATION_EXPAND_MODE", "segmented").strip().lower()
+NARRATION_EXPAND_MODE = _nem if _nem in ("segmented", "one_shot_acts") else "segmented"
 
 # ================================================================
 #  🔑 三分离 API 配置
@@ -33,18 +33,18 @@ from src.model_presets import (
 # ================================================================
 #  🎨 核心风格锚点（V4.0 精致动漫版，全局唯一）
 # ================================================================
-STYLE_ANCHOR = (
+STYLE_ANCHOR = os.environ.get("STYLE_ANCHOR", (
     "High-quality 2D vector cartoon, bold black outlines, vibrant flat colors with soft cel-shading. "
     "Style inspired by Cyanide and Happiness but with professional lighting and detailed illustrated backgrounds. "
     "Character proportions: stick figure limbs, round bean heads."
-)
+))
 
 # 仅用于人物三视图定妆（与 ref_generator 内 Layer A 一致摘要；完整壳以 generate_ref_sheet_at 为准）。
-REF_STYLE_ANCHOR = (
+REF_STYLE_ANCHOR = os.environ.get("REF_STYLE_ANCHOR", (
     "Cyanide-and-Happiness web-comic character sheet: 2D vector, oversized round bean head, two dot eyes, "
     "arms and legs as pure black stick strokes (matchstick limbs, no realistic anatomy), simple torso block, "
     "bold outlines, flat fills, no shading or fabric micro-detail."
-)
+))
 
 NEGATIVE_PROMPT = (
     "multiple characters, crowded, overlapping characters, "
@@ -119,9 +119,9 @@ NARRATION_CHARS_PER_MINUTE = 300
 # 分段扩写（story_planner）：段数、承接上一段尾字数
 NARRATION_SEGMENT_COUNT = 6
 NARRATION_SEGMENT_TAIL_CHARS = 240
-# 单幕 chat.completions 的 max_tokens：粗估「汉字→token」≈ 1.5；在目标字数上加 BUFFER 再换算，避免沿用 2048 导致篇幅失控
-NARRATION_SEGMENT_MAX_TOKENS_CHAR_BUFFER = 100
-NARRATION_SEGMENT_CH_TO_TOKEN_RATIO = 1.5
+# 单幕 chat.completions 的 max_tokens：粗估「汉字→token」≈ 2.5（中文模型保守估算）；在目标字数上加 BUFFER 再换算，避免 token 不足导致 finish_reason=length 截断
+NARRATION_SEGMENT_MAX_TOKENS_CHAR_BUFFER = 300
+NARRATION_SEGMENT_CH_TO_TOKEN_RATIO = 2.5
 
 # 一次性按幕扩写：理想字数带与分段写手一致（相对 target_chars）
 ONE_SHOT_NARRATION_LO_RATIO = 0.78

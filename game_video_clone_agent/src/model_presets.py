@@ -24,6 +24,7 @@ if load_dotenv:
 ACTIVE_LLM_VENDOR = "deepseek_v4_pro"    # DeepSeek V4 Pro（OpenAI 兼容）
 ACTIVE_VLM_VENDOR = "gribo_text"    # 与 LLM 同源；分镜多模态
 ACTIVE_IMG_VENDOR = "gribo_img"          # ✅ 生图仍走 Gribo
+TRANSLATE_LLM_VENDOR = "deepseek_v4_flash"  # 翻译专用（DeepSeek V4 Flash，轻量快速）
 # 备选厂商（降级时才改）："doubao_v4" | "aliyun_dashscope" | "deepseek_v4_pro"
 
 
@@ -62,6 +63,23 @@ VENDORS_PRESETS = {
         "models": {
             "llm": "deepseek-v4-pro",
             "vlm": "deepseek-v4-pro",
+        },
+        "extra_params": {
+            "protocol": "openai_compatible",
+        }
+    },
+
+    # ----------------------------------------------------------
+    # DeepSeek V4 Flash（翻译专用，轻量快速）
+    # ----------------------------------------------------------
+    "deepseek_v4_flash": {
+        "vendor_name": "DeepSeek V4 Flash",
+        "api_key": os.getenv("DEEPSEEK_API_KEY", ""),
+        "app_secret": os.getenv("DEEPSEEK_APP_SECRET", ""),
+        "base_url": "https://api.deepseek.com",
+        "dashscope_base_http": "",
+        "models": {
+            "llm": "deepseek-v4-flash",
         },
         "extra_params": {
             "protocol": "openai_compatible",
@@ -206,6 +224,10 @@ LLM_API_KEY          = _llm_cfg["api_key"]
 LLM_BASE_URL         = _llm_cfg["base_url"]
 LLM_DASHSCOPE_HTTP   = _llm_cfg.get("dashscope_base_http", "")
 MODEL_LLM            = _llm_cfg["models"]["llm"]
+
+# ── 翻译专用 LLM（DeepSeek V4 Flash）──────────────────
+_translate_cfg = _get_config(TRANSLATE_LLM_VENDOR, "TRANSLATE LLM")
+TRANSLATE_MODEL = _translate_cfg["models"]["llm"]
 
 # ── VLM 相关 ──────────────────────────────────────────
 VLM_API_KEY          = _vlm_cfg["api_key"]

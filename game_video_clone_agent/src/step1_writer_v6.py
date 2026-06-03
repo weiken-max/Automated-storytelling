@@ -9,6 +9,11 @@ import json
 import os
 import shutil
 import sys
+# ── Windows GBK 终端编码修复 ──
+if hasattr(sys.stdout, "buffer"):
+    from io import TextIOWrapper
+    sys.stdout = TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
 import argparse
 import subprocess
 import tempfile
@@ -1073,9 +1078,33 @@ def _tag_subshots_only(beat: dict, attempt: int = 0) -> list[str]:
         if joined != beat_text:
             print(
                 f"    ⚠️ [Tagging] 拼接不一致：期望 {len(beat_text)} 字，"
-                f"实际 {len(joined)} 字，差异 {abs(len(joined) - len(beat_text))} 字。"
+                f"实际 {len(joined)} 字，差异 {abs(len(joined) - len(beat_text))} 字。正在自动以比例对齐修复..."
             )
-            return []
+            orig_len = len(beat_text)
+            joined_len = len(joined)
+            if joined_len > 0:
+                healed_segments = []
+                cursor = 0
+                for idx, seg in enumerate(segments):
+                    if idx == len(segments) - 1:
+                        healed_segments.append(beat_text[cursor:])
+                    else:
+                        seg_len = len(seg)
+                        prop_len = int(round((seg_len / joined_len) * orig_len))
+                        prop_len = max(1, prop_len)
+                        prop_len = min(prop_len, orig_len - cursor - (len(segments) - idx - 1))
+                        prop_len = max(1, prop_len)
+                        healed_segments.append(beat_text[cursor : cursor + prop_len])
+                        cursor += prop_len
+                
+                if "".join(healed_segments) == beat_text:
+                    print(f"    ✅ [Tagging] 自动比例对齐修复成功！切片字数分布: {[len(s) for s in healed_segments]}")
+                    segments = healed_segments
+                else:
+                    print(f"    ❌ [Tagging] 比例对齐修复失败，回退为空列表。")
+                    return []
+            else:
+                return []
 
         return segments
     except Exception as e:
@@ -1175,6 +1204,28 @@ def _generate_visual_prompts(
     legal_keys = sorted((physical_anchors or {}).keys())
     key_help = ", ".join(legal_keys) if legal_keys else "(无)"
 
+    # ── 从环境变量读取本频道"画风锚点 + 分镜表现规则"（用户在 UI 可编辑，零 {} 占位符，零报错风险）──
+    _storyboard_discipline = os.environ.get("STORYBOARD_PROMPT_TEMPLATE", "").strip()
+    if not _storyboard_discipline:
+        # 出厂默认：剧情故事风格（氰化物漫画画风 + 戏剧情绪表情拆解规则）
+        _storyboard_discipline = (
+            "【画风锚点】\n"
+            "Cyanide and Happiness comic style, 2D vector / flat graphic cartoon, bold black outlines, "
+            "vivid flat color fills, pure 2D, no photoreal skin texture, no 3D/CGI. "
+            "允许卡通级光向（key direction, warm/cool, simple hard-edge shadow shapes），"
+            "禁止电影级体积光与写实 subsurface skin。\n\n"
+            "【分镜表现规则】\n"
+            "★ 动态表情与肢体（核心要求：打破参考图的呆滞感！）：必须深度解析当前分镜的故事情节，"
+            "强制赋予角色强烈且符合情境的情绪反应。\n"
+            "1. 必须采用【核心情绪词 + 氰化物式五官拆解】组合。例如不要只写 mouth line，必须写："
+            "terrified expression, sharply angled frowning eyebrows, wide dilated dot eyes, screaming jagged mouth shape.\n"
+            "2. 明确指令：绝不允许角色保持中立或被参考图的默认表情带偏"
+            "（DO NOT copy the neutral expression from reference）。\n"
+            "3. 肢体辅助：情绪必须配合夸张的肢体动作"
+            "（如 recoiling in horror, pointing aggressively, slumping in defeat）。\n"
+            "4. 脸部特写：当情绪是当前帧重点时，明确写明 close-up on explicit facial expression。"
+        )
+
     system_prompt = (
         "你是一位 AI 分镜导演兼英文 prompt 写手。任务：为已切好的每条分镜文案生成一条英文 visual_prompt（用于生图），"
         "并输出 per_shot_ref_keys。\n\n"
@@ -1184,10 +1235,8 @@ def _generate_visual_prompts(
         "同一条目列表内须强连贯：环境与光影方向应自然延续；禁止无交代的人物瞬移、场景跳切、光源突变。"
         "若叙事明确转场，在同一条英文 visual_prompt 中用一两句写清转场依据。\n\n"
         f"{era_section}"
-        "【强制画风（须写入每条 visual_prompt 的英文正文，可嵌在叙事句中）】\n"
-        "Cyanide and Happiness comic style, 2D vector / flat graphic cartoon, bold black outlines, vivid flat color fills, "
-        "pure 2D, no photoreal skin texture, no 3D/CGI. 允许卡通级光向（key direction, warm/cool, simple hard-edge shadow shapes），"
-        "禁止电影级体积光与写实 subsurface skin。\n"
+        "【强制画风与分镜表现纪律（须贯穿每条 visual_prompt）】\n"
+        f"{_storyboard_discipline}\n\n"
         "主角人生阶段必须与输入 JSON 每条 segment 的 stage 一致。\n\n"
         "【角色外观语义锚点】\n"
         f"{text_anchors_str}\n\n"
@@ -1197,13 +1246,9 @@ def _generate_visual_prompts(
         "已注册角色必须用 display_name_en 点名，禁止 young man / old man / elderly stranger 等泛指。\n"
         f"{cast_blob}\n\n"
         "【每条 visual_prompt 的形式与内容】\n"
-        "每条必须是**一段连续英文**（不要用 Subject:/Environment: 等小标题分行），用 3–6 个完整句子自然串联，但必须**隐含覆盖**以下维度（不必按固定顺序）：\n"
-        "主体（谁/何物）；具体环境（须与前情连贯）；构图与景别；客观画面事件；光影连贯；\n"
-        "★ 动态表情与肢体（核心要求：打破参考图的呆滞感！）：必须深度解析当前分镜的故事情节，强制赋予角色强烈且符合情境的情绪反应。\n"
-        "1. 必须采用【核心情绪词 + 氰化物式五官拆解】组合。例如不要只写 mouth line，必须写：terrified expression, sharply angled frowning eyebrows, wide dilated dot eyes, screaming jagged mouth shape.\n"
-        "2. 明确指令：绝不允许角色保持中立或被参考图的默认表情带偏（DO NOT copy the neutral expression from reference）。\n"
-        "3. 肢体辅助：情绪必须配合夸张的肢体动作（如 recoiling in horror, pointing aggressively, slumping in defeat）。\n"
-        "4. 脸部特写：当情绪是当前帧重点时，明确写明 close-up on explicit facial expression。\n\n"
+        "每条必须是**一段连续英文**（不要用 Subject:/Environment: 等小标题分行），用 3–6 个完整句子自然串联，"
+        "但必须**隐含覆盖**以下维度（不必按固定顺序）：\n"
+        "主体（谁/何物）；具体环境（须与前情连贯）；构图与景别；客观画面事件；光影连贯。\n\n"
         "【数量与输出】\n"
         f"1. visual_prompt 恰好 {n} 条，顺序与输入 segments 一致。\n"
         f"2. per_shot_ref_keys：与 visual_prompts 等长；每行为字符串数组，键必须从：{key_help} 选取。"

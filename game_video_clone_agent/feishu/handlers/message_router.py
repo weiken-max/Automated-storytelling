@@ -261,6 +261,17 @@ class MessageRouter:
                             self._noop, current_topic, open_id)  # 实际调用在 confirm_storyboard handler
                 return
 
+        # ── 9.5 分镜审批态：提示词修改消息 ──
+        if current_status == "WAITING_STORYBOARD_APPROVAL":
+            parsed = self._parse_prompt_revision(msg_clean)
+            if parsed is not None:
+                self._handle_prompt_revision(
+                    parsed, open_id, session, mgr,
+                    current_topic, enqueue_job, get_current_run_id,
+                    pipeline_funcs,
+                )
+                return
+
         # 分镜打回快速通道
         batch_rej = self._parse_storyboard_reject(msg_clean)
         if batch_rej is not None:
@@ -271,6 +282,19 @@ class MessageRouter:
             else:
                 mgr.send_text(open_id, "open_id", "⚠️ 当前不在分镜审核阶段，打回指令无效。")
             return
+
+        # ── 9.6 定妆审批态：角色修改意见（以「· 主角 ·」等前缀触发直接重画）──
+        if current_status == "WAITING_CHARACTER_APPROVAL":
+            from feishu.config import CHARACTER_REVISION_KEYWORDS
+            if any(kw in msg_clean for kw in CHARACTER_REVISION_KEYWORDS):
+                parsed = self._parse_character_revision(msg_clean)
+                if parsed is not None:
+                    self._handle_character_revision(
+                        parsed, open_id, session, mgr,
+                        current_topic, enqueue_job,
+                        pipeline_funcs,
+                    )
+                    return
 
         # ── 10. 换一批 / 刷选题 ──
         if any(p in msg_clean for p in REFRESH_PHRASES):
@@ -309,6 +333,117 @@ class MessageRouter:
                 except (ValueError, IndexError):
                     continue
         return None
+
+    # ── V3：定妆照修改意见解析与处理 ─────────────────────────────
+
+    @staticmethod
+    def _parse_character_revision(msg: str) -> dict | None:
+        """
+        解析定妆照修改意见消息，返回结构化数据或 None。
+        支持三种格式：
+          1. 主角：Lang · 主角 · 青年期（youth）...反馈...
+          2. 配角：王总 · 配角 · sr_001 ...反馈...
+          3. 视觉元素：黑洞 · 视觉元素 · black_hole ...反馈...
+        """
+        from feishu.config import (
+            CHARACTER_REVISION_PROTAGONIST,
+            CHARACTER_REVISION_SUPPORTING,
+            CHARACTER_REVISION_ELEMENT,
+        )
+        msg_clean = msg.strip()
+
+        # 1. 主角
+        m = CHARACTER_REVISION_PROTAGONIST.match(msg_clean)
+        if m:
+            return {
+                "type": "protagonist",
+                "name_en": m.group(1).strip(),
+                "stage_name_cn": m.group(2).strip(),
+                "stage_key": m.group(3).strip(),
+                "feedback": m.group(4).strip(),
+            }
+
+        # 2. 配角
+        m = CHARACTER_REVISION_SUPPORTING.match(msg_clean)
+        if m:
+            return {
+                "type": "supporting",
+                "name_en": m.group(1).strip(),
+                "role_id": m.group(2).strip(),
+                "feedback": m.group(3).strip(),
+            }
+
+        # 3. 视觉元素（科普模式）
+        m = CHARACTER_REVISION_ELEMENT.match(msg_clean)
+        if m:
+            return {
+                "type": "element",
+                "name_en": m.group(1).strip(),
+                "element_key": m.group(2).strip(),
+                "feedback": m.group(3).strip(),
+            }
+
+        return None
+
+    @staticmethod
+    def _handle_character_revision(
+        parsed: dict,
+        open_id: str,
+        session,
+        mgr,
+        topic: str,
+        enqueue_job,
+        pipeline_funcs: dict,
+    ):
+        """处理定妆照修改意见：直接入队重画（无中间文本审查），完成后推送新卡片。"""
+        rev_type = parsed["type"]
+        feedback = parsed["feedback"]
+        run_visual_setup = pipeline_funcs.get("run_visual_setup")
+        if not run_visual_setup:
+            mgr.send_text(open_id, "open_id", "❌ 系统未就绪，请稍后重试。")
+            return
+
+        if rev_type == "protagonist":
+            stage_key = parsed["stage_key"]
+            stage_name = parsed.get("stage_name_cn", stage_key)
+            mgr.send_text(
+                open_id, "open_id",
+                f"🔄 收到！正在根据「{feedback}」重新生成{stage_name}定妆照，请稍候..."
+            )
+            enqueue_job(
+                open_id, f"重画定妆照 {stage_key}: {topic}",
+                run_visual_setup,
+                topic, open_id,
+                regen_stage=stage_key, feedback=feedback,
+            )
+
+        elif rev_type == "supporting":
+            role_id = parsed["role_id"]
+            name = parsed.get("name_en", role_id)
+            mgr.send_text(
+                open_id, "open_id",
+                f"🔄 收到！正在根据「{feedback}」重新生成配角{name}的定妆照，请稍候..."
+            )
+            enqueue_job(
+                open_id, f"重画配角定妆照 {role_id}: {topic}",
+                run_visual_setup,
+                topic, open_id,
+                regen_supporting_role_id=role_id, feedback=feedback,
+            )
+
+        elif rev_type == "element":
+            element_key = parsed["element_key"]
+            name = parsed.get("name_en", element_key)
+            mgr.send_text(
+                open_id, "open_id",
+                f"🔄 收到！正在根据「{feedback}」重新生成视觉元素{name}，请稍候..."
+            )
+            enqueue_job(
+                open_id, f"重画视觉元素 {element_key}: {topic}",
+                run_visual_setup,
+                topic, open_id,
+                regen_element_key=element_key, feedback=feedback,
+            )
 
     def _handle_approval(self, msg_clean, current_status, current_topic, open_id,
                          enqueue_job, mgr, get_run_id):
@@ -512,3 +647,153 @@ class MessageRouter:
                 mgr.send_text(open_id, "open_id", f"🔄 收到，正在重新生成第 {bi} 批次宫格图...")
                 enqueue_job(open_id, f"重画分镜批次 {bi}: {current_topic}",
                             regenerate_storyboard_batch, current_topic, open_id, bi)
+
+    # ── V2：提示词修改辅助方法 ─────────────────────────────────────
+
+    @staticmethod
+    def _parse_prompt_revision(msg: str) -> dict | None:
+        """解析提示词修改消息，返回结构化数据或 None"""
+        from feishu.pipeline.prompt_ops import parse_revision_message
+        return parse_revision_message(msg)
+
+    @staticmethod
+    def _handle_prompt_revision(
+        parsed: dict,
+        open_id: str,
+        session,
+        mgr,
+        topic: str,
+        enqueue_job,
+        get_current_run_id,
+        pipeline_funcs: dict,
+    ):
+        """处理提示词修改消息：秒回确认 → 后台 LLM 改写 → 暂存 → 刷新卡片"""
+        batch_index = parsed["batch"]
+        rev_type = parsed["type"]
+        subshots = parsed.get("subshots", [])
+        feedback = parsed.get("feedback", "")
+
+        run_id = get_current_run_id() if get_current_run_id else ""
+        session_id = session.session_id
+        card_builder = pipeline_funcs.get("build_storyboard_card")
+
+        # 秒回确认，避免消息回调超时
+        mgr.send_text(
+            open_id, "open_id",
+            f"🔍 正在分析批次 {batch_index} 的修改意见...",
+        )
+
+        # 后台线程执行 LLM 调用
+        def _work():
+            from feishu.pipeline.prompt_ops import (
+                load_narrative_final,
+                get_batch_prompts,
+                revise_single_prompt,
+                revise_batch_prompts,
+            )
+            from feishu.session import Session, SessionStore
+
+            store = SessionStore()
+
+            try:
+                narrative = load_narrative_final(run_id)
+            except Exception as e:
+                mgr.send_text(open_id, "open_id", f"❌ 加载提示词失败：{e}")
+                return
+
+            batch_prompts = get_batch_prompts(narrative, batch_index)
+
+            # 重新加载 session（避免与主线程冲突）
+            session_dict = store.get_session(session_id)
+            if not session_dict:
+                mgr.send_text(open_id, "open_id", "⚠️ 会话已失效，请重新操作。")
+                return
+            work_session = Session.from_dict(session_dict)
+
+            # 确保 card_id 可用（从 holder 文件恢复，以支持 PATCH 刷新卡片）
+            if not work_session.card_id:
+                try:
+                    holder_file = Path(__file__).resolve().parent.parent / "storyboard_card_holder.json"
+                    if holder_file.exists():
+                        holder = json.loads(holder_file.read_text(encoding="utf-8"))
+                        mid = holder.get("message_id")
+                        if mid:
+                            work_session.card_id = mid
+                            work_session.card_type = "storyboard"
+                except Exception:
+                    pass
+
+            # 获取该批次已有的修改暂存
+            revised = work_session.get_context(f"revised_prompts_batch_{batch_index}") or {}
+            revised = dict(revised)
+
+            changed_count = 0
+            error_msg = ""
+
+            if rev_type == "single" and subshots:
+                sid = subshots[0]
+                original_en = revised.get(sid) or batch_prompts.get(sid, "")
+                if not original_en:
+                    error_msg = f"❌ 未找到 {sid} 的提示词"
+                else:
+                    new_prompt = revise_single_prompt(original_en, feedback, sid)
+                    revised[sid] = new_prompt
+                    changed_count = 1
+
+            elif rev_type == "batch" and subshots:
+                for sid in subshots:
+                    original_en = revised.get(sid) or batch_prompts.get(sid, "")
+                    if not original_en:
+                        continue
+                    per_feedback = f"{sid} {feedback}"
+                    new_prompt = revise_single_prompt(original_en, per_feedback, sid)
+                    revised[sid] = new_prompt
+                    changed_count += 1
+
+            elif rev_type == "full":
+                review_prompts = {}
+                for sid in batch_prompts:
+                    review_prompts[sid] = revised.get(sid) or batch_prompts[sid]
+                batch_revised = revise_batch_prompts(review_prompts, feedback)
+                for sid, new_prompt in batch_revised.items():
+                    revised[sid] = new_prompt
+                changed_count = len(batch_revised)
+
+            else:
+                error_msg = "⚠️ 无法识别修改格式，请参考卡片上的模板。"
+
+            if error_msg:
+                mgr.send_text(open_id, "open_id", error_msg)
+                return
+
+            if changed_count == 0:
+                mgr.send_text(open_id, "open_id", "⚠️ 未找到需要修改的提示词。")
+                return
+
+            # 暂存修改
+            work_session.set_context(f"revised_prompts_batch_{batch_index}", revised)
+
+            # 直接用英文提示词展示（无需翻译）
+            en_prompts = {}
+            for sid, orig_en in batch_prompts.items():
+                en_prompts[sid] = revised.get(sid, orig_en)
+
+            all_translated = work_session.get_context("translated_prompts") or {}
+            all_translated[str(batch_index)] = en_prompts
+            work_session.set_context("translated_prompts", all_translated)
+
+            # 持久化到 DB
+            store.save_context_json(session_id, work_session.context_json)
+
+            # PATCH 刷新分镜卡片
+            if card_builder:
+                card = card_builder(work_session, mgr, for_patch=True)
+                card.send_or_patch()
+
+            mgr.send_text(
+                open_id, "open_id",
+                f"✅ 已根据您的意见改写批次 {batch_index} 的 {changed_count} 条提示词。\n"
+                "请查看卡片确认，满意后点击「打回批次（使用修改后提示词重画）」。"
+            )
+
+        threading.Thread(target=_work, daemon=True).start()

@@ -1,0 +1,64 @@
+Total lines in replayed HTML: 2814
+
+--- Corrupted line at index 145 (Line 145):
+Content: <truncated 3358 bytes>
+Surrounding lines:
+    137:     <div class="w-full max-w-lg bg-[#0D1127] border border-indigo-500/20 rounded-2xl shadow-2xl p-6 text-center space-y-6">
+    138:       <div class="w-16 h-16 bg-indigo-500/10 text-indigo-400 rounded-full flex items-center justify-center mx-auto text-3xl border border-indigo-500/20 animate-bounce">
+    139:         🎬
+    140:       </div>
+    141:       <div class="space-y-2">
+    142:         <h3 class="text-lg font-bold text-slate-100">🎉 探测到上一次未完成的电影现场！</h3>
+    143:         <p class="text-xs text-slate-400 leading-relaxed">
+    144:           大导演，系统为您安全
+>>> 145: <truncated 3358 bytes>
+    146: 
+    147:   <!-- 主应用大布局 -->
+    148:   <div class="flex flex-1 h-full overflow-hidden">
+    149: 
+    150:     <!-- 左侧：核心演示操控台 -->
+    151:     <main class="flex-1 flex flex-col relative bg-[#03050C] overflow-hidden">
+    152: 
+    153:       <!-- 高水准工作室页眉 -->
+
+--- Corrupted line at index 1905 (Line 1905):
+Content: <truncated 279 bytes>
+Surrounding lines:
+    1897:               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+    1898:               <span>💾 另存为视频文件 (下载)</span>
+    1899:             </button>
+    1900:             <button onclick="presetDownloadFolder()" class="w-full sm:w-auto px-6 py-4 bg-indigo-650 hover:bg-indigo-500 font-bold text-white rounded-xl shadow-lg shadow-indigo-500/10 transition-all flex items-center justify-center space-x-2 text-xs tracking-widest uppercase cursor-pointer">
+    1901:               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+    1902:               <span id="presetPathBtnText">⚙️ 预设默认下载目录</span>
+    1903:             </button>
+    1904:             <button onclick="r
+>>> 1905: <truncated 279 bytes>
+    1906: 
+    1907:         <!-- ==================== 16 宫格大图放大弹窗 ==================== -->
+    1908:         <div id="overlayLargeGrid" class="hidden fixed inset-0 z-50 flex items-center justify-center p-6 bg-black/90 backdrop-blur-md cursor-zoom-out" onclick="closeLargeGrid()">
+    1909:           <div class="relative max-w-7xl max-h-[90vh] bg-slate-950 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl flex items-center justify-center" onclick="event.stopPropagation()">
+    1910:             <img id="largeGridImg" src="" class="max-w-full max-h-[85vh] object-contain" />
+    1911:             <button onclick="closeLargeGrid()" class="absolute top-4 right-4 w-10 h-10 bg-black/60 hover:bg-slate-900 border border-slate-800 text-white rounded-full flex items-center justify-center font-bold text-lg transition cursor-pointer">✕</button>
+    1912:           </div>
+    1913:         </div>
+
+--- Corrupted line at index 2315 (Line 2315):
+Content: <truncated 609 bytes>
+Surrounding lines:
+    2307:         });
+    2308: 
+    2309:         if (res.status === "success") {
+    2310:           state.rawScript = res.data.compiled_voiceover;
+    2311:           document.getElementById("shakeOutlineContent").innerText = res.data.compiled_voiceover;
+    2312:           feedbackInput.value = ""; // 清空意见框
+    2313:           showToast("🎉 大纲重写成功！大模型已完美吸纳您的意见！");
+    2314:         } else {\
+>>> 2315: <truncated 609 bytes>
+    2316: 
+    2317:     // ── ⚡ 核心 Pipeline 处理 ──
+    2318:     async function handleC1Launch(directText = null) {
+    2319:       const text = directText || state.rawScript;
+    2320:       if (!text.trim()) {
+    2321:         showCustomModal("⚠️ 提示", "大导演，剧本内容不能为空哦，请输入您的创意大纲！");
+    2322:         return;
+    2323:       }

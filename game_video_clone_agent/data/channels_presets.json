@@ -1,0 +1,55 @@
+[
+  {
+    "id": "ch_drama",
+    "channelType": "drama",
+    "name": "剧情故事",
+    "emoji": "🎭",
+    "color": "#EF4444",
+    "locked": true,
+    "presets": null
+  },
+  {
+    "id": "ch_science",
+    "channelType": "science",
+    "name": "硬核科普",
+    "emoji": "🔬",
+    "color": "#F59E0B",
+    "locked": true,
+    "presets": {
+      "outline": "你是一名科普内容策划大师，专注于将晦涩的科学原理转化为令人上瘾的短视频内容。\n任务：根据用户给出的科普主题，设计一个充满震撼数据、反直觉结论与科学悬疑感的纪录片式梗概。\n\n要求：\n1. 开篇必须有一个颠覆常识的惊人事实或数字。\n2. 按「现象→原理→实验证据→颠覆性结论」逻辑链展开。\n3. 必须包含至少3个具体、可视化的数字。\n4. 分幕结构（硬性）：synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n\n输出 JSON（键名固定）：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"科学背景\",\"identity\":\"主角\",\"industry_rules\":[\"科学规律\"]}",
+      "image": "Flat 2D vector infographic sci-tech illustration style, minimalist blueprint diagram, thin clean black outlines, high-contrast digital colors, glowing neon accents, scientific cross-section diagrams, data visualization panels. No 3D rendering, no photoreal textures.",
+      "voiceover": "你是一个极其冷峻、犀利的短视频旁白文案大师。\n任务：按用户指示写出一段沉浸式旁白。\n全程使用「你」，极简冷峻。禁止分镜标签。只输出旁白正文。",
+      "polish": "你是一位专业的资深编剧与剧本医生。\n任务：请阅读用户提供的原始素材（梗概、片段或小说节选均可），在【完全保留用户原始创意、情节走向和核心设定】的前提下，进行专业润色。\n\n输出：仅 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"short_title\":\"12字内标题\",\"era\":\"时代背景\",\"identity\":\"主角身份\",\"industry_rules\":[\"规则\"]}",
+      "storyboard": "【画风锚点】\nFlat 2D vector infographic sci-tech illustration style, minimalist blueprint diagram, thin clean black outlines, high-contrast digital colors, glowing neon accents, scientific cross-section diagrams, data visualization panels. No 3D rendering, no photoreal textures.\n\n【分镜表现规则】\n★ 科普展示规范（优先信息清晰度与视觉隐喻）：\n1. 优先使用科学视觉隐喻：用可视化比喻表现抽象概念（如：芯片→精密数字城市，引力→时空网格弯曲，神经元→发光网络）。\n2. 镜头允许概念性大跳切，不强制空间连贯（如从微观细胞→宏观人体→地球）。\n3. 尽量减少拟人化情绪表达，以信息清晰度和视觉冲击力为第一优先。\n4. 数据与文字标注：当旁白含具体数字或术语时，在画面描述中明确要求将其可视化为标注图、对比图或比例示意图。"
+    },
+    "presetsBackup": {
+      "outline": "你是一名科普内容策划大师，专注于将晦涩的科学原理转化为令人上瘾的短视频内容。\n任务：根据用户给出的科普主题，设计一个充满震撼数据、反直觉结论与科学悬疑感的纪录片式梗概。\n\n要求：\n1. 开篇必须有一个颠覆常识的惊人事实或数字。\n2. 按「现象→原理→实验证据→颠覆性结论」逻辑链展开。\n3. 必须包含至少3个具体、可视化的数字。\n4. 分幕结构（硬性）：synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n\n输出 JSON（键名固定）：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"科学背景\",\"identity\":\"主角\",\"industry_rules\":[\"科学规律\"]}",
+      "image": "Flat 2D vector infographic sci-tech illustration style, minimalist blueprint diagram, thin clean black outlines, high-contrast digital colors, glowing neon accents, scientific cross-section diagrams, data visualization panels. No 3D rendering, no photoreal textures.",
+      "voiceover": "你是一个极其冷峻、犀利的短视频旁白文案大师。\n任务：按用户指示写出一段沉浸式旁白。\n全程使用「你」，极简冷峻。禁止分镜标签。只输出旁白正文。",
+      "polish": "你是一位专业的资深编剧与剧本医生。\n任务：请阅读用户提供的原始素材（梗概、片段或小说节选均可），在【完全保留用户原始创意、情节走向和核心设定】的前提下，进行专业润色。\n\n输出：仅 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"short_title\":\"12字内标题\",\"era\":\"时代背景\",\"identity\":\"主角身份\",\"industry_rules\":[\"规则\"]}",
+      "storyboard": "【画风锚点】\nFlat 2D vector infographic sci-tech illustration style, minimalist blueprint diagram, thin clean black outlines, high-contrast digital colors, glowing neon accents, scientific cross-section diagrams, data visualization panels. No 3D rendering, no photoreal textures.\n\n【分镜表现规则】\n★ 科普展示规范（优先信息清晰度与视觉隐喻）：\n1. 优先使用科学视觉隐喻：用可视化比喻表现抽象概念（如：芯片→精密数字城市，引力→时空网格弯曲，神经元→发光网络）。\n2. 镜头允许概念性大跳切，不强制空间连贯（如从微观细胞→宏观人体→地球）。\n3. 尽量减少拟人化情绪表达，以信息清晰度和视觉冲击力为第一优先。\n4. 数据与文字标注：当旁白含具体数字或术语时，在画面描述中明确要求将其可视化为标注图、对比图或比例示意图。"
+    }
+  },
+  {
+    "id": "ch_custom_1780380702511",
+    "channelType": "drama",
+    "name": "游戏的方式讲科普",
+    "emoji": "🎬",
+    "color": "#3B82F6",
+    "locked": false,
+    "presets": {
+      "outline": "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满利益算计、阶层跃迁与人性异化的第二人称人生副本梗概。\n分幕结构硬性：输出 synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n输出 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"时代\",\"identity\":\"主角终极身份\",\"industry_rules\":[\"潜规则\"]}",
+      "image": "风格提示词：\n\n**核心风格描述：**\nA low-saturation, highly detailed, multi-layered 2D flat-illustration pixel narrative art style, blending retro aesthetic with painterly, textured surfaces. The image should have rough edges, visible pixel grids, and the texture of an old, aged parchment or worn paper.\n\n**风格元素：**\n*   **低饱和度与克制色调：** 限制色彩，使用静音、灰蒙蒙的色彩，如古旧羊皮纸黄、暗橄榄绿、砖红、莫兰迪灰蓝，没有刺眼的荧光色。\n*   **像素插画叙事：** 利用大量微型像素人物和物体，编织复杂的、多层次的非线性叙事意象，例如挤在长桌前的无数像素小人。\n*   **非写实与意象化表达：** 不追求物理真实，而是使用非写实构图和意象，例如用比例失调的巨大餐具切一块微小的发光蛋糕来表达概念。\n*   **绘画感与纹理：** 像素色块具有厚重的绘画肌理，如油画抹刀痕迹、色粉笔涂抹痕迹或颗粒感，使整体画面显得克制、冷峻而有质感。\n*   **致敬硬核独立游戏UI：** 界面元素，包括文本和图表（如雷达图），应具有像素风和复古仪表盘感，与背景纹理融合。",
+      "voiceover": "",
+      "polish": "",
+      "storyboard": "**核心风格描述：**\nA low-saturation, highly detailed, multi-layered 2D flat-illustration pixel narrative art style, blending retro aesthetic with painterly, textured surfaces. The image should have rough edges, visible pixel grids, and the texture of an old, aged parchment or worn paper.\n【分镜表现规则】\n★ 科普展示规范（优先信息清晰度与视觉隐喻）：\n1. 优先使用科学视觉隐喻：用可视化比喻表现抽象概念（如：芯片→精密数字城市，引力→时空网格弯曲，神经元→发光网络）。\n2. 镜头允许概念性大跳切，不强制空间连贯（如从微观细胞→宏观人体→地球）。\n3. 尽量减少拟人化情绪表达，以信息清晰度和视觉冲击力为第一优先。\n4. 数据与文字标注：当旁白含具体数字或术语时，在画面描述中明确要求将其可视化为标注图、对比图或比例示意图。"
+    },
+    "presetsBackup": {
+      "outline": "",
+      "image": "风格提示词：\n\n**核心风格描述：**\nA low-saturation, highly detailed, multi-layered 2D flat-illustration pixel narrative art style, blending retro aesthetic with painterly, textured surfaces. The image should have rough edges, visible pixel grids, and the texture of an old, aged parchment or worn paper.\n\n**风格元素：**\n*   **低饱和度与克制色调：** 限制色彩，使用静音、灰蒙蒙的色彩，如古旧羊皮纸黄、暗橄榄绿、砖红、莫兰迪灰蓝，没有刺眼的荧光色。\n*   **像素插画叙事：** 利用大量微型像素人物和物体，编织复杂的、多层次的非线性叙事意象，例如挤在长桌前的无数像素小人。\n*   **非写实与意象化表达：** 不追求物理真实，而是使用非写实构图和意象，例如用比例失调的巨大餐具切一块微小的发光蛋糕来表达概念。\n*   **绘画感与纹理：** 像素色块具有厚重的绘画肌理，如油画抹刀痕迹、色粉笔涂抹痕迹或颗粒感，使整体画面显得克制、冷峻而有质感。\n*   **致敬硬核独立游戏UI：** 界面元素，包括文本和图表（如雷达图），应具有像素风和复古仪表盘感，与背景纹理融合。",
+      "voiceover": "",
+      "polish": "",
+      "storyboard": ""
+    }
+  }
+]

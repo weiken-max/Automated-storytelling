@@ -151,6 +151,8 @@ ALLOWED_TRANSITIONS = {
 # 四、卡片按钮 Action Type 常量
 # ================================================================
 ACTION = {
+    # 风格选择
+    "SELECT_STYLE":                 "select_style",
     # 选题与立项
     "SELECT_TOPIC":                 "select_topic",
     "REQUEST_IDEAS":                "request_ideas",
@@ -174,6 +176,10 @@ ACTION = {
     # 分镜审批
     "APPROVE_STORYBOARDS":          "approve_storyboards",
     "REJECT_STORYBOARD_BATCH":      "reject_storyboard_batch",
+    # 分镜提示词操作（新增）
+    "TOGGLE_BATCH_PROMPTS":         "toggle_batch_prompts",
+    "REVISE_STORYBOARD_PROMPT":     "revise_storyboard_prompt",
+    "REJECT_BATCH_WITH_PROMPTS":    "reject_batch_with_prompts",
     # 项目控制
     "CANCEL_PROJECT":               "cancel_project",
     "PAUSE_PROJECT":                "pause_project",
@@ -435,3 +441,101 @@ STORYBOARD_REJECT_PATTERNS = [
     r"第\s*(\d+)\s*(?:批|张)\s*(?:重画|重绘|重新生成|重新画|有问题)",
     r"(?:重画|重绘)\s*第\s*(\d+)\s*(?:批|张)",
 ]
+
+# ================================================================
+# 十一、分镜提示词修改消息解析模板（新增）
+# ================================================================
+import re as _re
+
+# 单子分镜修改："批次 2 S_18 光影较弱，增强光影"
+PROMPT_REVISION_SINGLE = _re.compile(
+    r"^批次\s*(\d+)\s+S[_]?(\d+)\s+(.+)$", _re.IGNORECASE
+)
+
+# 批量子分镜修改："批次 2 修改：S_18 增强光影；S_22 拉近特写"
+PROMPT_REVISION_BATCH = _re.compile(
+    r"^批次\s*(\d+)\s+(?:修改|调整|改)[：:]\s*(.+)$", _re.IGNORECASE
+)
+
+# 整批修改："批次 2 加强 4×4 宫格布局约束"
+PROMPT_REVISION_FULL = _re.compile(
+    r"^批次\s*(\d+)\s+(.+)$", _re.IGNORECASE
+)
+
+# 提示词修改命令关键词（用于在分审态下快速识别）
+PROMPT_REVISION_KEYWORDS = [
+    "批次", "S_", "提示词", "修改", "调整", "改",
+]
+
+# 提示词展示模板
+PROMPT_VIEW_TEMPLATE = (
+    "💡 **修改提示词格式**：\n"
+    "• 单个子分镜：`批次 N S_XXX 修改意见`\n"
+    "  示例：`批次 2 S_18 光影较弱，增强光影`\n"
+    "• 整批修改：`批次 N 修改意见`\n"
+    "  示例：`批次 2 加强 4×4 宫格布局约束`\n"
+    "• 多子分镜：`批次 N 修改：S_18 增强光影；S_22 拉近特写`"
+)
+
+# ── 定妆照修改意见解析（十二）──
+
+# 主角：Lang · 主角 · 青年期（youth）...反馈...
+CHARACTER_REVISION_PROTAGONIST = _re.compile(
+    r"^(.+?)\s*·\s*主角\s*·\s*(.+?)（(\w+)）\s*(.+)$"
+)
+# group(1) = name_en, group(2) = stage_name_cn, group(3) = stage_key, group(4) = feedback
+
+# 配角：王总 · 配角 · sr_001 ...反馈...
+CHARACTER_REVISION_SUPPORTING = _re.compile(
+    r"^(.+?)\s*·\s*配角\s*·\s*(\w+)\s+(.+)$"
+)
+# group(1) = name_en, group(2) = role_id, group(3) = feedback
+
+# 视觉元素（科普模式）：黑洞 · 视觉元素 · black_hole ...反馈...
+CHARACTER_REVISION_ELEMENT = _re.compile(
+    r"^(.+?)\s*·\s*视觉元素\s*·\s*(\w+)\s+(.+)$"
+)
+# group(1) = element_name, group(2) = element_key, group(3) = feedback
+
+# 一级粗筛关键词
+CHARACTER_REVISION_KEYWORDS = [
+    "· 主角 ·", "· 配角 ·", "· 视觉元素 ·"
+]
+
+# ── 风格选择常量（十三）──
+
+STYLE_PRESET_OPTIONS = ["story", "science"]
+
+STYLE_PRESET_LABELS = {
+    "story":   "📖 故事生成",
+    "science": "🔬 科普视频",
+}
+
+# LLM 提示词改写 System Prompt
+PROMPT_REVISION_SYSTEM = """你是一个专业的 AI 绘画提示词优化师。
+用户会给你一条英文视觉提示词（visual_prompt）和中文修改意见。
+你需要根据修改意见，改写这条英文提示词，使其更准确地描述画面。
+
+【改写规则】
+1. 保留原提示词中所有与修改意见不冲突的描述。
+2. 根据修改意见调整构图、光影、色调、细节等。
+3. 如果修改意见是加强 4×4 宫格布局，确保 prompt 中不包含会破坏均匀 grid 的描述（如特写 full-body、透视变形等）。
+4. 输出格式：只输出改写后的完整英文提示词，不要加任何解释或 markdown。
+5. 提示词长度控制在 200 词以内，简洁有力。
+6. 始终使用英文输出。"""
+
+# 整批提示词审查 System Prompt
+PROMPT_BATCH_REVIEW_SYSTEM = """你是一个 AI 绘画提示词审查专家。
+用户会给你 16 条英文视觉提示词和一个整体修改意见。
+你需要审查全部 16 条提示词，找出可能导致画面问题的提示词，并改写。
+
+【审查规则】
+1. 如果用户说的是"4×4 宫格布局不对"或"比例有问题"，检查每条 prompt 是否包含：
+   - 特写/极端近景描述（close-up, extreme close-up, macro）→ 可能破坏均匀布局
+   - 广角/鱼眼/透视变形描述（wide-angle, fisheye, distorted perspective）→ 可能导致格子不对齐
+   - 单个人物占满画面描述（full frame, fills the frame）→ 可能导致该格过大
+   - 保持中景/中近景一致性（medium shot, medium close-up）
+2. 只改写确实有问题的 prompt，不改没问题的。
+3. 输出 JSON 格式：{"S_018": "revised prompt...", "S_022": "revised prompt..."}
+   只输出被修改的条目，未修改的不要包含。
+4. 每条改写后的 prompt 始终使用英文，长度控制在 200 词以内。"""

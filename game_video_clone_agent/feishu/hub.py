@@ -57,6 +57,34 @@ PROCESSED_MSG_IDS: dict[str, bool] = {}
 
 
 # ================================================================
+# 构建分镜审核卡片（供 Action 和 MessageRouter 使用）
+# ================================================================
+def _build_storyboard_card_fn(session, mgr, for_patch: bool = False):
+    """根据当前 session 状态构建 StoryboardCard。
+    for_patch=True 时跳过图片（用于 PATCH 刷新，避免飞书客户端缓存旧 img_key）。"""
+    from feishu.cards.storyboard_card import StoryboardCard
+
+    run_id = bridge.get_current_run_id() or ""
+    run_dir = BASE_DIR / "data" / "runs" / run_id
+    storyboards_dir = run_dir / "storyboards"
+
+    grid_files = []
+    if storyboards_dir.exists():
+        grid_files = sorted(
+            storyboards_dir.glob("grid_batch_*.png"),
+            key=lambda p: p.name,
+        )
+
+    return StoryboardCard(
+        session=session,
+        mgr=mgr,
+        grid_files=grid_files,
+        run_id=run_id,
+        for_patch=for_patch,
+    )
+
+
+# ================================================================
 # 构建 Action 上下文（提供给按钮处理器）
 # ================================================================
 def _make_action_context():
@@ -79,6 +107,7 @@ def _make_action_context():
         "PIPELINE_STOP_FLAGS":           bridge.PIPELINE_STOP_FLAGS,
         "schedule_self_restart_notice":  bridge.schedule_self_restart_notice,
         "switch_active_run":             bridge.switch_active_run,
+        "build_storyboard_card":         _build_storyboard_card_fn,
     }
 
 
@@ -117,6 +146,18 @@ def do_card_action(data: P2CardActionTrigger) -> P2CardActionTriggerResponse:
 
         # 记录交互
         _remember_operator_open_id(open_id)
+
+        # 从点击事件获取卡片 message_id（hub_old 发卡时未写入 session，此处补上以便 PATCH）
+        if not session.card_id:
+            try:
+                ctx_raw = getattr(data.event, "context", None)
+                if ctx_raw:
+                    mid = getattr(ctx_raw, "open_message_id", None) or ctx_raw.get("open_message_id", "")
+                    if mid:
+                        session.card_id = mid
+                        session.card_type = getattr(session, "card_type", "") or "storyboard"
+            except Exception:
+                pass
 
         # 分发
         ctx = _make_action_context()
@@ -226,6 +267,7 @@ def _handle_message_async(data):
         regenerate_storyboard_batch=bridge.regenerate_storyboard_batch,
         retry_single_step=bridge.retry_single_step,
         resend_storyboard_review_card=bridge.resend_storyboard_review_card,
+        build_storyboard_card=_build_storyboard_card_fn,
     )
 
     # 持久化状态（以 state_mgr 的实际状态为准，同步 session）

@@ -284,11 +284,12 @@ async def generate_grid_batch(
         ordered_paths, physical_anchors or {}, cast_registry or {}
     )
 
-    # 构建聚合 Prompt（前置时代锁 + 参考图序说明 + 宫格硬约束）
+    # 构建聚合 Prompt（前置时代锁 + 参考图序说明 + 宫格硬约束 + 动态读取 UI 选择的画风风格预设）
+    global_style = os.environ.get("STYLE_ANCHOR", "Cyanide and Happiness comic style, flat illustration, pure 2D. ")
     combined_prompt = (global_era_prefix or "") + global_ref_txt + (
         "Generate ONE single 16:9 landscape canvas comic page. "
         "Strict 4×4 grid only: exactly 16 EQUAL rectangular panels; NO merged cells. "
-        "Cyanide and Happiness comic style, flat illustration, pure 2D. "
+        f"{global_style.strip()} "
     )
     combined_prompt += "The grid contains the following sequential scenes:\n"
 
@@ -579,7 +580,8 @@ async def main_single_batch(batch_index: int):
 async def main_full():
     """完整流水线：生图 → 裁切 → 高清（向后兼容旧行为）。"""
     # 无人值守全量跑：强制做宫格线校验（可被用户在 shell 中 GRID_SKIP_LAYOUT_VALIDATE=1 覆盖）
-    os.environ["GRID_SKIP_LAYOUT_VALIDATE"] = "0"
+    if "GRID_SKIP_LAYOUT_VALIDATE" not in os.environ:
+        os.environ["GRID_SKIP_LAYOUT_VALIDATE"] = "0"
     timeline, global_era_prefix, physical_flat, cast_reg, total_shots = _load_pipeline_context()
 
     print("\n=======================================================")
