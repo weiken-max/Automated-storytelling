@@ -199,6 +199,7 @@ VENDORS_PRESETS = {
         },
         "extra_params": {
             "cooldown": 35,
+            "request_timeout": 300,
             "gen_endpoint": "/v1beta/models/{model}:generateContent",
         }
     },
@@ -243,6 +244,9 @@ IMG_DASHSCOPE_HTTP   = _img_cfg.get("dashscope_base_http", "")
 MODEL_IMG            = _img_cfg["models"]["img"]
 IMG_EXTRA_PARAMS     = _img_cfg.get("extra_params", {})
 
+MODEL_IMG_CAST       = MODEL_IMG
+MODEL_IMG_STORY      = MODEL_IMG
+
 # ── 向后兼容别名（让旧代码不报错）──────────────────────
 API_KEY              = IMG_API_KEY       # 旧代码里 API_KEY 默认指生图厂商
 APP_SECRET           = _img_cfg.get("app_secret", "")
@@ -250,3 +254,42 @@ BASE_URL             = IMG_BASE_URL
 DASHSCOPE_BASE_HTTP  = IMG_DASHSCOPE_HTTP
 EXTRA_PARAMS         = IMG_EXTRA_PARAMS
 MODELS               = _img_cfg["models"]
+
+# ================================================================
+# ⚙️ 动态加载本地自定义模型名覆盖 (data/model_settings.json)
+# ================================================================
+def load_dynamic_settings():
+    global MODEL_LLM, MODEL_VLM, MODEL_IMG, MODEL_IMG_CAST, MODEL_IMG_STORY, MODELS
+    import json
+    settings_file = Path(__file__).resolve().parent.parent / "data" / "model_settings.json"
+    if settings_file.exists():
+        try:
+            with open(settings_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if "MODEL_LLM" in data and data["MODEL_LLM"]:
+                MODEL_LLM = data["MODEL_LLM"]
+            if "MODEL_VLM" in data and data["MODEL_VLM"]:
+                MODEL_VLM = data["MODEL_VLM"]
+            
+            # 加载分离的定妆与分镜生图模型
+            if "MODEL_IMG_CAST" in data and data["MODEL_IMG_CAST"]:
+                MODEL_IMG_CAST = data["MODEL_IMG_CAST"]
+            elif "MODEL_IMG" in data and data["MODEL_IMG"]:
+                MODEL_IMG_CAST = data["MODEL_IMG"]
+                
+            if "MODEL_IMG_STORY" in data and data["MODEL_IMG_STORY"]:
+                MODEL_IMG_STORY = data["MODEL_IMG_STORY"]
+            elif "MODEL_IMG" in data and data["MODEL_IMG"]:
+                MODEL_IMG_STORY = data["MODEL_IMG"]
+                
+            # MODEL_IMG 默认为分镜图模型以保证向后兼容
+            MODEL_IMG = MODEL_IMG_STORY
+            if MODELS and isinstance(MODELS, dict):
+                MODELS["img"] = MODEL_IMG
+                
+            print(f"🧠 [model_presets] Loaded dynamic overrides: LLM={MODEL_LLM}, VLM={MODEL_VLM}, IMG_CAST={MODEL_IMG_CAST}, IMG_STORY={MODEL_IMG_STORY}")
+        except Exception as e:
+            print(f"⚠️ [model_presets] Failed to load dynamic settings: {e}")
+
+load_dynamic_settings()
+

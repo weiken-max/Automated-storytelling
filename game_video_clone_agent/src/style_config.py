@@ -144,8 +144,13 @@ FOUR_CONTAINER_SIZE = (2048, 1536)
 #  🎙️ 配音配置
 # ================================================================
 VOICE_ROLE  = "zh-CN-YunjianNeural"
-VOICE_RATE  = "+20%"
+VOICE_RATE  = "+0%"
 VOICE_PITCH = "+0Hz"
+
+# 火山引擎 (豆包语音合成) 配置
+VOLC_TTS_API_KEY = os.environ.get("VOLC_TTS_API_KEY", "")
+VOLC_TTS_APPID = os.environ.get("VOLC_TTS_APPID", "")
+
 
 # DSP 默认参数（主音轨连续化）
 DSP_TRIM_THRESHOLD_DB = -40.0

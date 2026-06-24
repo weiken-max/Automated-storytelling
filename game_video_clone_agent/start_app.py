@@ -49,7 +49,7 @@ sys.path.insert(0, BASE_DIR)
 # ── 导入项目核心模块 ──
 import src.style_config as config
 from src.run_context import start_new_run, get_paths, get_current_run_id
-from src.ref_generator import generate_ref_sheet_at
+from src.ref_generator import generate_ref_sheet_at, _build_ref_display_slots
 from src.image_engine import generate_image as _gen_img
 
 # story_planner_v6 可能在 src/ 中，尝试两种导入方式
@@ -240,8 +240,15 @@ def _generate_cast_prompts_via_llm(topic: str, synopsis_text: str, entities: lis
         ents.append(labels[len(ents)])
         
     # 1. 默认模板备用
+    ref_anchor_lower = str(config.REF_STYLE_ANCHOR or "").lower()
+    is_cyanide_style = "cyanide" in ref_anchor_lower or "stickman" in ref_anchor_lower
+    if is_cyanide_style:
+        char_default = "Cyanide-and-Happiness web-comic character sheet: 2D vector, oversized round bean head, two dot eyes, arms and legs as pure black stick strokes (matchstick limbs, no realistic anatomy), simple torso block, bold outlines, flat fills, no shading or fabric micro-detail."
+    else:
+        char_default = "Clean 2D flat illustration representation of a character: orthographic sheet, primitive shapes, clear outlines, flat color fills."
+
     default_templates = {
-        "character": "Cyanide-and-Happiness web-comic character sheet: 2D vector, oversized round bean head, two dot eyes, arms and legs as pure black stick strokes (matchstick limbs, no realistic anatomy), simple torso block, bold outlines, flat fills, no shading or fabric micro-detail.",
+        "character": char_default,
         "scene": "A flat 2D vector style minimalist cartoon background scenery. Flat shades, no character.",
         "prop": "A flat 2D vector icon cartoon object. Primitive shape, flat color fill, white background."
     }
@@ -251,14 +258,18 @@ def _generate_cast_prompts_via_llm(topic: str, synopsis_text: str, entities: lis
     for lbl, typ in zip(labels, types):
         tpl = default_templates.get(typ, default_templates["character"])
         if custom_template.strip():
-            import re
-            match_lbl = re.search(rf"\\[{re.escape(lbl)}\\](.*?)(\\[|$)", custom_template, re.DOTALL | re.IGNORECASE)
-            if match_lbl:
-                tpl = match_lbl.group(1).strip()
+            if "[" not in custom_template:
+                # 智能识别：若预设中无括号，直接将其作为通用模板
+                tpl = custom_template.strip()
             else:
-                match_typ = re.search(rf"\\[{re.escape(typ)}\\](.*?)(\\[|$)", custom_template, re.DOTALL | re.IGNORECASE)
-                if match_typ:
-                    tpl = match_typ.group(1).strip()
+                import re
+                match_lbl = re.search(rf"\[{re.escape(lbl)}\](.*?)(\[|$)", custom_template, re.DOTALL | re.IGNORECASE)
+                if match_lbl:
+                    tpl = match_lbl.group(1).strip()
+                else:
+                    match_typ = re.search(rf"\[{re.escape(typ)}\](.*?)(\[|$)", custom_template, re.DOTALL | re.IGNORECASE)
+                    if match_typ:
+                        tpl = match_typ.group(1).strip()
         baseline_prompts.append(tpl)
         
     # 3. 构造大模型 Prompt
@@ -274,7 +285,7 @@ Each value must be a highly detailed English paragraph (60-90 words, no bullet l
 You MUST follow the style and structure constraints of these baseline templates, and expand/infuse the {{entity}} descriptions with rich narrative details:
 """
     for lbl, tpl, ent in zip(labels, baseline_prompts, ents):
-        sys_prompt += f"- For element \"{lbl}\" (representing \"{ent}\"\): Expand upon the baseline template: \"{tpl}\"\n"
+        sys_prompt += f"- For element \"{lbl}\" (representing \"{ent}\"): Expand upon the baseline template: \"{tpl}\"\n"
         
     sys_prompt += f"""
 Format:
@@ -322,6 +333,16 @@ Format:
             desc = tpl.replace("{entity}", ent).replace("{ent}", ent)
             cast_prompt_parts.append(f"[{lbl}]\\n{desc}")
         return "\\n\\n".join(cast_prompt_parts)
+
+
+def _stage_ch(st):
+    mapping = {
+        "child": "童年",
+        "youth": "青年",
+        "middle": "中年",
+        "elderly": "老年"
+    }
+    return mapping.get(st, st)
 
 
 class DesktopApiBridge:
@@ -425,6 +446,118 @@ class DesktopApiBridge:
         return {"status": "success", "stages": results}
 
     # ──────────────────────────────────────────────
+    # ⚙️ 模型配置接口
+    # ──────────────────────────────────────────────
+    def get_model_settings(self):
+        """
+        获取当前模型配置及可选预设
+        """
+        try:
+            from src.model_presets import MODEL_LLM, MODEL_VLM, MODEL_IMG_CAST, MODEL_IMG_STORY
+            preset_text_models = [
+                "deepseek-v4-pro",
+                "gemini-1.5-pro",
+                "gemini-2.5-flash"
+            ]
+            preset_img_models = [
+                "gemini-3.1-flash-image-preview",
+                "gpt-image-1",
+                "gpt-image-2",
+                "gpt-image-1-all",
+                "flux-kontext-pro",
+                "flux-kontext-max"
+            ]
+            return {
+                "status": "success",
+                "data": {
+                    "MODEL_LLM": MODEL_LLM,
+                    "MODEL_VLM": MODEL_VLM,
+                    "MODEL_IMG_CAST": MODEL_IMG_CAST,
+                    "MODEL_IMG_STORY": MODEL_IMG_STORY,
+                    "presets": {
+                        "text": preset_text_models,
+                        "image": preset_img_models
+                    }
+                }
+            }
+        except Exception as e:
+            return {"status": "error", "detail": f"获取模型配置失败: {str(e)}"}
+
+    def save_model_settings(self, settings):
+        """
+        保存模型配置到本地并就地热更新内存变量
+        """
+        try:
+            settings_dir = BASE_DIR_PATH / "data"
+            settings_dir.mkdir(parents=True, exist_ok=True)
+            settings_file = settings_dir / "model_settings.json"
+            
+            with open(settings_file, "w", encoding="utf-8") as f:
+                json.dump(settings, f, indent=4, ensure_ascii=False)
+                
+            llm = settings.get("MODEL_LLM")
+            vlm = settings.get("MODEL_VLM")
+            img_cast = settings.get("MODEL_IMG_CAST")
+            img_story = settings.get("MODEL_IMG_STORY")
+            
+            # 兼容性兜底
+            if not img_cast:
+                img_cast = settings.get("MODEL_IMG")
+            if not img_story:
+                img_story = settings.get("MODEL_IMG")
+            img = img_story or img_cast
+            
+            import sys
+            
+            # 1. 更新 src.model_presets
+            if "src.model_presets" in sys.modules:
+                m = sys.modules["src.model_presets"]
+                if llm: m.MODEL_LLM = llm
+                if vlm: m.MODEL_VLM = vlm
+                if img_cast: m.MODEL_IMG_CAST = img_cast
+                if img_story: m.MODEL_IMG_STORY = img_story
+                if img: m.MODEL_IMG = img
+                if hasattr(m, "MODELS") and isinstance(m.MODELS, dict):
+                    if llm: m.MODELS["llm"] = llm
+                    if vlm: m.MODELS["vlm"] = vlm
+                    if img: m.MODELS["img"] = img
+                    
+            # 2. 更新 src.style_config
+            if "src.style_config" in sys.modules:
+                s = sys.modules["src.style_config"]
+                if llm: s.MODEL_LLM = llm
+                if vlm: s.MODEL_VLM = vlm
+                if img: s.MODEL_IMG = img
+                if img_cast: s.MODEL_IMG_CAST = img_cast
+                if img_story: s.MODEL_IMG_STORY = img_story
+                
+            # 3. 更新 src.image_engine
+            if "src.image_engine" in sys.modules:
+                ie = sys.modules["src.image_engine"]
+                if img: ie.MODEL_IMG = img
+                if img_cast: ie.MODEL_IMG_CAST = img_cast
+                if img_story: ie.MODEL_IMG_STORY = img_story
+                
+            # 4. 更新 src.step1_writer_v6
+            if "src.step1_writer_v6" in sys.modules:
+                sw = sys.modules["src.step1_writer_v6"]
+                if llm:
+                    sw.MODEL_LLM = llm
+                    sw.MODEL_WRITER = llm
+                    
+            # 5. 更新 src.story_planner_v6
+            if "src.story_planner_v6" in sys.modules:
+                sp = sys.modules["src.story_planner_v6"]
+                if llm:
+                    sp.MODEL_LLM = llm
+                    sp.MODEL_WRITER = llm
+                    
+            print(f"[Bridge] Saved split model settings: LLM={llm}, VLM={vlm}, IMG_CAST={img_cast}, IMG_STORY={img_story}")
+            return {"status": "success", "msg": "模型配置已保存并生效"}
+        except Exception as e:
+            return {"status": "error", "detail": f"保存模型配置失败: {str(e)}"}
+
+    # ──────────────────────────────────────────────
     # 🔍 探测历史会话恢复现场
     # ──────────────────────────────────────────────
     def get_restorable_session(self):
@@ -476,61 +609,92 @@ class DesktopApiBridge:
 
         # 2. 恢复定妆卡片（支持自定义及兜底通道的资产配置）
         assets = []
-        assets_config = _get_channel_assets_config(mode_path)
-        labels = [ast["label"] for ast in assets_config]
-        types = [ast["type"] for ast in assets_config]
         has_assets = True
 
-        for idx, (label, t) in enumerate(zip(labels, types)):
-            card_id = f"cast_0{idx + 1}"
-            img_file = run_dir / "refs" / card_id / "triple_view.png"
-            if img_file.exists():
-                img_url = _to_relative_url(img_file)
-                prompt = ""
-                # 如果有提炼的实体，高精构思还原 prompts
-                if idx < len(entities):
-                    ent = entities[idx]
-                    name_str = f"{label}：{ent}"
-                    
-                    cast_template = GLOBAL_STATE.get("cast_prompt", "")
-                    char_prompt = "A cute cartoon stickman style representation of {entity}. Flat colors, strong outline, white background."
-                    scene_prompt = "A flat 2D vector style minimalist cartoon background scenery depicting {entity}. Flat shades, no character."
-                    prop_prompt = "A flat 2D vector icon cartoon object depicting {entity}. Primitive shape, flat color fill, white background."
+        recovered_assets_to_gen = None
+        if full_story_path.exists():
+            try:
+                with open(full_story_path, "r", encoding="utf-8") as f:
+                    fs_data = json.load(f)
+                recovered_assets_to_gen = fs_data.get("metadata", {}).get("assets_to_generate")
+            except Exception:
+                pass
 
-                    if cast_template.strip():
-                        import re
-                        lbl_match = re.search(rf"\[{re.escape(label)}\](.*?)(\[|$)", cast_template, re.DOTALL | re.IGNORECASE)
-                        if lbl_match:
-                            matched_prompt = lbl_match.group(1).strip()
-                            if t == "character": char_prompt = matched_prompt
-                            elif t == "scene": scene_prompt = matched_prompt
-                            elif t == "prop": prop_prompt = matched_prompt
-                        else:
-                            typ_match = re.search(rf"\[{re.escape(t)}\](.*?)(\[|$)", cast_template, re.DOTALL | re.IGNORECASE)
-                            if typ_match:
-                                matched_prompt = typ_match.group(1).strip()
-                                if t == "character": char_prompt = matched_prompt
-                                elif t == "scene": scene_prompt = matched_prompt
-                                elif t == "prop": prop_prompt = matched_prompt
-
-                    if t == "scene":
-                        prompt = scene_prompt.replace("{entity}", ent).replace("{ent}", ent)
-                    elif t == "prop":
-                        prompt = prop_prompt.replace("{entity}", ent).replace("{ent}", ent)
-                    else:
-                        prompt = char_prompt.replace("{entity}", ent).replace("{ent}", ent)
+        if recovered_assets_to_gen:
+            GLOBAL_STATE["assets_to_generate"] = recovered_assets_to_gen
+            for idx, ast in enumerate(recovered_assets_to_gen):
+                card_id = f"cast_0{idx + 1}"
+                img_file = run_dir / "refs" / card_id / "triple_view.png"
+                if img_file.exists():
+                    img_url = _to_relative_url(img_file)
+                    assets.append({
+                        "id": card_id,
+                        "name": ast.get("label", card_id),
+                        "prompt": ast.get("english_prompt", ""),
+                        "svgType": ast.get("type", "character"),
+                        "image_url": img_url,
+                        "custom_image_path": ast.get("custom_image_path")
+                    })
                 else:
-                    name_str = f"{label}"
+                    has_assets = False
+        else:
+            assets_config = _get_channel_assets_config(mode_path)
+            labels = [ast["label"] for ast in assets_config]
+            types = [ast["type"] for ast in assets_config]
+            for idx, (label, t) in enumerate(zip(labels, types)):
+                card_id = f"cast_0{idx + 1}"
+                img_file = run_dir / "refs" / card_id / "triple_view.png"
+                if img_file.exists():
+                    img_url = _to_relative_url(img_file)
+                    prompt = ""
+                    # 如果有提炼的实体，高精构思还原 prompts
+                    if idx < len(entities):
+                        ent = entities[idx]
+                        name_str = f"{label}：{ent}"
+                        
+                        cast_template = GLOBAL_STATE.get("cast_prompt", "")
+                        char_prompt = "A cute cartoon stickman style representation of {entity}. Flat colors, strong outline, white background."
+                        scene_prompt = "A flat 2D vector style minimalist cartoon background scenery depicting {entity}. Flat shades, no character."
+                        prop_prompt = "A flat 2D vector icon cartoon object depicting {entity}. Primitive shape, flat color fill, white background."
 
-                assets.append({
-                    "id": card_id,
-                    "name": name_str,
-                    "prompt": prompt,
-                    "svgType": t,
-                    "image_url": img_url
-                })
-            else:
-                has_assets = False
+                        if cast_template.strip():
+                            import re
+                            lbl_match = re.search(rf"\[{re.escape(label)}\](.*?)(\[|$)", cast_template, re.DOTALL | re.IGNORECASE)
+                            if lbl_match:
+                                matched_prompt = lbl_match.group(1).strip()
+                                if t == "character": char_prompt = matched_prompt
+                                else:
+                                    if t == "scene": scene_prompt = matched_prompt
+                                    elif t == "prop": prop_prompt = matched_prompt
+                            else:
+                                typ_match = re.search(rf"\[{re.escape(t)}\](.*?)(\[|$)", cast_template, re.DOTALL | re.IGNORECASE)
+                                if typ_match:
+                                    matched_prompt = typ_match.group(1).strip()
+                                    if t == "character": char_prompt = matched_prompt
+                                    else:
+                                        if t == "scene": scene_prompt = matched_prompt
+                                        elif t == "prop": prop_prompt = matched_prompt
+
+                        if t == "scene":
+                            prompt = scene_prompt.replace("{entity}", ent).replace("{ent}", ent)
+                        elif t == "prop":
+                            prompt = prop_prompt.replace("{entity}", ent).replace("{ent}", ent)
+                        else:
+                            prompt = char_prompt.replace("{entity}", ent).replace("{ent}", ent)
+                    else:
+                        name_str = f"{label}"
+
+                    ast_cfg = assets_config[idx] if idx < len(assets_config) else {}
+                    assets.append({
+                        "id": card_id,
+                        "name": name_str,
+                        "prompt": prompt,
+                        "svgType": t,
+                        "image_url": img_url,
+                        "custom_image_path": ast_cfg.get("custom_image_path")
+                    })
+                else:
+                    has_assets = False
 
         grids = []
         frames = []
@@ -542,11 +706,19 @@ class DesktopApiBridge:
                 total_shots = len(timeline)
                 
                 # Reconstruct grids
-                batches = [timeline[i:i + 16] for i in range(0, len(timeline), 16)]
+                grid_mode = (narr_data.get("metadata") or {}).get("grid_mode", "4x4")
+                if grid_mode == "2x2":
+                    panels_count = 4
+                elif grid_mode == "3x3":
+                    panels_count = 9
+                else:
+                    panels_count = 16
+
+                batches = [timeline[i:i + panels_count] for i in range(0, len(timeline), panels_count)]
                 storyboards_dir = run_dir / "storyboards"
                 for idx, batch_shots in enumerate(batches):
                     batch_index = idx + 1
-                    batch_start = (batch_index - 1) * 16 + 1
+                    batch_start = (batch_index - 1) * panels_count + 1
                     batch_end = min(batch_start + len(batch_shots) - 1, total_shots)
                     
                     grid_filename = f"grid_batch_{batch_index:03d}.png"
@@ -571,7 +743,7 @@ class DesktopApiBridge:
                 for idx, shot in enumerate(timeline):
                     frame_num = idx + 1
                     frame_id = f"frame_0{frame_num}"
-                    img_filename = f"S_00{frame_num}.png"
+                    img_filename = f"S_{frame_num:03d}.png"
                     img_file = storyboards_dir / img_filename
                     img_url = _to_relative_url(img_file) if img_file.exists() else ""
                     frames.append({
@@ -627,6 +799,7 @@ class DesktopApiBridge:
             "assets": assets,
             "frames": frames,
             "grids": grids,
+            "grid_mode": grid_mode,
             "video_url": video_url,
             "relative_video_path": relative_video_path
         }
@@ -647,12 +820,44 @@ class DesktopApiBridge:
 
             print(f"[Bridge] 模式: {mode_path}，润色: {polish_flow.get('enabled', False)}")
 
-            # 开启全新隔离批次
+            # 开启全新隔离批次或重用未完工的同文本批次
             topic = "director_cut_" + mode_path.lower()
-            run_dir = start_new_run(topic=topic)
-            run_id = run_dir.name
+            
+            last_run_id = get_current_run_id()
+            reuse_run = False
+            RUNS_ROOT = BASE_DIR_PATH / "data" / "runs"
+            if last_run_id:
+                last_run_dir = RUNS_ROOT / last_run_id
+                epic_mp4 = last_run_dir / "output" / "narrative_v6_final_epic.mp4"
+                if last_run_dir.exists() and not epic_mp4.exists():
+                    orig_text_file = last_run_dir / "scripts" / "original_text.txt"
+                    if orig_text_file.exists():
+                        try:
+                            last_text = orig_text_file.read_text(encoding="utf-8").strip()
+                            if last_text == original_text.strip():
+                                reuse_run = True
+                                run_dir = last_run_dir
+                                run_id = last_run_id
+                                print(f"[Bridge] 🌟 检测到输入文本与上次一致且未合成最终成片，自动重用当前批次目录: {run_id}")
+                        except Exception:
+                            pass
+            
+            if not reuse_run:
+                run_dir = start_new_run(topic=topic)
+                run_id = run_dir.name
+                print(f"[Bridge] 🆕 开启全新隔离批次目录: {run_id}")
+            else:
+                # 显式覆盖 current_run.json 确保统一
+                CURRENT_RUN_FILE = RUNS_ROOT / "current_run.json"
+                CURRENT_RUN_FILE.write_text(json.dumps({"run_id": run_id}, ensure_ascii=False), encoding="utf-8")
+
             paths = get_paths(create_if_missing=True)
             scripts_dir = paths["scripts_dir"]
+            
+            try:
+                (scripts_dir / "original_text.txt").write_text(original_text, encoding="utf-8")
+            except Exception as e:
+                print(f"[Bridge] ⚠️ 保存 original_text.txt 失败: {e}")
 
             GLOBAL_STATE["current_run_id"] = run_id
             GLOBAL_STATE["topic"] = topic
@@ -661,6 +866,13 @@ class DesktopApiBridge:
             GLOBAL_STATE["style_presets"] = render_flow.get("style_presets", "")
             GLOBAL_STATE["seed"] = render_flow.get("seed", 40984180)
             GLOBAL_STATE["polish_enabled"] = polish_flow.get("enabled", False)
+            GLOBAL_STATE["tts_engine"] = voiceover_flow.get("engine", "edge")
+            GLOBAL_STATE["tts_voice"] = voiceover_flow.get("voice_role", "")
+            GLOBAL_STATE["tts_rate"] = voiceover_flow.get("voice_rate", "")
+            GLOBAL_STATE["tts_emotion"] = voiceover_flow.get("voice_emotion", "")
+            GLOBAL_STATE["tts_pitch"] = voiceover_flow.get("voice_pitch", 0)
+            GLOBAL_STATE["tts_volume"] = voiceover_flow.get("voice_volume", 0)
+            GLOBAL_STATE["tts_prompt"] = voiceover_flow.get("voice_prompt", "")
             if render_flow.get("cast_prompt"):
                 GLOBAL_STATE["cast_prompt"] = render_flow.get("cast_prompt")
             if render_flow.get("storyboard_prompt"):
@@ -721,14 +933,159 @@ class DesktopApiBridge:
             GLOBAL_STATE["entities"] = entities
             GLOBAL_STATE["compiled_voiceover"] = compiled_voiceover
 
-            # 动态生成定妆照提示词（仅剧情频道需要三卡提示词，科普频道跳过）
-            if _is_drama_mode(mode_path) and entities:
+            # 检查是否为自定义资产配置频道
+            is_custom_channel = False
+            try:
+                channels_file = os.path.join(BASE_DIR, "data", "channels_presets.json")
+                if os.path.exists(channels_file):
+                    with open(channels_file, "r", encoding="utf-8") as f:
+                        channels = json.load(f)
+                    for ch in channels:
+                        if str(ch.get("id", "")).upper() == mode_path.upper():
+                            if ch.get("channelType") == "custom":
+                                is_custom_channel = True
+                            break
+            except Exception:
+                pass
+
+            assets_to_generate = []
+            dynamic_cast_prompt = ""
+            should_gen_cast = render_flow.get("should_gen_cast", False)
+            assets_config = _get_channel_assets_config(mode_path)
+
+            if should_gen_cast and entities and not is_custom_channel:
+                from src.ref_generator import llm_plan_cast_from_synopsis
+                print("[Bridge] 🧠 正在使用大模型规划多角色多时期定妆设计...")
+                plan = llm_plan_cast_from_synopsis(topic, syn_result)
+                if plan:
+                    GLOBAL_STATE["cast_plan"] = plan
+                    # 1. 主角阶段
+                    pro = plan.get("protagonist", {})
+                    pro_dn = pro.get("display_name_en", "Protagonist")
+                    pro_stages = list(pro.get("stages", []))
+                    if "middle" in pro_stages:
+                        pro_stages.remove("middle")
+                        pro_stages.insert(0, "middle")
+                    for st in pro_stages:
+                        stage_prompt = pro.get("stage_prompts", {}).get(st, {})
+                        assets_to_generate.append({
+                            "label": f"主角 ({_stage_ch(st)})",
+                            "type": "character",
+                            "role_id": "protagonist",
+                            "stage": st,
+                            "english_prompt": stage_prompt.get("english_prompt", ""),
+                            "anchor_description": stage_prompt.get("anchor_description", ""),
+                            "display_name_en": pro_dn
+                        })
+                    # 2. 配角阶段
+                    for sup in plan.get("supporting", []):
+                        rid = sup.get("role_id")
+                        sup_dn = sup.get("display_name_en", rid)
+                        sup_stages = list(sup.get("stages", []))
+                        if "middle" in sup_stages:
+                            sup_stages.remove("middle")
+                            sup_stages.insert(0, "middle")
+                        for st in sup_stages:
+                            stage_prompt = sup.get("stage_prompts", {}).get(st, {})
+                            assets_to_generate.append({
+                                "label": f"配角: {sup_dn} ({_stage_ch(st)})",
+                                "type": "character",
+                                "role_id": rid,
+                                "stage": st,
+                                "english_prompt": stage_prompt.get("english_prompt", ""),
+                                "anchor_description": stage_prompt.get("anchor_description", ""),
+                                "display_name_en": sup_dn
+                            })
+                    # 3. 场景与道具
+                    for idx, ast_cfg in enumerate(assets_config):
+                        t = ast_cfg.get("type")
+                        lbl = ast_cfg.get("label")
+                        if t in ("scene", "prop") and idx < len(entities):
+                            ent = entities[idx]
+                            if t == "scene":
+                                prompt = "A flat 2D vector style minimalist cartoon background scenery. Flat shades, no character."
+                            else:
+                                prompt = "A flat 2D vector icon cartoon object. Primitive shape, flat color fill, white background."
+                            assets_to_generate.append({
+                                "label": lbl,
+                                "type": t,
+                                "role_id": t,
+                                "stage": None,
+                                "english_prompt": prompt,
+                                "anchor_description": f"{lbl}：{ent}",
+                                "entity_text": ent
+                            })
+                    
+                    cast_prompt_parts = []
+                    for ast in assets_to_generate:
+                        lbl = ast["label"]
+                        desc = ast["english_prompt"]
+                        cast_prompt_parts.append(f"[{lbl}]\n{desc}")
+                    dynamic_cast_prompt = "\n\n".join(cast_prompt_parts)
+                    GLOBAL_STATE["cast_prompt"] = dynamic_cast_prompt
+                else:
+                    should_gen_cast = False
+
+            if not should_gen_cast or not assets_to_generate or is_custom_channel:
                 custom_tpl = GLOBAL_STATE.get("cast_prompt", "")
                 dynamic_cast_prompt = _generate_cast_prompts_via_llm(topic, compiled_voiceover, entities, custom_template=custom_tpl)
                 GLOBAL_STATE["cast_prompt"] = dynamic_cast_prompt
-            else:
-                dynamic_cast_prompt = ""
-                GLOBAL_STATE["cast_prompt"] = ""
+                
+                # 双通道智能名字对齐
+                matched_entities = {}
+                unmatched_entities = list(entities)
+                
+                # 第一通道：完全名称对齐
+                for idx, ast_cfg in enumerate(assets_config):
+                    label = ast_cfg.get("label")
+                    if label in unmatched_entities:
+                        matched_entities[idx] = label
+                        unmatched_entities.remove(label)
+                
+                # 第二通道：顺序兜底对齐
+                for idx, ast_cfg in enumerate(assets_config):
+                    if idx not in matched_entities:
+                        if unmatched_entities:
+                            matched_entities[idx] = unmatched_entities.pop(0)
+                        else:
+                            matched_entities[idx] = ast_cfg.get("label", f"Card_{idx+1}")
+                
+                char_idx = 0
+                for idx, ast_cfg in enumerate(assets_config):
+                    label = ast_cfg.get("label", f"Card_{idx+1}")
+                    t = ast_cfg.get("type", "character")
+                    ent = matched_entities.get(idx, label)
+                    
+                    role_id = t
+                    display_name_en = ent
+                    if t == "character":
+                        char_idx += 1
+                        if char_idx == 1:
+                            role_id = "protagonist"
+                        else:
+                            role_id = f"cast_{char_idx:02d}"
+                    
+                    prompt = ""
+                    if "[" in dynamic_cast_prompt:
+                        import re
+                        lbl_match = re.search(rf"\[{re.escape(label)}\](.*?)(\[|$)", dynamic_cast_prompt, re.DOTALL | re.IGNORECASE)
+                        if lbl_match:
+                            prompt = lbl_match.group(1).strip()
+                    if not prompt:
+                        prompt = dynamic_cast_prompt
+                        
+                    assets_to_generate.append({
+                        "label": label,
+                        "type": t,
+                        "role_id": role_id,
+                        "stage": "middle" if t == "character" else None,
+                        "english_prompt": prompt,
+                        "anchor_description": f"{label}：{ent}",
+                        "custom_image_path": ast_cfg.get("custom_image_path"),
+                        "display_name_en": display_name_en
+                    })
+
+            GLOBAL_STATE["assets_to_generate"] = assets_to_generate
 
             print(f"[Bridge] ✅ 剧本编译成功！Run ID: {run_id}，实体: {entities}")
             GLOBAL_STATE["active_stage"] = ""
@@ -737,7 +1094,8 @@ class DesktopApiBridge:
                 "data": {
                     "compiled_voiceover": compiled_voiceover,
                     "extracted_entities": entities,
-                    "cast_prompt": dynamic_cast_prompt
+                    "cast_prompt": dynamic_cast_prompt,
+                    "assets_to_generate": assets_to_generate
                 }
             }
         except Exception as e:
@@ -770,134 +1128,252 @@ class DesktopApiBridge:
             os.environ["REF_STYLE_ANCHOR"] = global_style_prompt
             os.environ["STYLE_ANCHOR"] = global_style_prompt
 
-            # ── 按频道类型确定卡片配置 ──
-            mode_path = GLOBAL_STATE.get("mode_path", "RED")
-            assets_config = _get_channel_assets_config(mode_path)
-            labels = [ast["label"] for ast in assets_config]
-            types  = [ast["type"] for ast in assets_config]
-            print(f"[Bridge] 频道 ({mode_path}) 配置的资产卡片共 {len(assets_config)} 张卡片。")
+            # Get assets_to_generate from payload or GLOBAL_STATE or fallback
+            assets_to_generate = payload.get("assets_to_generate") or GLOBAL_STATE.get("assets_to_generate")
+            if not assets_to_generate:
+                # Fallback to old behavior
+                mode_path = GLOBAL_STATE.get("mode_path", "RED")
+                assets_config = _get_channel_assets_config(mode_path)
+                
+                # 双通道智能名字对齐
+                matched_entities = {}
+                unmatched_entities = list(entities)
+                
+                # 第一通道：完全名称对齐
+                for idx, ast_cfg in enumerate(assets_config):
+                    label = ast_cfg.get("label")
+                    if label in unmatched_entities:
+                        matched_entities[idx] = label
+                        unmatched_entities.remove(label)
+                
+                # 第二通道：顺序兜底对齐
+                for idx, ast_cfg in enumerate(assets_config):
+                    if idx not in matched_entities:
+                        if unmatched_entities:
+                            matched_entities[idx] = unmatched_entities.pop(0)
+                        else:
+                            matched_entities[idx] = ast_cfg.get("label", f"Card_{idx+1}")
+                
+                assets_to_generate = []
+                char_idx = 0
+                for idx, ast_cfg in enumerate(assets_config):
+                    label = ast_cfg.get("label", f"Card_{idx+1}")
+                    t = ast_cfg.get("type", "character")
+                    ent = matched_entities.get(idx, label)
+                    custom_image_path = ast_cfg.get("custom_image_path")
+                    
+                    role_id = t
+                    display_name_en = ent
+                    if t == "character":
+                        char_idx += 1
+                        if char_idx == 1:
+                            role_id = "protagonist"
+                        else:
+                            role_id = f"cast_{char_idx:02d}"
+                            
+                    cast_template = GLOBAL_STATE.get("cast_prompt", "")
+                    ref_anchor_lower = str(global_style_prompt or "").lower()
+                    is_cyanide_style = "cyanide" in ref_anchor_lower or "stickman" in ref_anchor_lower
+                    if is_cyanide_style:
+                        char_prompt = "A cute cartoon stickman style representation of {entity}. Flat colors, strong outline, white background."
+                    else:
+                        char_prompt = "Clean 2D flat illustration representation of {entity}: orthographic sheet, primitive shapes, clear outlines, flat color fills."
+                    scene_prompt = "A flat 2D vector style minimalist cartoon background scenery depicting {entity}. Flat shades, no character."
+                    prop_prompt = "A flat 2D vector icon cartoon object depicting {entity}. Primitive shape, flat color fill, white background."
 
+                    if cast_template.strip():
+                        if "[" not in cast_template:
+                            if t == "character": char_prompt = cast_template
+                            elif t == "scene": scene_prompt = cast_template
+                            elif t == "prop": prop_prompt = cast_template
+                        else:
+                            import re
+                            lbl_match = re.search(rf"\[{re.escape(label)}\](.*?)(\[|$)", cast_template, re.DOTALL | re.IGNORECASE)
+                            if lbl_match:
+                                matched_prompt = lbl_match.group(1).strip()
+                                if t == "character": char_prompt = matched_prompt
+                                elif t == "scene": scene_prompt = matched_prompt
+                                elif t == "prop": prop_prompt = matched_prompt
+                            else:
+                                typ_match = re.search(rf"\[{re.escape(t)}\](.*?)(\[|$)", cast_template, re.DOTALL | re.IGNORECASE)
+                                if typ_match:
+                                    matched_prompt = typ_match.group(1).strip()
+                                    if t == "character": char_prompt = matched_prompt
+                                    elif t == "scene": scene_prompt = matched_prompt
+                                    elif t == "prop": prop_prompt = matched_prompt
+                    
+                    if t == "scene":
+                        prompt = scene_prompt.replace("{entity}", ent).replace("{ent}", ent)
+                    elif t == "prop":
+                        prompt = prop_prompt.replace("{entity}", ent).replace("{ent}", ent)
+                    else:
+                        prompt = char_prompt.replace("{entity}", ent).replace("{ent}", ent)
+
+                    assets_to_generate.append({
+                        "label": f"{label}：{ent}",
+                        "type": t,
+                        "role_id": role_id,
+                        "stage": "middle" if t == "character" else None,
+                        "english_prompt": prompt,
+                        "anchor_description": f"{label}：{ent}",
+                        "custom_image_path": custom_image_path,
+                        "display_name_en": display_name_en
+                    })
+
+            # Save to GLOBAL_STATE to ensure consistency
+            GLOBAL_STATE["assets_to_generate"] = assets_to_generate
+
+            print(f"[Bridge] 待生成的资产卡片共 {len(assets_to_generate)} 张。")
             assets_res = []
+            generated_char_refs = {}  # Map role_id -> Path of first generated image for consistency
 
-            for idx, (ent, label, t) in enumerate(zip(entities, labels, types)):
+            for idx, ast in enumerate(assets_to_generate):
                 card_id = f"cast_0{idx + 1}"
                 out_dir = refs_dir / card_id
                 out_dir.mkdir(parents=True, exist_ok=True)
 
-                cast_template = GLOBAL_STATE.get("cast_prompt", "")
-                char_prompt = "A cute cartoon stickman style representation of {entity}. Flat colors, strong outline, white background."
-                scene_prompt = "A flat 2D vector style minimalist cartoon background scenery depicting {entity}. Flat shades, no character."
-                prop_prompt = "A flat 2D vector icon cartoon object depicting {entity}. Primitive shape, flat color fill, white background."
+                t = ast.get("type", "character")
+                role_id = ast.get("role_id")
+                stage = ast.get("stage")
+                prompt = ast.get("english_prompt", "")
+                label = ast.get("label", card_id)
+                custom_image_path = ast.get("custom_image_path")
 
-                if cast_template.strip():
-                    import re
-                    lbl_match = re.search(rf"\[{re.escape(label)}\](.*?)(\[|$)", cast_template, re.DOTALL | re.IGNORECASE)
-                    if lbl_match:
-                        matched_prompt = lbl_match.group(1).strip()
-                        if t == "character": char_prompt = matched_prompt
-                        elif t == "scene": scene_prompt = matched_prompt
-                        elif t == "prop": prop_prompt = matched_prompt
-                    else:
-                        typ_match = re.search(rf"\[{re.escape(t)}\](.*?)(\[|$)", cast_template, re.DOTALL | re.IGNORECASE)
-                        if typ_match:
-                            matched_prompt = typ_match.group(1).strip()
-                            if t == "character": char_prompt = matched_prompt
-                            elif t == "scene": scene_prompt = matched_prompt
-                            elif t == "prop": prop_prompt = matched_prompt
-
-                if t == "scene":
-                    prompt = scene_prompt.replace("{entity}", ent).replace("{ent}", ent)
-                elif t == "prop":
-                    prompt = prop_prompt.replace("{entity}", ent).replace("{ent}", ent)
-                else:
-                    prompt = char_prompt.replace("{entity}", ent).replace("{ent}", ent)
-
-                print(f"[Bridge] 渲染定妆卡片 [{label} - {ent}]...")
+                print(f"[Bridge] 正在渲染定妆卡片 {card_id} [{label}]...")
 
                 img_file = out_dir / "triple_view.png"
 
-                if t in ("scene", "prop"):
-                    # 场景/背景/道具：直接生图，不走三视图流程
-                    if t == "scene":
-                        lines = [
-                            "A flat 2D vector style minimalist cartoon background scenery, WIDE ANGLE CINEMATIC BACKGROUND, No characters, no people.",
-                            "Lighting: flat even cartoon lighting—no dramatic cast shadows, rim light, or studio volumetrics.",
-                            f"Style (summary): {global_style_prompt}",
-                            f"Scenery Details: {prompt}"
-                        ]
-                    else:
-                        lines = [
-                            "A flat 2D vector icon cartoon object on a flat pure white #FFFFFF background only—no floor, horizon, or environment.",
-                            "Lighting: flat even cartoon lighting—no dramatic cast shadows, rim light, or studio volumetrics.",
-                            f"Style (summary): {global_style_prompt}",
-                            f"Object Details: {prompt}"
-                        ]
-                    full_prompt = "\n".join(lines)
-
-                    from src.api_audit import PHASE_CASTING
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
+                # 若已上传自定义定妆照，直接抓取物理文件进行拷贝，跳过 AI 生图
+                if custom_image_path and (BASE_DIR_PATH / custom_image_path).exists():
+                    import shutil
+                    shutil.copy(str(BASE_DIR_PATH / custom_image_path), str(img_file))
                     try:
-                        img_bytes = loop.run_until_complete(_gen_img(
-                            prompt=full_prompt,
-                            size="2k",
-                            standalone_prompt=True,
-                            audit_phase=PHASE_CASTING,
-                            audit_step=f"triple_view/{card_id}"
-                        ))
-                        if img_bytes:
-                            img_file.write_bytes(img_bytes)
-                            try:
-                                from src.project_vault import backup as vault_backup
-                                rel = str(img_file.relative_to(BASE_DIR)).replace("\\", "/")
-                                vault_backup(img_file, rel)
-                            except Exception:
-                                pass
-                    finally:
-                        loop.close()
-                        asyncio.set_event_loop(None)
+                        from src.project_vault import backup as vault_backup
+                        rel = str(img_file.relative_to(BASE_DIR)).replace("\\", "/")
+                        vault_backup(img_file, rel)
+                    except Exception:
+                        pass
+                    print(f"  ✅ [Done] 已直接从本地复制用户定妆图并拷贝到: {img_file}")
                 else:
-                    # 角色：走 generate_ref_sheet_at 保留三视图
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        loop.run_until_complete(generate_ref_sheet_at(
-                            out_dir=out_dir,
-                            english_prompt=prompt,
-                            ref_image_path=None
-                        ))
-                    finally:
-                        loop.close()
-                        asyncio.set_event_loop(None)
+                    if t in ("scene", "prop"):
+                        if t == "scene":
+                            lines = [
+                                "A flat 2D vector style minimalist cartoon background scenery, WIDE ANGLE CINEMATIC BACKGROUND, No characters, no people.",
+                                "Lighting: flat even cartoon lighting—no dramatic cast shadows, rim light, or studio volumetrics.",
+                                f"Style (summary): {global_style_prompt}",
+                                f"Scenery Details: {prompt}"
+                            ]
+                        else:
+                            lines = [
+                                "A flat 2D vector icon cartoon object on a flat pure white #FFFFFF background only—no floor, horizon, or environment.",
+                                "Lighting: flat even cartoon lighting—no dramatic cast shadows, rim light, or studio volumetrics.",
+                                f"Style (summary): {global_style_prompt}",
+                                f"Object Details: {prompt}"
+                            ]
+                        full_prompt = "\n".join(lines)
+
+                        from src.api_audit import PHASE_CASTING
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            img_bytes = loop.run_until_complete(_gen_img(
+                                prompt=full_prompt,
+                                size="2k",
+                                standalone_prompt=True,
+                                audit_phase=PHASE_CASTING,
+                                audit_step=f"triple_view/{card_id}"
+                            ))
+                            if img_bytes:
+                                img_file.write_bytes(img_bytes)
+                                try:
+                                    from src.project_vault import backup as vault_backup
+                                    rel = str(img_file.relative_to(BASE_DIR)).replace("\\", "/")
+                                    vault_backup(img_file, rel)
+                                except Exception:
+                                    pass
+                        finally:
+                            loop.close()
+                            asyncio.set_event_loop(None)
+                    else:
+                        # character character character
+                        ref_image_path = generated_char_refs.get(role_id)
+                        
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            loop.run_until_complete(generate_ref_sheet_at(
+                                out_dir=out_dir,
+                                english_prompt=prompt,
+                                ref_image_path=ref_image_path
+                            ))
+                        finally:
+                            loop.close()
+                            asyncio.set_event_loop(None)
+    
+                        if img_file.exists() and role_id not in generated_char_refs:
+                            generated_char_refs[role_id] = img_file
 
                 img_url = _to_relative_url(img_file) + f"?t={int(time.time())}" \
                     if img_file.exists() else ""
 
                 assets_res.append({
                     "id": card_id,
-                    "name": f"{label}：{ent}",
+                    "name": label,
                     "prompt": prompt,
                     "svgType": t,
-                    "image_url": img_url
+                    "image_url": img_url,
+                    "custom_image_path": custom_image_path
                 })
 
-            # 回写 full_story_v6.json 锚点（支持任意自定义卡片数量与类型）
+            # 回写 full_story_v6.json 锚点
             full_story_path = paths["scripts_dir"] / "full_story_v6.json"
             physical_anchors = {}
-            char_idx = 0
+            
+            protagonist_stages = []
+            protagonist_prompts = {}
+            supporting_map = {}
+            
             scene_idx = 0
             prop_idx = 0
 
-            for idx, ast in enumerate(assets_res):
-                card_t = ast.get("svgType", "character")
-                path_str = str(refs_dir / f"cast_0{idx + 1}" / "triple_view.png")
+            for idx, ast in enumerate(assets_to_generate):
+                card_id = f"cast_0{idx + 1}"
+                path_str = str(refs_dir / card_id / "triple_view.png")
+                
+                card_t = ast.get("type", "character")
+                role_id = ast.get("role_id")
+                stage = ast.get("stage")
+                prompt_str = ast.get("english_prompt", "")
+                anchor_desc = ast.get("anchor_description") or prompt_str
+                display_name_en = ast.get("display_name_en", role_id)
 
                 if card_t == "character":
-                    if char_idx == 0:
-                        physical_anchors["middle"] = path_str
+                    if role_id == "protagonist":
+                        if stage not in protagonist_stages:
+                            protagonist_stages.append(stage)
+                        protagonist_prompts[stage] = {
+                            "english_prompt": prompt_str,
+                            "anchor_description": anchor_desc
+                        }
+                        physical_anchors[stage] = path_str
                     else:
-                        physical_anchors[f"supporting_character_{char_idx}"] = path_str
-                    char_idx += 1
+                        sup_info = supporting_map.setdefault(role_id, {
+                            "role_id": role_id,
+                            "display_name_en": display_name_en,
+                            "stages": [],
+                            "stage_prompts": {}
+                        })
+                        if stage not in sup_info["stages"]:
+                            sup_info["stages"].append(stage)
+                        sup_info["stage_prompts"][stage] = {
+                            "english_prompt": prompt_str,
+                            "anchor_description": anchor_desc
+                        }
+                        physical_anchors[f"supporting_{role_id}_{stage}"] = path_str
+                        if stage == "middle":
+                            physical_anchors[f"supporting_{role_id}"] = path_str
+                        elif f"supporting_{role_id}" not in physical_anchors:
+                            physical_anchors[f"supporting_{role_id}"] = path_str
                 elif card_t == "scene":
                     if scene_idx == 0:
                         physical_anchors["supporting_scene"] = path_str
@@ -910,30 +1386,89 @@ class DesktopApiBridge:
                     else:
                         physical_anchors[f"supporting_prop_{prop_idx}"] = path_str
                     prop_idx += 1
+
+            supporting_list = list(supporting_map.values())
+            supporting_registry = [{"role_id": k, "display_name_en": v["display_name_en"], "stages": v["stages"]} for k, v in supporting_map.items()]
+
+            pro_dn = "Protagonist"
+            for ast in assets_to_generate:
+                if ast.get("type") == "character" and ast.get("role_id") == "protagonist":
+                    pro_dn = ast.get("display_name_en", "Protagonist")
+                    break
+
+            cast_registry = {
+                "protagonist": {
+                    "display_name_en": pro_dn,
+                    "stages": protagonist_stages or ["middle"],
+                    "stage_prompts": protagonist_prompts
+                },
+                "supporting": supporting_registry
+            }
+
+            ref_display_slots = _build_ref_display_slots(cast_registry, physical_anchors)
+
             story_data = {
                 "metadata": {
                     "topic": topic,
                     "project_name": topic,
-                    "era": "",  # 改为空白，防止硬编码“霓虹雨夜”污染用户自建频道的定制风格
+                    "era": "",
                     "duration": 1.0,
                     "run_id": run_id,
-                    "story_source": "user_script"
+                    "story_source": "user_script",
+                    "tts_engine": GLOBAL_STATE.get("tts_engine", "edge"),
+                    "tts_voice": GLOBAL_STATE.get("tts_voice", ""),
+                    "tts_rate": GLOBAL_STATE.get("tts_rate", ""),
+                    "tts_emotion": GLOBAL_STATE.get("tts_emotion", ""),
+                    "assets_to_generate": assets_to_generate
                 },
                 "master_design": {
                     "full_narration": GLOBAL_STATE["compiled_voiceover"],
-                    "cast_registry": {
-                        "protagonist": {
-                            "display_name_en": "Protagonist",
-                            "stages": ["middle"],
-                            "stage_prompts": {}
-                        },
-                        "supporting": []
-                    },
-                    "physical_char_anchors": physical_anchors
+                    "cast_registry": cast_registry,
+                    "physical_char_anchors": physical_anchors,
+                    "ref_display_slots": ref_display_slots,
+                    "detected_life_stages": protagonist_stages or ["middle"]
                 }
             }
+
+            stages = protagonist_stages or ["middle"]
+            ordered = [s for s in stages if s in physical_anchors] or ["middle"]
+            if len(ordered) == 1:
+                story_data["master_design"]["stage_map"] = [{"stage": ordered[0], "start_shot": 1, "end_shot": 999999}]
+            else:
+                rough = []
+                span = max(1, 999 // len(ordered))
+                start = 1
+                for idx, st in enumerate(ordered):
+                    end = 999999 if idx == len(ordered) - 1 else (start + span - 1)
+                    rough.append({"stage": st, "start_shot": start, "end_shot": end})
+                    start = end + 1
+                story_data["master_design"]["stage_map"] = rough
+
             with open(full_story_path, "w", encoding="utf-8") as f:
                 json.dump(story_data, f, ensure_ascii=False, indent=2)
+
+            refs_prompt_path = paths["scripts_dir"] / "refs-prompt.json"
+            refs_prompt_data = {
+                "schema_version": 1,
+                "source": "api_server_custom",
+                "topic": topic,
+                "synopsis": None,
+                "protagonist": {
+                    "role_id": "protagonist",
+                    "display_name_en": pro_dn,
+                    "stages": protagonist_stages or ["middle"],
+                    "stage_prompts": protagonist_prompts
+                },
+                "supporting": supporting_list
+            }
+            with open(refs_prompt_path, "w", encoding="utf-8") as f:
+                json.dump(refs_prompt_data, f, ensure_ascii=False, indent=2)
+
+            try:
+                from src.project_vault import backup as vault_backup
+                vault_backup(refs_prompt_path, "scripts/refs-prompt.json")
+            except Exception:
+                pass
 
             print("[Bridge] ✅ 定妆照渲染与剧本锚点回写成功！")
             GLOBAL_STATE["active_stage"] = ""
@@ -948,12 +1483,18 @@ class DesktopApiBridge:
     # ──────────────────────────────────────────────
     # 🎞️ 分镜生成  替代 POST /api/story/v1/generate-storyboard
     # ──────────────────────────────────────────────
-    def generate_storyboard(self):
+    def generate_storyboard(self, payload=None):
+        density = "medium"
+        grid_mode = "4x4"
+        if payload and isinstance(payload, dict):
+            density = payload.get("density", "medium")
+            grid_mode = payload.get("grid_mode", "4x4")
+
         run_id = GLOBAL_STATE.get("current_run_id", "")
         if not run_id:
             return {"status": "error", "detail": "未检测到活跃 of Run-ID。"}
 
-        print(f"\n[Bridge] 为批次 {run_id} 启动分镜插值与 16 宫格大图生成...")
+        print(f"\n[Bridge] 为批次 {run_id} 启动分镜插值与 {grid_mode} 宫格大图生成...")
 
         def _push(stage, pct, msg):
             if GLOBAL_WINDOW:
@@ -967,7 +1508,15 @@ class DesktopApiBridge:
             _push("phase2", 20, "[第1步] Phase 2 旁白配音与时间轴微切...")
 
             env = dict(os.environ)
+            env["STORYBOARD_DENSITY"] = density
             env["STORYBOARD_PROMPT_TEMPLATE"] = GLOBAL_STATE.get("storyboard_prompt", "")
+            env["TTS_ENGINE"] = GLOBAL_STATE.get("tts_engine", "edge")
+            env["TTS_VOICE"] = GLOBAL_STATE.get("tts_voice", "")
+            env["TTS_RATE"] = GLOBAL_STATE.get("tts_rate", "")
+            env["TTS_EMOTION"] = GLOBAL_STATE.get("tts_emotion", "")
+            env["TTS_PITCH"] = str(GLOBAL_STATE.get("tts_pitch", 0))
+            env["TTS_VOLUME"] = str(GLOBAL_STATE.get("tts_volume", 0))
+            env["TTS_PROMPT"] = GLOBAL_STATE.get("tts_prompt", "")
             proc2 = subprocess.run(
                 [sys.executable, "-m", "src.step1_writer_v6", "--phase", "phase2"],
                 cwd=BASE_DIR, capture_output=True, encoding="utf-8", env=env
@@ -989,8 +1538,20 @@ class DesktopApiBridge:
                 print(f"❌ [Phase3]: {proc3.stderr[-800:]}")
                 return {"status": "error", "detail": f"分镜插值失败:\n{proc3.stderr[-400:]}"}
 
+            # 保存宫格设置到蓝图中
+            paths = get_paths()
+            final_json_path = paths["scripts_dir"] / "narrative_v6_final.json"
+            if final_json_path.exists():
+                with open(final_json_path, "r", encoding="utf-8") as f:
+                    narr_data = json.load(f)
+                if "metadata" not in narr_data:
+                    narr_data["metadata"] = {}
+                narr_data["metadata"]["grid_mode"] = grid_mode
+                with open(final_json_path, "w", encoding="utf-8") as f:
+                    json.dump(narr_data, f, ensure_ascii=False, indent=2)
+
             GLOBAL_STATE["active_stage"] = "006-宫格生图"
-            _push("step2", 70, "[第3步] Step 2 正在绘制全部 16 宫格分镜大图...")
+            _push("step2", 70, f"[第3步] Step 2 正在绘制全部 {grid_mode} 宫格分镜大图...")
 
             env["GRID_SKIP_LAYOUT_VALIDATE"] = "1"
             proc_s2 = subprocess.run(
@@ -1005,9 +1566,8 @@ class DesktopApiBridge:
             _push("step2", 95, "[第4步] 读取分镜大宫格图集...")
 
             # 读取分镜大底片
-            paths = get_paths()
-            final_json_path = paths["scripts_dir"] / "narrative_v6_final.json"
             grids_res = []
+            frames_res = []
 
             if final_json_path.exists():
                 with open(final_json_path, "r", encoding="utf-8") as f:
@@ -1016,12 +1576,34 @@ class DesktopApiBridge:
                 timeline = data.get("timeline") or data.get("shots") or []
                 total_shots = len(timeline)
                 
-                # Chunk list by 16:
-                batches = [timeline[i:i + 16] for i in range(0, len(timeline), 16)]
+                # Reconstruct sliced frames
+                for idx, shot in enumerate(timeline):
+                    frame_num = idx + 1
+                    frame_id = f"frame_0{frame_num}"
+                    img_filename = f"S_{frame_num:03d}.png"
+                    img_file = paths["storyboards_dir"] / img_filename
+                    img_url = _to_relative_url(img_file) if img_file.exists() else ""
+                    frames_res.append({
+                        "id": frame_id,
+                        "text": shot.get("voiceover_text", "电影叙事中..."),
+                        "prompt": shot.get("visual_prompt", "cinematic shot"),
+                        "image_url": img_url,
+                        "time_range": f"{shot.get('trigger_time', 0):.1f}s - {shot.get('trigger_time', 0) + 3.5:.1f}s"
+                    })
+
+                # Dynamic grid mode chunking:
+                if grid_mode == "2x2":
+                    panels_count = 4
+                elif grid_mode == "3x3":
+                    panels_count = 9
+                else:
+                    panels_count = 16
+                
+                batches = [timeline[i:i + panels_count] for i in range(0, len(timeline), panels_count)]
                 
                 for idx, batch_shots in enumerate(batches):
                     batch_index = idx + 1
-                    batch_start = (batch_index - 1) * 16 + 1
+                    batch_start = (batch_index - 1) * panels_count + 1
                     batch_end = min(batch_start + len(batch_shots) - 1, total_shots)
                     
                     grid_filename = f"grid_batch_{batch_index:03d}.png"
@@ -1041,9 +1623,9 @@ class DesktopApiBridge:
                         "prompt": prompt_str
                     })
 
-            print("[Bridge] ✅ 16 宫格大图生成完毕！")
+            print(f"[Bridge] ✅ {grid_mode} 宫格大图生成完毕！")
             GLOBAL_STATE["active_stage"] = ""
-            return {"status": "success", "grids": grids_res}
+            return {"status": "success", "grids": grids_res, "frames": frames_res, "grid_mode": grid_mode}
 
         except Exception as e:
             GLOBAL_STATE["active_stage"] = ""
@@ -1089,6 +1671,24 @@ class DesktopApiBridge:
                     if 0 <= idx_0 < len(timeline):
                         timeline[idx_0]["visual_prompt"] = new_prompt
                 
+                # Clear manually_redrawn and delete S_XXX.png files of this batch
+                grid_mode = (narrative_data.get("metadata") or {}).get("grid_mode", "4x4")
+                panels_count = 4 if grid_mode == "2x2" else (9 if grid_mode == "3x3" else 16)
+                batch_start = (batch_index - 1) * panels_count
+                batch_end = min(batch_start + panels_count, len(timeline))
+                storyboards_dir = paths["storyboards_dir"]
+                for idx_0 in range(batch_start, batch_end):
+                    if "manually_redrawn" in timeline[idx_0]:
+                        del timeline[idx_0]["manually_redrawn"]
+                    # Delete S_XXX.png file if it exists
+                    frame_num = idx_0 + 1
+                    s_file = storyboards_dir / f"S_{frame_num:03d}.png"
+                    if s_file.exists():
+                        try:
+                            s_file.unlink()
+                        except Exception:
+                            pass
+                
                 with open(final_json_path, "w", encoding="utf-8") as f:
                     json.dump(narrative_data, f, ensure_ascii=False, indent=2)
             
@@ -1110,8 +1710,16 @@ class DesktopApiBridge:
             timeline = data.get("timeline") or data.get("shots") or []
             total_shots = len(timeline)
             
-            batch_start = (batch_index - 1) * 16 + 1
-            batch_shots = timeline[batch_start - 1 : batch_start - 1 + 16]
+            grid_mode = (data.get("metadata") or {}).get("grid_mode", "4x4")
+            if grid_mode == "2x2":
+                panels_count = 4
+            elif grid_mode == "3x3":
+                panels_count = 9
+            else:
+                panels_count = 16
+
+            batch_start = (batch_index - 1) * panels_count + 1
+            batch_shots = timeline[batch_start - 1 : batch_start - 1 + panels_count]
             batch_end = min(batch_start + len(batch_shots) - 1, total_shots)
             
             grid_filename = f"grid_batch_{batch_index:03d}.png"
@@ -1142,7 +1750,13 @@ class DesktopApiBridge:
     # ──────────────────────────────────────────────
     # 🎬 视频合成  替代 POST /api/story/v1/synthesize
     # ──────────────────────────────────────────────
-    def synthesize_video(self):
+    def synthesize_video(self, payload=None):
+        enable_speedup = True
+        compile_type = "video"
+        if payload and isinstance(payload, dict):
+            enable_speedup = payload.get("enable_speedup", True)
+            compile_type = payload.get("compile_type", "video")
+
         run_id = GLOBAL_STATE.get("current_run_id", "")
         if not run_id:
             return {"status": "error", "detail": "未检测到活跃的 Run-ID。"}
@@ -1162,6 +1776,8 @@ class DesktopApiBridge:
 
             # 先调用 step2 slice-only 裁切并高清
             env = dict(os.environ)
+            env["STEP3_POST_PLAYBACK_SPEED"] = "1.1" if enable_speedup else "1.0"
+            env["COMPILE_TYPE"] = compile_type
             proc_slice = subprocess.run(
                 [sys.executable, "-m", "src.step2_comic_generator_v6", "--phase", "slice-only"],
                 cwd=BASE_DIR, capture_output=True, encoding="utf-8", env=env
@@ -1227,70 +1843,267 @@ class DesktopApiBridge:
                 # 定妆卡重绘
                 out_dir = paths["refs_dir"] / target_id
                 out_dir.mkdir(parents=True, exist_ok=True)
-
-                # 动态映射属性：根据当前激活频道的 assets_config 获取该卡片的物理分类。
-                mode_path = GLOBAL_STATE.get("mode_path", "RED")
-                assets_config = _get_channel_assets_config(mode_path)
-                try:
-                    idx = int(target_id.split("_")[-1]) - 1
-                    t = assets_config[idx]["type"] if idx < len(assets_config) else "character"
-                except Exception:
-                    t = "character"
                 img_file = out_dir / "triple_view.png"
 
-                if t in ("scene", "prop"):
-                    global_style_prompt = GLOBAL_STATE.get("style_presets", "cinematic realism, commercial grading, 35mm photograph")
-                    if t == "scene":
-                        lines = [
-                            "A flat 2D vector style minimalist cartoon background scenery, WIDE ANGLE CINEMATIC BACKGROUND, No characters, no people.",
-                            "Lighting: flat even cartoon lighting—no dramatic cast shadows, rim light, or studio volumetrics.",
-                            f"Style (summary): {global_style_prompt}",
-                            f"Scenery Details: {prompt}"
-                        ]
+                # Parse the card index
+                idx = int(target_id.split("_")[-1]) - 1
+
+                # Load assets_to_generate
+                assets_to_generate = []
+                if GLOBAL_STATE.get("assets_to_generate"):
+                    assets_to_generate = GLOBAL_STATE["assets_to_generate"]
+                else:
+                    # try loading from full_story_v6.json
+                    full_story_path = paths["scripts_dir"] / "full_story_v6.json"
+                    if full_story_path.exists():
+                        try:
+                            with open(full_story_path, "r", encoding="utf-8") as f:
+                                fs_data = json.load(f)
+                            assets_to_generate = fs_data.get("metadata", {}).get("assets_to_generate", [])
+                            if assets_to_generate:
+                                GLOBAL_STATE["assets_to_generate"] = assets_to_generate
+                        except Exception:
+                            pass
+
+                t = "character"
+                role_id = "protagonist"
+                stage = "middle"
+                display_name_en = "Protagonist"
+                
+                if assets_to_generate and idx < len(assets_to_generate):
+                    ast = assets_to_generate[idx]
+                    t = ast.get("type", "character")
+                    role_id = ast.get("role_id")
+                    stage = ast.get("stage")
+                    display_name_en = ast.get("display_name_en", role_id)
+                else:
+                    # Legacy fallback
+                    mode_path = GLOBAL_STATE.get("mode_path", "RED")
+                    assets_config = _get_channel_assets_config(mode_path)
+                    if idx < len(assets_config):
+                        ast_cfg = assets_config[idx]
+                        t = ast_cfg["type"]
+                        label = ast_cfg.get("label", f"Card_{idx+1}")
+                        if t == "character":
+                            # Count how many characters precede or equal idx
+                            char_idx = sum(1 for i in range(idx + 1) if assets_config[i]["type"] == "character")
+                            if char_idx == 1:
+                                role_id = "protagonist"
+                            else:
+                                role_id = f"cast_{char_idx:02d}"
+                            stage = "middle"
+                            entities = GLOBAL_STATE.get("extracted_entities", [])
+                            display_name_en = entities[char_idx - 1] if char_idx - 1 < len(entities) else label
+                        else:
+                            role_id = t
+                            stage = None
+                            display_name_en = label
                     else:
-                        lines = [
-                            "A flat 2D vector icon cartoon object on a flat pure white #FFFFFF background only—no floor, horizon, or environment.",
-                            "Lighting: flat even cartoon lighting—no dramatic cast shadows, rim light, or studio volumetrics.",
-                            f"Style (summary): {global_style_prompt}",
-                            f"Object Details: {prompt}"
-                        ]
-                    full_prompt = "\n".join(lines)
-                    
-                    from src.api_audit import PHASE_CASTING
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
-                    try:
-                        img_bytes = loop.run_until_complete(_gen_img(
-                            prompt=full_prompt,
-                            size="2k",
-                            standalone_prompt=True,
-                            audit_phase=PHASE_CASTING,
-                            audit_step=f"triple_view/{target_id}"
-                        ))
-                        if img_bytes:
-                            img_file.write_bytes(img_bytes)
-                            try:
-                                from src.project_vault import backup as vault_backup
-                                rel = str(img_file.relative_to(BASE_DIR)).replace("\\", "/")
-                                vault_backup(img_file, rel)
-                            except Exception:
-                                pass
-                    finally:
-                        loop.close()
-                        asyncio.set_event_loop(None)
+                        t = "character"
+                        role_id = "protagonist"
+                        stage = "middle"
+                        display_name_en = "Protagonist"
+
+                if t in ("scene", "prop"):
+                        global_style_prompt = GLOBAL_STATE.get("style_presets", "cinematic realism, commercial grading, 35mm photograph")
+                        if t == "scene":
+                            lines = [
+                                "A flat 2D vector style minimalist cartoon background scenery, WIDE ANGLE CINEMATIC BACKGROUND, No characters, no people.",
+                                "Lighting: flat even cartoon lighting—no dramatic cast shadows, rim light, or studio volumetrics.",
+                                f"Style (summary): {global_style_prompt}",
+                                f"Scenery Details: {prompt}"
+                            ]
+                        else:
+                            lines = [
+                                "A flat 2D vector icon cartoon object on a flat pure white #FFFFFF background only—no floor, horizon, or environment.",
+                                "Lighting: flat even cartoon lighting—no dramatic cast shadows, rim light, or studio volumetrics.",
+                                f"Style (summary): {global_style_prompt}",
+                                f"Object Details: {prompt}"
+                            ]
+                        full_prompt = "\n".join(lines)
+                        
+                        from src.api_audit import PHASE_CASTING
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        try:
+                            img_bytes = loop.run_until_complete(_gen_img(
+                                prompt=full_prompt,
+                                size="2k",
+                                standalone_prompt=True,
+                                audit_phase=PHASE_CASTING,
+                                audit_step=f"triple_view/{target_id}"
+                            ))
+                            if img_bytes:
+                                img_file.write_bytes(img_bytes)
+                                try:
+                                    from src.project_vault import backup as vault_backup
+                                    rel = str(img_file.relative_to(BASE_DIR)).replace("\\", "/")
+                                    vault_backup(img_file, rel)
+                                except Exception:
+                                    pass
+                        finally:
+                            loop.close()
+                            asyncio.set_event_loop(None)
                 else:
                     # character character character
+                    ref_image_path = None
+                    if stage != "middle" and stage is not None and assets_to_generate:
+                        mid_idx = None
+                        for i, item in enumerate(assets_to_generate):
+                            if item.get("role_id") == role_id and item.get("stage") == "middle":
+                                mid_idx = i
+                                break
+                        if mid_idx is not None:
+                            mid_card_id = f"cast_0{mid_idx + 1}"
+                            mid_img = paths["refs_dir"] / mid_card_id / "triple_view.png"
+                            if mid_img.exists():
+                                ref_image_path = mid_img
+
                     loop = asyncio.new_event_loop()
                     asyncio.set_event_loop(loop)
                     try:
                         loop.run_until_complete(generate_ref_sheet_at(
                             out_dir=out_dir,
                             english_prompt=prompt,
-                            ref_image_path=None
+                            ref_image_path=ref_image_path
                         ))
                     finally:
                         loop.close()
                         asyncio.set_event_loop(None)
+
+                # Update memory
+                if assets_to_generate and idx < len(assets_to_generate):
+                    GLOBAL_STATE["assets_to_generate"][idx]["english_prompt"] = prompt
+                    GLOBAL_STATE["assets_to_generate"][idx]["anchor_description"] = prompt
+
+                # 增量更新 full_story_v6.json 和 refs-prompt.json 的角色提示词
+                try:
+                    full_story_path = paths["scripts_dir"] / "full_story_v6.json"
+                    refs_prompt_path = paths["scripts_dir"] / "refs-prompt.json"
+                    topic = GLOBAL_STATE.get("topic", "my_epic_story")
+                    
+                    # 1. 增量更新 full_story_v6.json
+                    if full_story_path.exists():
+                        with open(full_story_path, "r", encoding="utf-8") as f:
+                            fs_data = json.load(f)
+                        
+                        fs_data.setdefault("metadata", {})["assets_to_generate"] = GLOBAL_STATE.get("assets_to_generate", [])
+                        
+                        md = fs_data.setdefault("master_design", {})
+                        cr = md.setdefault("cast_registry", {})
+                        physical_anchors = md.setdefault("physical_char_anchors", {})
+
+                        if t == "character":
+                            if role_id == "protagonist":
+                                pro = cr.setdefault("protagonist", {})
+                                pro["display_name_en"] = display_name_en
+                                if stage not in pro.setdefault("stages", []):
+                                    pro["stages"].append(stage)
+                                sp = pro.setdefault("stage_prompts", {})
+                                sp[stage] = {
+                                    "english_prompt": prompt,
+                                    "anchor_description": prompt
+                                }
+                            else:
+                                sup_list = cr.setdefault("supporting", [])
+                                found = False
+                                for item in sup_list:
+                                    if item.get("role_id") == role_id:
+                                        item["display_name_en"] = display_name_en
+                                        if stage not in item.setdefault("stages", []):
+                                            item["stages"].append(stage)
+                                        sp = item.setdefault("stage_prompts", {})
+                                        sp[stage] = {
+                                            "english_prompt": prompt,
+                                            "anchor_description": prompt
+                                        }
+                                        found = True
+                                        break
+                                if not found:
+                                    sup_list.append({
+                                        "role_id": role_id,
+                                        "display_name_en": display_name_en,
+                                        "stages": [stage] if stage else [],
+                                        "stage_prompts": {
+                                            stage: {
+                                                "english_prompt": prompt,
+                                                "anchor_description": prompt
+                                            }
+                                        } if stage else {}
+                                    })
+                            
+                            md["ref_display_slots"] = _build_ref_display_slots(cr, physical_anchors)
+
+                        with open(full_story_path, "w", encoding="utf-8") as f:
+                            json.dump(fs_data, f, ensure_ascii=False, indent=2)
+
+                    # 2. 增量更新 refs-prompt.json
+                    if refs_prompt_path.exists():
+                        with open(refs_prompt_path, "r", encoding="utf-8") as f:
+                            rp_data = json.load(f)
+                    else:
+                        rp_data = {
+                            "schema_version": 1,
+                            "source": "api_server_custom",
+                            "topic": topic,
+                            "synopsis": None,
+                            "protagonist": {
+                                "role_id": "protagonist",
+                                "display_name_en": "Protagonist",
+                                "stages": ["middle"],
+                                "stage_prompts": {}
+                            },
+                            "supporting": []
+                        }
+                    
+                    if t == "character":
+                        if role_id == "protagonist":
+                            rp_pro = rp_data.setdefault("protagonist", {})
+                            rp_pro["display_name_en"] = display_name_en
+                            if stage not in rp_pro.setdefault("stages", []):
+                                rp_pro["stages"].append(stage)
+                            rp_sp = rp_pro.setdefault("stage_prompts", {})
+                            rp_sp[stage] = {
+                                "english_prompt": prompt,
+                                "anchor_description": prompt
+                            }
+                        else:
+                            sup_list = rp_data.setdefault("supporting", [])
+                            found = False
+                            for item in sup_list:
+                                if item.get("role_id") == role_id:
+                                    item["display_name_en"] = display_name_en
+                                    if stage not in item.setdefault("stages", []):
+                                        item["stages"].append(stage)
+                                    sp = item.setdefault("stage_prompts", {})
+                                    sp[stage] = {
+                                        "english_prompt": prompt,
+                                        "anchor_description": prompt
+                                    }
+                                    found = True
+                                    break
+                            if not found:
+                                sup_list.append({
+                                    "role_id": role_id,
+                                    "display_name_en": display_name_en,
+                                    "stages": [stage] if stage else [],
+                                    "stage_prompts": {
+                                        stage: {
+                                            "english_prompt": prompt,
+                                            "anchor_description": prompt
+                                        }
+                                    } if stage else {}
+                                })
+
+                    with open(refs_prompt_path, "w", encoding="utf-8") as f:
+                        json.dump(rp_data, f, ensure_ascii=False, indent=2)
+                    try:
+                        from src.project_vault import backup as vault_backup
+                        vault_backup(refs_prompt_path, "scripts/refs-prompt.json")
+                    except Exception:
+                        pass
+                except Exception as update_err:
+                    print(f"⚠️ [Bridge] 更新剧本或定妆提示词文件失败: {update_err}")
 
                 img_url = _to_relative_url(img_file) + f"?t={int(time.time())}" \
                     if img_file.exists() else ""
@@ -1307,32 +2120,66 @@ class DesktopApiBridge:
 
                 # 更新 narrative_v6_final.json 中该帧的 prompt
                 final_json_path = paths["scripts_dir"] / "narrative_v6_final.json"
+                image_refs = []
                 if final_json_path.exists():
                     with open(final_json_path, "r", encoding="utf-8") as f:
                         narrative_data = json.load(f)
-                    shots = narrative_data.get("shots", [])
-                    if frame_idx < len(shots):
+                    
+                    timeline = narrative_data.get("timeline")
+                    shots = narrative_data.get("shots")
+                    
+                    target_shot = None
+                    if timeline and frame_idx < len(timeline):
+                        timeline[frame_idx]["visual_prompt"] = prompt
+                        timeline[frame_idx]["manually_redrawn"] = True
+                        target_shot = timeline[frame_idx]
+                    if shots and frame_idx < len(shots):
                         shots[frame_idx]["visual_prompt"] = prompt
-                        with open(final_json_path, "w", encoding="utf-8") as f:
-                            json.dump(narrative_data, f, ensure_ascii=False, indent=2)
+                        shots[frame_idx]["manually_redrawn"] = True
+                        if not target_shot:
+                            target_shot = shots[frame_idx]
+                    
+                    with open(final_json_path, "w", encoding="utf-8") as f:
+                        json.dump(narrative_data, f, ensure_ascii=False, indent=2)
+                    
+                    if target_shot:
+                        ref_image_paths = target_shot.get("ref_image_paths") or []
+                        anchor_look = target_shot.get("anchor_look")
+                        if isinstance(ref_image_paths, list):
+                            for p in ref_image_paths:
+                                if p and str(p).strip():
+                                    image_refs.append(str(p).strip())
+                        if anchor_look and str(anchor_look).strip() and str(anchor_look).strip() not in image_refs:
+                            image_refs.append(str(anchor_look).strip())
+
+                # Prep global style prefix
+                global_style = GLOBAL_STATE.get("storyboard_prompt", "")
+                full_prompt = f"Style: {global_style}\nDetail: {prompt}" if global_style else prompt
 
                 # 调用生图引擎
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 try:
                     img_bytes = loop.run_until_complete(_gen_img(
-                        prompt=prompt,
-                        size="1080p",
+                        prompt=full_prompt,
+                        image_refs=image_refs,
+                        size="1280x720", # 16:9 ratio 1K resolution
                         standalone_prompt=True
                     ))
                 finally:
                     loop.close()
                     asyncio.set_event_loop(None)
 
-                frame_filename = f"S_00{frame_idx + 1}.png"
+                frame_filename = f"S_{frame_idx + 1:03d}.png"
                 storyboard_path = paths["storyboards_dir"] / frame_filename
                 if img_bytes:
                     storyboard_path.write_bytes(img_bytes)
+                    # Run super-resolution Real-ESRGAN
+                    try:
+                        from src.image_processor import upscale_image
+                        upscale_image(storyboard_path)
+                    except Exception as upscale_err:
+                        print(f"⚠️ [Bridge] 单分镜超分高清失败: {upscale_err}")
 
                 img_url = _to_relative_url(storyboard_path) + f"?t={int(time.time())}" \
                     if storyboard_path.exists() else ""
@@ -1447,6 +2294,168 @@ except Exception as e:
         return ""
 
     # ──────────────────────────────────────────────
+    # 📤 上传自定义资产图片 (支持多进程安全弹出 Tkinter 对话框)
+    # ──────────────────────────────────────────────
+    def select_custom_asset_image(self, payload):
+        """拉起本地文件选择框选择定妆照，并复制到 data/custom_assets/ 目录下"""
+        channel_id = payload.get("channel_id", "temp_channel")
+        label = payload.get("label", "custom_asset")
+        print(f"[Bridge] 正在唤起本地定妆照选择对话框 (channel={channel_id}, label={label})...")
+        try:
+            import subprocess
+            import sys
+            import shutil
+            
+            code = """
+import tkinter as tk
+from tkinter import filedialog
+import sys
+
+try:
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+    
+    file_path = filedialog.askopenfilename(
+        filetypes=[("图片文件", "*.png;*.jpg;*.jpeg;*.webp"), ("所有文件", "*.*")]
+    )
+    if file_path:
+        print(file_path.strip())
+except Exception as e:
+    sys.exit(1)
+"""
+            res = subprocess.run(
+                [sys.executable, "-c", code],
+                capture_output=True,
+                text=True,
+                encoding="utf-8"
+            )
+            if res.returncode == 0:
+                src_path = res.stdout.strip()
+                if not src_path:
+                    print("[Bridge] 用户取消了文件选择。")
+                    return {"status": "cancel"}
+                
+                # 创建目标路径
+                import re
+                safe_label = re.sub(r'[\\/*?:"<>|]', "_", label).strip()
+                dest_dir = BASE_DIR_PATH / "data" / "custom_assets" / channel_id
+                dest_dir.mkdir(parents=True, exist_ok=True)
+                
+                # 获取原文件后缀名
+                suffix = Path(src_path).suffix or ".png"
+                dest_file = dest_dir / f"{safe_label}{suffix}"
+                
+                # 复制图片
+                shutil.copy(src_path, dest_file)
+                rel_path = str(dest_file.relative_to(BASE_DIR_PATH)).replace("\\", "/")
+                print(f"[Bridge] 成功复制自定义资产图片到: {rel_path}")
+                
+                return {"status": "success", "image_path": rel_path}
+            else:
+                print(f"❌ [Bridge] 安全子进程文件选择运行失败: {res.stderr}")
+                return {"status": "error", "detail": "文件选择服务异常"}
+        except Exception as err:
+            print(f"❌ [Bridge] 唤起文件选择对话框失败: {err}")
+            return {"status": "error", "detail": str(err)}
+
+    # ──────────────────────────────────────────────
+    # 🤖 智能识图描述 (使用 VLM Gemini Pro 生成英文 Prompt)
+    # ──────────────────────────────────────────────
+    def describe_custom_asset_image(self, payload):
+        """调用 VLM 模型，根据上传的定妆照自动识图输出英文提示词描述"""
+        import base64
+        import json
+        from openai import OpenAI
+        from src.run_context import get_paths
+        
+        image_path = payload.get("image_path", "")
+        asset_type = payload.get("type", "character")
+        
+        print(f"[Bridge] 正在调用 VLM 模型识别资产描述: image_path={image_path}, type={asset_type}")
+        if not image_path:
+            return {"status": "error", "detail": "图片路径为空"}
+            
+        full_img_path = BASE_DIR_PATH / image_path
+        if not full_img_path.exists():
+            return {"status": "error", "detail": "物理图片不存在"}
+            
+        try:
+            # 读取图片并做 Base64 编码
+            with open(full_img_path, "rb") as img_f:
+                img_data = base64.b64encode(img_f.read()).decode("utf-8")
+                
+            # 根据类型，使用对应的 VLM 引导 Prompt
+            if asset_type == "scene":
+                vlm_prompt = (
+                    "You are a master concept artist. Describe the background scene in this image extremely concisely. "
+                    "Focus only on the most essential environment elements, colors, and layout. "
+                    "Write a single extremely brief English description of 15-25 words (no bullet points, no markdown). "
+                    "Describe it as a 2D flat minimalist background illustration. DO NOT mention any characters."
+                )
+            elif asset_type == "prop":
+                vlm_prompt = (
+                    "You are a flat vector icon designer. Describe the object/prop shown in this image extremely concisely. "
+                    "Focus only on the core shape and primary colors. "
+                    "Write a single extremely brief English description of 10-15 words (no bullet points, no markdown) describing "
+                    "it as a 2D vector icon on a pure white background."
+                )
+            else:
+                vlm_prompt = (
+                    "You are a character concept designer. Describe the appearance of the character in this image extremely concisely. "
+                    "Focus only on the most essential features: gender, hair color/style, and clothing type/color. "
+                    "Write a single extremely brief English description of 15-20 words (no bullet points, no markdown). "
+                    "Describe it as a 2D flat comic character. Keep it simple, iconic, and very short. "
+                    "Do NOT include photorealism, CGI, or complex anatomy terms."
+                )
+                
+            # 引入 VLM 配置（强制使用配置中的 VLM，如 Gemini Pro）
+            from src.model_presets import MODEL_VLM, VLM_API_KEY, VLM_BASE_URL
+            
+            client = OpenAI(api_key=VLM_API_KEY, base_url=VLM_BASE_URL.rstrip("/"), timeout=60.0)
+            
+            # 使用 OpenAI 格式的 Vision 格式调用
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": vlm_prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/png;base64,{img_data}"
+                            }
+                        }
+                    ]
+                }
+            ]
+            
+            # 兼容性日志记录
+            from src.api_audit import PHASE_CASTING, log_llm_chat
+            
+            response = log_llm_chat(
+                PHASE_CASTING,
+                "custom_asset_vlm_describe",
+                MODEL_VLM,
+                lambda: client.chat.completions.create(
+                    model=MODEL_VLM,
+                    messages=messages,
+                    temperature=0.3,
+                    max_tokens=4096
+                )
+            )
+            
+            description = (response.choices[0].message.content or "").strip()
+            print(f"[Bridge] VLM 识别描述成功: {description[:100]}...")
+            return {"status": "success", "description": description}
+            
+        except Exception as e:
+            import traceback
+            print(f"❌ [Bridge] VLM 识别失败: {str(e)}")
+            traceback.print_exc()
+            return {"status": "error", "detail": f"VLM 识别失败: {str(e)}"}
+
+    # ──────────────────────────────────────────────
     # 📺 频道预设持久化  get_channels / save_channels
     # ──────────────────────────────────────────────
     def get_channels(self):
@@ -1516,6 +2525,68 @@ except Exception as e:
         except Exception as e:
             print(f"❌ [Bridge] 文件导出失败: {e}")
             return {"status": "error", "detail": f"文件保存失败: {str(e)}"}
+
+    # ──────────────────────────────────────────────
+    # 🎙️ 旁白音色试听合成（实时预览）
+    # ──────────────────────────────────────────────
+    def tts_preview(self, payload):
+        """
+        🎙️ 旁白音色试听生成接口
+        """
+        engine = payload.get("engine", "edge")
+        voice = payload.get("voice", "")
+        rate = payload.get("rate", "")
+        emotion = payload.get("emotion", "none")
+        pitch = int(payload.get("pitch", 0))
+        volume = int(payload.get("volume", 0))
+        prompt = payload.get("prompt", "")
+        
+        print(f"\n[Bridge] 正在生成试听音频: engine={engine}, voice={voice}, rate={rate}, emotion={emotion}, pitch={pitch}, volume={volume}, prompt={prompt}")
+        
+        try:
+            preview_text = "您好！这是我当前的声音效果，如果您觉得满意，就选择我为您配音吧。"
+            if engine == "volc" and emotion == "expressive":
+                preview_text = "<cot text=温柔>您好！这是我当前的声音效果，如果您觉得满意，就选择我为您配音吧。</cot>"
+                
+            preview_dir = BASE_DIR_PATH / "previews"
+            preview_dir.mkdir(parents=True, exist_ok=True)
+            
+            import hashlib
+            config_hash = hashlib.md5(f"{engine}_{voice}_{rate}_{emotion}_{pitch}_{volume}_{prompt}".encode("utf-8")).hexdigest()
+            filename = f"preview_{config_hash}.mp3"
+            local_audio_path = preview_dir / filename
+            
+            if not local_audio_path.exists():
+                if engine == "volc":
+                    from src.step1_writer_v6 import _run_volc_tts_to_files
+                    _run_volc_tts_to_files(
+                        text=preview_text,
+                        audio_path=local_audio_path,
+                        voice=voice,
+                        rate=rate,
+                        emotion=emotion,
+                        pitch=pitch,
+                        volume=volume,
+                        prompt=prompt
+                    )
+                else:
+                    from src.step1_writer_v6 import _run_edge_tts_to_files
+                    vtt_path = local_audio_path.with_suffix(".vtt")
+                    _run_edge_tts_to_files(
+                        text=preview_text,
+                        audio_path=local_audio_path,
+                        vtt_path=vtt_path,
+                        voice=voice,
+                        rate=rate
+                    )
+                    vtt_path.unlink(missing_ok=True)
+                    
+            relative_url = _to_relative_url(local_audio_path)
+            return {"status": "success", "audio_url": relative_url}
+        except Exception as e:
+            print(f"❌ [Bridge] 试听音频生成失败: {e}")
+            return {"status": "error", "detail": f"试听音频生成失败: {str(e)}"}
+            
 
 
 def main():

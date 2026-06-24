@@ -4,7 +4,6 @@ aiosignal==1.4.0
 annotated-types==0.7.0
 anyio==4.12.1
 attrs==26.1.0
-audioop-lts==0.2.2
 audioread==3.1.0
 bypy==1.8.9
 certifi==2026.2.25
@@ -93,3 +92,4 @@ volcengine-python-sdk==5.0.21
 websocket-client==1.9.0
 websockets==16.0
 yarl==1.23.0
+pyJianYingDraft @ git+https://github.com/GuanYixuan/pyJianYingDraft.git

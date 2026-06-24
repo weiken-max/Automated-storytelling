@@ -102,6 +102,112 @@
     </div>
   </div>
 
+  <!-- ⚙️ 全局模型配置模态弹窗 -->
+  <div id="modelSettingsModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+    <div class="w-full max-w-lg bg-[#0D1127] border border-indigo-500/20 rounded-2xl shadow-2xl flex flex-col overflow-hidden" style="max-height:90vh">
+      <!-- Header -->
+      <div class="flex items-center justify-between px-6 py-4 border-b border-slate-900/80 shrink-0">
+        <div class="flex items-center space-x-3">
+          <span class="text-2xl">⚙️</span>
+          <div>
+            <h3 class="text-sm font-bold text-slate-100">全局模型选择配置</h3>
+            <p class="text-[10px] text-slate-500">动态切换底座模型名，保持 API Key 与代理基址不变</p>
+          </div>
+        </div>
+        <button onclick="closeModelSettingsModal()" class="text-slate-400 hover:text-white text-lg cursor-pointer">✕</button>
+      </div>
+
+      <!-- Body -->
+      <div class="overflow-y-auto flex-1 p-6 space-y-5 no-scrollbar">
+        <!-- Text LLM Model -->
+        <div class="space-y-1.5">
+          <label class="text-[10px] tracking-widest text-slate-400 font-bold">🧠 文本生成大模型 (LLM)</label>
+          <div class="flex gap-2">
+            <select id="settingLlmPreset" onchange="syncModelPreset('Llm')" class="bg-[#05070E] border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none flex-1">
+              <option value="deepseek-v4-pro">DeepSeek V4 Pro (deepseek-v4-pro)</option>
+              <option value="gemini-1.5-pro">Gemini 1.5 Pro (gemini-1.5-pro)</option>
+              <option value="gemini-2.5-flash">Gemini 2.5 Flash (gemini-2.5-flash)</option>
+              <option value="custom">── 自定义模型名 ──</option>
+            </select>
+            <input id="settingLlmCustom" type="text" placeholder="输入自定义模型名" class="hidden bg-[#05070E] border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none flex-1">
+          </div>
+          <p class="text-[10px] text-slate-500 leading-relaxed bg-[#05070E] p-2.5 rounded-xl border border-slate-850">
+            ℹ️ <span class="text-slate-450">控制环节:</span> Phase 2 的长剧本文本拆分段落 (Beat)；大纲生成与剧本智能润色。
+          </p>
+        </div>
+
+        <!-- VLM Model -->
+        <div class="space-y-1.5">
+          <label class="text-[10px] tracking-widest text-slate-400 font-bold">👁️ 多模态识别模型 (VLM)</label>
+          <div class="flex gap-2">
+            <select id="settingVlmPreset" onchange="syncModelPreset('Vlm')" class="bg-[#05070E] border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none flex-1">
+              <option value="deepseek-v4-pro">DeepSeek V4 Pro (deepseek-v4-pro)</option>
+              <option value="gemini-1.5-pro">Gemini 1.5 Pro (gemini-1.5-pro)</option>
+              <option value="gemini-2.5-flash">Gemini 2.5 Flash (gemini-2.5-flash)</option>
+              <option value="custom">── 自定义模型名 ──</option>
+            </select>
+            <input id="settingVlmCustom" type="text" placeholder="输入自定义模型名" class="hidden bg-[#05070E] border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none flex-1">
+          </div>
+          <p class="text-[10px] text-slate-500 leading-relaxed bg-[#05070E] p-2.5 rounded-xl border border-slate-850">
+            ℹ️ <span class="text-slate-450">控制环节:</span> Phase 3 视觉提示词编写（核心多模态图文输入）；定妆资产上传时的智能识图描述。
+          </p>
+        </div>
+
+        <!-- Image Generation Model - Casting -->
+        <div class="space-y-1.5">
+          <label class="text-[10px] tracking-widest text-slate-400 font-bold">👤 定妆照生图模型 (Casting IMG)</label>
+          <div class="flex gap-2">
+            <select id="settingImgCastPreset" onchange="syncModelPreset('ImgCast')" class="bg-[#05070E] border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none flex-1">
+              <option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image (gemini-3.1-flash-image-preview)</option>
+              <option value="gpt-image-1">GPT Image 1 (gpt-image-1)</option>
+              <option value="gpt-image-2">GPT Image 2 (gpt-image-2)</option>
+              <option value="gpt-image-1-all">GPT Image 1 All (gpt-image-1-all)</option>
+              <option value="flux-kontext-pro">Flux Kontext Pro (flux-kontext-pro)</option>
+              <option value="flux-kontext-max">Flux Kontext Max (flux-kontext-max)</option>
+              <option value="custom">── 自定义模型名 ──</option>
+            </select>
+            <input id="settingImgCastCustom" type="text" placeholder="输入自定义模型名" class="hidden bg-[#05070E] border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none flex-1">
+          </div>
+          <p class="text-[10px] text-slate-500 leading-relaxed bg-[#05070E] p-2.5 rounded-xl border border-slate-850">
+            ℹ️ <span class="text-slate-450">控制环节:</span> 生成最开始的角色定妆照、场景道具底图（即卡片 triple_view.png 的初次生成）。
+          </p>
+        </div>
+
+        <!-- Image Generation Model - Storyboard -->
+        <div class="space-y-1.5">
+          <label class="text-[10px] tracking-widest text-slate-400 font-bold">🎬 分镜图生图模型 (Storyboard IMG)</label>
+          <div class="flex gap-2">
+            <select id="settingImgStoryPreset" onchange="syncModelPreset('ImgStory')" class="bg-[#05070E] border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none flex-1">
+              <option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image (gemini-3.1-flash-image-preview)</option>
+              <option value="gpt-image-1">GPT Image 1 (gpt-image-1)</option>
+              <option value="gpt-image-2">GPT Image 2 (gpt-image-2)</option>
+              <option value="gpt-image-1-all">GPT Image 1 All (gpt-image-1-all)</option>
+              <option value="flux-kontext-pro">Flux Kontext Pro (flux-kontext-pro)</option>
+              <option value="flux-kontext-max">Flux Kontext Max (flux-kontext-max)</option>
+              <option value="custom">── 自定义模型名 ──</option>
+            </select>
+            <input id="settingImgStoryCustom" type="text" placeholder="输入自定义模型名" class="hidden bg-[#05070E] border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none flex-1">
+          </div>
+          <p class="text-[10px] text-slate-500 leading-relaxed bg-[#05070E] p-2.5 rounded-xl border border-slate-850">
+            ℹ️ <span class="text-slate-450">控制环节:</span> 生成最终的宫格漫画大图（双保险接收 VLM 提示词 + 空间参考图）。
+            <br>
+            ℹ️ <span class="text-slate-450">注意:</span> 包含 <code class="text-indigo-400">gpt-image</code> / <code class="text-indigo-400">flux-kontext</code> 的模型会自动转入 <b>GPT 家族编辑格式</b>（支持多张定妆参考图二进制上传）；Gemini 家族模型将使用原生生成方式。
+          </p>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="px-6 py-4 border-t border-slate-900/80 flex justify-end space-x-3 shrink-0">
+        <button onclick="closeModelSettingsModal()" class="px-4 py-2 bg-slate-850 hover:bg-slate-800 text-slate-400 font-semibold text-xs rounded-xl transition border border-slate-800 cursor-pointer">
+          取消
+        </button>
+        <button onclick="saveModelSettings()" class="px-5 py-2.5 bg-indigo-650 hover:bg-indigo-550 text-white font-bold text-xs rounded-xl transition shadow-lg shadow-indigo-600/20 cursor-pointer">
+          💾 保存并应用
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- 🎨 频道编辑器模态弹窗 -->
   <div id="channelEditorModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
     <div class="w-full max-w-2xl bg-[#0D1127] border border-indigo-500/20 rounded-2xl shadow-2xl flex flex-col overflow-hidden" style="max-height:90vh">
@@ -229,6 +335,12 @@
             placeholder="例如：Cyanide and Happiness comic style, 2D vector / flat graphic cartoon..."
             class="w-full bg-[#05070E] border border-slate-800 rounded-xl p-3.5 text-xs font-mono text-slate-200 focus:border-indigo-500 focus:outline-none leading-relaxed"></textarea>
         </div>
+
+        <!-- Cast Prompt -->
+        <div class="space-y-2">
+          <label class="text-[10px] tracking-widest text-slate-400 font-bold">🎯 定妆照画法/角色模板 Prompt（根据资产配置自动分框）</label>
+          <div id="chEditorCastPromptContainer" class="space-y-3"></div>
+        </div>
       </div>
 
       <!-- Footer -->
@@ -293,6 +405,10 @@
         </div>
         <div class="flex items-center space-x-4">
           <!-- 🔌 真实连通指示灯 -->
+          <!-- ⚙️ 模型配置按钮 -->
+          <button id="modelSettingsBtn" onclick="openModelSettingsModal()" class="flex items-center space-x-2 text-[10px] font-mono tracking-widest px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-amber-400 hover:text-amber-300 hover:border-amber-500/30 transition shadow-inner cursor-pointer mr-2">
+            <span>⚙️ 模型配置</span>
+          </button>
           <!-- 📊 后台监控大盘按钮 -->
           <button id="backstageMonitorBtn" onclick="toggleBackstageDrawer()" class="flex items-center space-x-2 text-[10px] font-mono tracking-widest px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-indigo-400 hover:text-indigo-300 hover:border-indigo-500/30 transition shadow-inner cursor-pointer mr-2">
             <span class="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping"></span>
@@ -309,10 +425,10 @@
       </header>
 
       <!-- 画布显示区 -->
-      <div class="flex-1 flex items-center justify-center p-8 relative z-10 overflow-y-auto no-scrollbar">
+      <div class="flex-1 flex flex-col items-center p-8 relative z-10 overflow-y-auto no-scrollbar">
         
         <!-- ==================== 界面 A: 创作频道工作站首页 ==================== -->
-        <section id="screenA" class="w-full max-w-4xl flex flex-col items-center justify-center space-y-10 py-8">
+        <section id="screenA" class="w-full max-w-4xl flex flex-col items-center justify-center space-y-10 py-8 my-auto">
           <div class="text-center space-y-3 max-w-xl">
             <h1 class="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-100 to-slate-500">
               开始你的故事
@@ -339,7 +455,7 @@
         </section>
 
         <!-- ==================== 界面 B: 色彩转场过渡页 ==================== -->
-        <section id="screenB" class="hidden w-full max-w-md flex flex-col items-center space-y-8 glass-studio-panel p-10 rounded-3xl border border-white/10 shadow-2xl">
+        <section id="screenB" class="hidden w-full max-w-md flex flex-col items-center space-y-8 glass-studio-panel p-10 rounded-3xl border border-white/10 shadow-2xl my-auto">
           <div class="text-center space-y-2">
             <span class="text-[10px] tracking-[0.3em] font-bold text-indigo-400 uppercase">SELECTED SPACE</span>
             <h2 id="selectedModeTitle" class="text-2xl font-black tracking-wide text-white">猩红剧本模式</h2>
@@ -362,7 +478,7 @@
         </section>
 
         <!-- ==================== 界面 C2: 多轨大模型 System Prompt 组装库 ==================== -->
-        <section id="screenC2" class="hidden w-full max-w-5xl glass-studio-panel p-8 rounded-[2rem] border border-slate-800 space-y-6">
+        <section id="screenC2" class="hidden w-full max-w-5xl glass-studio-panel p-8 rounded-[2rem] border border-slate-800 space-y-6 my-auto">
           
           <div class="flex items-center justify-between border-b border-slate-850 pb-4">
             <div class="flex items-center space-x-3">
@@ -406,6 +522,20 @@
                   <span>🔮 4. LLM 随机大纲抽取预置</span>
                 </span>
                 <span class="text-[10px] text-slate-550 font-light">控制摇一摇故事方向的创意大纲生成</span>
+              </button>
+
+              <button onclick="switchPromptCategory('storyboard')" id="catBtn-storyboard" class="w-full text-left p-4 rounded-xl border border-slate-900 bg-slate-950/20 text-slate-400 hover:text-slate-200 transition-all flex flex-col space-y-1">
+                <span class="text-xs font-bold flex items-center space-x-2">
+                  <span>🎞️ 5. 分镜画法纪律 Prompt</span>
+                </span>
+                <span class="text-[10px] text-slate-550 font-light">控制分镜插图的排版、姿势及画法细则</span>
+              </button>
+
+              <button onclick="switchPromptCategory('cast_prompt')" id="catBtn-cast_prompt" class="w-full text-left p-4 rounded-xl border border-slate-900 bg-slate-950/20 text-slate-400 hover:text-slate-200 transition-all flex flex-col space-y-1">
+                <span class="text-xs font-bold flex items-center space-x-2">
+                  <span>🎯 6. 定妆照画法生图模板</span>
+                </span>
+                <span class="text-[10px] text-slate-550 font-light">控制定妆照人景物生图对应的基础提示词描述</span>
               </button>
             </div>
 
@@ -457,6 +587,26 @@
                 <p class="text-[10px] text-slate-500 leading-normal font-light">★ 在用户使用“摇一摇”时调用。此 System Prompt 会限制大模型生成的文本长度，确保生成的骨架文本能被前端顺畅预览。</p>
               </div>
 
+              <!-- 5. 分镜画法纪律预置 -->
+              <div id="promptArea-storyboard" class="hidden space-y-4">
+                <div class="flex justify-between items-center">
+                  <span class="text-xs font-bold text-slate-300">🎞️ 分镜画法纪律 Prompt (C2-Storyboard)</span>
+                  <button onclick="resetSelectedPrompt('storyboard')" class="text-[10px] text-indigo-400 hover:underline">恢复出厂默认</button>
+                </div>
+                <textarea id="promptText-storyboard" oninput="syncPromptToState('storyboard')" rows="8" class="w-full bg-[#05070E] border border-slate-800 rounded-xl p-4 text-xs font-mono text-slate-200 focus:border-indigo-500 focus:outline-none leading-relaxed"></textarea>
+                <p class="text-[10px] text-slate-500 leading-normal font-light">★ 本提示词用于指示分镜大宫格生成时的分镜表现规则、表情、脸部特写与画面纪律要求。</p>
+              </div>
+
+              <!-- 6. 定妆照生图模板预置 -->
+              <div id="promptArea-cast_prompt" class="hidden space-y-4">
+                <div class="flex justify-between items-center">
+                  <span class="text-xs font-bold text-slate-300">🎯 定妆照画法生图模板 Prompt (C2-CastPrompt)</span>
+                  <button onclick="resetSelectedPrompt('cast_prompt')" class="text-[10px] text-indigo-400 hover:underline">恢复出厂默认</button>
+                </div>
+                <textarea id="promptText-cast_prompt" oninput="syncPromptToState('cast_prompt')" rows="8" class="w-full bg-[#05070E] border border-slate-800 rounded-xl p-4 text-xs font-mono text-slate-200 focus:border-indigo-500 focus:outline-none leading-relaxed"></textarea>
+                <p class="text-[10px] text-slate-500 leading-normal font-light">★ 本提示词用于生图资产定妆照的底层角色/场景/道具提示词模板。支持通过 [character]/[scene]/[prop] 标签分组定位。</p>
+              </div>
+
             </div>
 
           </div>
@@ -491,7 +641,7 @@
         </section>
 
         <!-- ==================== 界面 C1: 核心输入总控通道 ==================== -->
-        <section id="screenC1" class="hidden w-full max-w-2xl glass-studio-panel p-8 rounded-3xl border border-slate-800 space-y-6">
+        <section id="screenC1" class="hidden w-full max-w-2xl glass-studio-panel p-8 rounded-3xl border border-slate-800 space-y-6 my-auto">
           <div class="flex items-center justify-between border-b border-slate-850 pb-4">
             <div class="flex items-center space-x-3">
               <span id="c1ModeIndicator" class="w-3 h-3 rounded-full bg-red-500"></span>
@@ -515,6 +665,8 @@
             <div class="flex items-center justify-between">
               <label class="text-[10px] tracking-widest text-slate-400">请写入您的旁白文案（当前内容将直接用作视频旁白；若想对故事进行润色扩写，请在下方开启“AI 剧本细节修饰与润色”）</label>
               <div class="flex items-center space-x-2">
+                <button onclick="insertEmotionTag()" class="text-xs text-amber-400 hover:text-amber-300 underline font-medium">🎭 插入情绪标签</button>
+                <span class="text-slate-700">|</span>
                 <button onclick="loadDemoScript()" class="text-xs text-indigo-400 hover:text-indigo-300 underline font-medium">快速导入电影精选 Demo 剧本</button>
                 <span class="text-slate-700">|</span>
                 <button id="c1ShakeBtn" onclick="triggerChannelShake()" class="flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-950/40 border border-indigo-800/50 hover:border-indigo-500 text-xs text-indigo-300 hover:text-indigo-200 rounded-lg transition cursor-pointer">
@@ -544,6 +696,114 @@
                 <div class="w-11 h-6 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-400 after:border-slate-350 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600 peer-checked:after:bg-white"></div>
               </label>
             </div>
+
+            <!-- 🎙️ 旁白配音与音色选择面板 -->
+            <div class="bg-slate-950/80 rounded-2xl p-5 border border-slate-850 space-y-4 shadow-inner">
+              <div class="flex items-center justify-between border-b border-slate-850/50 pb-3">
+                <div class="flex items-center space-x-2">
+                  <span class="text-xs font-bold text-slate-100">🎙️ 旁白配音与音色配置</span>
+                </div>
+                <!-- 引擎切换 -->
+                <div class="flex bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+                  <button type="button" id="engineEdgeBtn" onclick="selectTtsEngine('edge')" class="px-3 py-1 text-[10px] font-bold rounded transition-all cursor-pointer">Edge-TTS</button>
+                  <button type="button" id="engineVolcBtn" onclick="selectTtsEngine('volc')" class="px-3 py-1 text-[10px] font-bold rounded transition-all cursor-pointer">豆包语音 (火山)</button>
+                </div>
+              </div>
+
+              <!-- 详细选择栅格 -->
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- 1. 发音人选择 -->
+                <div class="space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[10px] text-slate-400 font-medium">发音人 / 音色</label>
+                    <button type="button" id="ttsPreviewBtn" onclick="previewSelectedVoice()" class="text-[9px] text-indigo-400 hover:text-indigo-300 font-bold transition-colors cursor-pointer flex items-center space-x-1 focus:outline-none">
+                      <span id="ttsPreviewText">🔊 试听当前设置</span>
+                    </button>
+                  </div>
+                  <select id="voiceRoleSelector" onchange="onVoiceSettingChange()" class="w-full bg-[#05070E] border border-slate-800 rounded-lg px-3 py-2 text-slate-350 focus:border-red-500 focus:outline-none text-[11px]">
+                    <!-- 动态载入 -->
+                  </select>
+                  <!-- 自定义输入框，默认隐藏 -->
+                  <input type="text" id="customVoiceInput" oninput="onVoiceSettingChange()" class="hidden w-full bg-[#05070E] border border-slate-850 rounded-lg px-3 py-1.5 mt-1.5 text-slate-200 focus:border-red-500 focus:outline-none text-[11px]" placeholder="手动输入音色标识，如：icl_xxx 或 2.0音色">
+                  
+                  <!-- 保存自定义音色面板 -->
+                  <div id="customVoiceSavePanel" class="hidden space-y-1.5 mt-1.5 p-2 bg-[#0A0D18] border border-slate-800/80 rounded-lg">
+                    <input type="text" id="customVoiceNameInput" class="w-full bg-[#05070E] border border-slate-850 rounded px-2.5 py-1 text-slate-200 focus:outline-none text-[10px]" placeholder="音色别名，如：灿灿大模型">
+                    <button type="button" onclick="saveCustomVoice()" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white rounded py-1 text-[10px] font-bold transition-colors cursor-pointer">💾 保存此自定义音色</button>
+                  </div>
+
+                  <!-- 管理自定义音色面板 -->
+                  <div id="customVoiceManagePanel" class="hidden flex items-center justify-between mt-1.5 p-1.5 bg-[#0A0D18] border border-slate-800/80 rounded-lg text-[10px]">
+                    <span class="text-slate-400">已选自定义音色:</span>
+                    <div class="flex space-x-2">
+                      <button type="button" onclick="renameCustomVoice()" class="text-indigo-400 hover:text-indigo-300 font-bold cursor-pointer">✏️ 重命名</button>
+                      <button type="button" onclick="deleteCustomVoice()" class="text-red-400 hover:text-red-350 font-bold cursor-pointer">🗑️ 删除</button>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 2. 语速选择 -->
+                <div class="space-y-1.5">
+                  <label class="text-[10px] text-slate-400 font-medium">语速 (Speech Rate)</label>
+                  <select id="voiceRateSelector" onchange="onVoiceSettingChange()" class="w-full bg-[#05070E] border border-slate-800 rounded-lg px-3 py-2 text-slate-350 focus:border-red-500 focus:outline-none text-[11px]">
+                    <option value="-50%">0.5 倍速 (-50%)</option>
+                    <option value="-20%">0.8 倍速 (-20%)</option>
+                    <option value="+0%" selected>标准语速 (+0%)</option>
+                    <option value="+10%">1.1 倍速 (+10%)</option>
+                    <option value="+20%">1.2 倍速 (+20%)</option>
+                    <option value="+50%">1.5 倍速 (+50%)</option>
+                    <option value="+100%">2.0 倍速 (+100%)</option>
+                  </select>
+                </div>
+
+                <!-- 3. 配音情绪 (默认隐藏，仅豆包可见) -->
+                <div id="voiceEmotionGroup" class="space-y-1.5 hidden">
+                  <label class="text-[10px] text-slate-400 font-medium">配音情绪 (仅部分音色支持)</label>
+                  <select id="voiceEmotionSelector" onchange="onVoiceSettingChange()" class="w-full bg-[#05070E] border border-slate-800 rounded-lg px-3 py-2 text-slate-350 focus:border-red-500 focus:outline-none text-[11px]">
+                    <option value="none" selected>默认中性 (none)</option>
+                    <option value="angry">生气愤怒 (angry)</option>
+                    <option value="sad">悲伤哭泣 (sad)</option>
+                    <option value="happy">开心喜悦 (happy)</option>
+                    <option value="fearful">恐惧害怕 (fearful)</option>
+                    <option value="hate">厌恶憎恨 (hate)</option>
+                    <option value="surprise">惊讶意外 (surprise)</option>
+                    <option value="customer_service">客服温和 (customer_service)</option>
+                    <option value="news">庄重播报 (news)</option>
+                    <option value="expressive">精细片段情绪 (use COT tags)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- 豆包语音 2.0 高级设置（音调、音量、语音指令），仅当选择“豆包语音 (火山)”时显示 -->
+              <div id="volcAdvancedSettings" class="grid grid-cols-1 md:grid-cols-3 gap-4 border-t border-slate-850/50 pt-4 hidden">
+                <!-- 1. 音调 (Pitch) 范围 -12 到 12 -->
+                <div class="space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[10px] text-slate-400 font-medium">音调 (Pitch): <span id="voicePitchVal">0</span></label>
+                  </div>
+                  <input type="range" id="voicePitchRange" min="-12" max="12" value="0" oninput="document.getElementById('voicePitchVal').innerText=this.value; onVoiceSettingChange()" class="w-full accent-indigo-500 bg-slate-900 h-1.5 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <!-- 2. 音量 (Volume) 范围 -50 到 100 -->
+                <div class="space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[10px] text-slate-400 font-medium">音量 (Volume): <span id="voiceVolumeVal">0</span></label>
+                  </div>
+                  <input type="range" id="voiceVolumeRange" min="-50" max="100" value="0" oninput="document.getElementById('voiceVolumeVal').innerText=this.value; onVoiceSettingChange()" class="w-full accent-indigo-500 bg-slate-900 h-1.5 rounded-lg appearance-none cursor-pointer">
+                </div>
+
+                <!-- 3. 语音指令/提示词 (Emotion Prompt) -->
+                <div class="space-y-1.5">
+                  <label class="text-[10px] text-slate-400 font-medium">全局情感提示词 (Voice Prompt)</label>
+                  <input type="text" id="voicePromptInput" oninput="onVoiceSettingChange()" class="w-full bg-[#05070E] border border-slate-800 rounded-lg px-3 py-1.5 text-slate-200 focus:border-red-500 focus:outline-none text-[11px]" placeholder="如：你可以用特别生气的语气说话吗？">
+                </div>
+              </div>
+
+              <!-- 💡 情绪说明卡片 -->
+              <div id="volcEmotionTipCard" class="bg-indigo-950/20 border border-indigo-900/40 rounded-xl p-3 text-[10px] text-indigo-300 leading-relaxed font-light hidden">
+                💡 <b>提示</b>：在使用豆包复刻 Expressive 增强版音色时，您可在剧本文本中为任意句子加上情绪标签实现精准控制，例如：<code>&lt;cot text=愤怒&gt;你竟然骗我！&lt;/cot&gt;</code>，字幕生成时系统将自动剥离标签，仅保留干净的纯文本。
+              </div>
+            </div>
           </div>
 
           <!-- 下方进度发射控制器 -->
@@ -560,7 +820,7 @@
         </section>
 
         <!-- ==================== 界面 D2: 随机大纲审核面板 ==================== -->
-        <section id="screenD2" class="hidden w-full max-w-xl glass-studio-panel p-8 rounded-3xl border border-slate-800 space-y-6">
+        <section id="screenD2" class="hidden w-full max-w-xl glass-studio-panel p-8 rounded-3xl border border-slate-800 space-y-6 my-auto">
           <div class="flex items-center justify-between border-b border-slate-850 pb-4">
             <div class="flex items-center space-x-2">
               <span class="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span>
@@ -597,7 +857,7 @@
         </section>
 
         <!-- ==================== 界面 D1: 核心资产大画廊展示区 ==================== -->
-        <section id="screenD1" class="hidden w-full max-w-6xl glass-studio-panel p-8 rounded-[2rem] border border-slate-800 space-y-8 transition-all">
+        <section id="screenD1" class="hidden w-full max-w-6xl glass-studio-panel p-8 rounded-[2rem] border border-slate-800 space-y-8 transition-all my-auto">
           
           <!-- 编译区主头部 -->
           <div class="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-850/80 pb-6 gap-4">
@@ -687,9 +947,27 @@
             <button onclick="navigateTo('C1')" class="text-xs text-slate-400 hover:text-white transition">
               ‹ 返回文本投喂处
             </button>
-            <button id="d1NextBtn" disabled onclick="handleD1Next()" class="px-8 py-3.5 bg-slate-800 text-slate-500 font-bold rounded-xl shadow-lg cursor-not-allowed transition-all text-xs tracking-wider uppercase">
-              角色场景已确定，生成分镜底片大网格 (下一步) ➔
-            </button>
+            <div class="flex items-center space-x-5">
+              <label class="flex items-center space-x-2 cursor-pointer bg-slate-950/50 border border-slate-850/80 hover:border-slate-800/80 px-3.5 py-2.5 rounded-xl transition duration-200">
+                <span class="text-xs font-semibold text-slate-450 select-none">🎞️ 分镜密度:</span>
+                <select id="storyboardDensity" class="bg-transparent text-xs text-slate-200 border-none focus:ring-0 cursor-pointer p-0 font-medium">
+                  <option value="low" class="bg-slate-950 text-slate-200">低 (极简，切换慢)</option>
+                  <option value="medium" class="bg-slate-950 text-slate-200" selected>中 (平衡，推荐)</option>
+                  <option value="high" class="bg-slate-950 text-slate-200">高 (精细，切换快)</option>
+                </select>
+              </label>
+              <label class="flex items-center space-x-2 cursor-pointer bg-slate-950/50 border border-slate-850/80 hover:border-slate-800/80 px-3.5 py-2.5 rounded-xl transition duration-200">
+                <span class="text-xs font-semibold text-slate-450 select-none">🎨 宫格模式:</span>
+                <select id="gridModeSelector" class="bg-transparent text-xs text-slate-200 border-none focus:ring-0 cursor-pointer p-0 font-medium">
+                  <option value="4x4" class="bg-slate-950 text-slate-200" selected>4x4 (推荐)</option>
+                  <option value="3x3" class="bg-slate-950 text-slate-200">3x3 (高清)</option>
+                  <option value="2x2" class="bg-slate-950 text-slate-200">2x2 (超清)</option>
+                </select>
+              </label>
+              <button id="d1NextBtn" disabled onclick="handleD1Next()" class="px-8 py-3.5 bg-slate-800 text-slate-500 font-bold rounded-xl shadow-lg cursor-not-allowed transition-all text-xs tracking-wider uppercase">
+                角色场景已确定，生成分镜底片大网格 (下一步) ➔
+              </button>
+            </div>
           </div>
         </section>
 
@@ -755,7 +1033,7 @@
         </div>
 
         <!-- ==================== 界面 E: 影视级分镜底片大网格 (E) ==================== -->
-        <section id="screenE" class="hidden w-full max-w-5xl glass-studio-panel p-8 rounded-3xl border border-slate-800 space-y-6 animate-fade-in">
+        <section id="screenE" class="hidden w-full max-w-5xl glass-studio-panel p-8 rounded-3xl border border-slate-800 space-y-6 animate-fade-in my-auto">
           <div class="flex items-center justify-between border-b border-slate-850 pb-4">
             <div>
               <h3 class="text-lg font-bold tracking-wider text-slate-200 flex items-center space-x-2.5">
@@ -843,9 +1121,22 @@
                 <span>🔄 重新生成分镜</span>
               </button>
             </div>
-            <button id="synthesizeBtn" onclick="handleSynthesize()" class="px-8 py-3.5 bg-emerald-650 hover:bg-emerald-500 font-bold text-white rounded-xl shadow-lg transition-all text-xs tracking-wider uppercase flex items-center space-x-2">
-              <span>🎬 全盘合成多轨，送入放映室 (下一步) ➔</span>
-            </button>
+            <div class="flex items-center space-x-5">
+              <label class="flex items-center space-x-2 cursor-pointer bg-slate-950/50 border border-slate-850/80 hover:border-slate-800/80 px-3.5 py-2.5 rounded-xl transition duration-200">
+                <span class="text-xs font-semibold text-slate-450 select-none">🛠️ 输出模式:</span>
+                <select id="compileTypeSelector" class="bg-transparent text-xs text-slate-200 border-none focus:ring-0 cursor-pointer p-0 font-medium">
+                  <option value="video" class="bg-slate-950 text-slate-200" selected>直接合成最终视频 (MP4)</option>
+                  <option value="capcut" class="bg-slate-950 text-slate-200">导入至剪映草稿 (二次剪辑)</option>
+                </select>
+              </label>
+              <label class="flex items-center space-x-2 cursor-pointer bg-slate-950/50 border border-slate-850/80 hover:border-slate-800/80 px-3.5 py-2.5 rounded-xl transition duration-200">
+                <input type="checkbox" id="enableSpeedup" class="w-4 h-4 rounded border-slate-800 bg-slate-950 text-emerald-600 focus:ring-emerald-500 cursor-pointer" checked>
+                <span class="text-xs font-semibold text-slate-300 select-none">⏩ 开启音画 1.1x 变速 (推荐)</span>
+              </label>
+              <button id="synthesizeBtn" onclick="handleSynthesize()" class="px-8 py-3.5 bg-emerald-650 hover:bg-emerald-500 font-bold text-white rounded-xl shadow-lg transition-all text-xs tracking-wider uppercase flex items-center space-x-2">
+                <span>🎬 全盘合成多轨，送入放映室 (下一步) ➔</span>
+              </button>
+            </div>
           </div>
         </section>
 
@@ -918,7 +1209,7 @@
         </div>
 
         <!-- ==================== 界面 F: 最终多轨合并与电影放映室 ==================== -->
-        <section id="screenF" class="hidden w-full max-w-4xl glass-studio-panel p-10 rounded-[2.5rem] border border-slate-800 space-y-8 animate-fade-in">
+        <section id="screenF" class="hidden w-full max-w-4xl glass-studio-panel p-10 rounded-[2.5rem] border border-slate-800 space-y-8 animate-fade-in my-auto">
           
           <div class="text-center space-y-3">
             <span class="text-[10px] tracking-[0.4em] font-bold text-emerald-400 uppercase animate-pulse">● CINEMA THEATER</span>

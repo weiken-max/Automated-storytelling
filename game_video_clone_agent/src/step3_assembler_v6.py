@@ -659,23 +659,69 @@ def main():
             _write_step3_error(err)
             sys.exit(1)
 
-        segments = _timeline_to_segments(timeline, total_audio_duration)
-        if not segments:
-            err = "没有有效视频片段，装配失败。"
-            print(f"[ERROR] {err}")
-            _write_step3_error(err)
-            sys.exit(1)
+        compile_type = os.getenv("COMPILE_TYPE", "video")
+        if compile_type == "capcut":
+            # 1. 导出剪映草稿
+            from src.step3_capcut_exporter import export_draft_to_capcut
+            export_success = export_draft_to_capcut()
+            if not export_success:
+                err = "剪映草稿导出失败"
+                print(f"[ERROR] {err}")
+                _write_step3_error(err)
+                sys.exit(1)
 
-        clip_paths = generate_silent_clips_via_ffmpeg(segments, temp_dir)
-        create_concat_list(clip_paths, concat_list_path)
-        assemble_final_video_ffmpeg(
-            concat_list_path,
-            silent_video_path,
-            master_audio_path,
-            out_file,
-            total_audio_duration,
-            subtitle_srt_path=temp_subs_srt_path,
-        )
+            # 2. 生成极速音频预览视频（1帧画面 + 完整音频，不烧录字幕）
+            first_img = STORYBOARDS_DIR / "S_001.png"
+            if first_img.exists():
+                cmd_preview = [
+                    "ffmpeg", "-y",
+                    "-loop", "1",
+                    "-framerate", str(FPS),
+                    "-i", str(first_img),
+                    "-i", str(master_audio_path),
+                    "-vf", f"scale={FRAME_W}:{FRAME_H}:force_original_aspect_ratio=decrease,pad={FRAME_W}:{FRAME_H}:(ow-iw)/2:(oh-ih)/2:black,format=yuv420p",
+                    "-t", f"{total_audio_duration:.6f}",
+                    "-c:v", "libx264",
+                    "-preset", "veryfast",
+                    "-pix_fmt", "yuv420p",
+                    "-c:a", "aac",
+                    "-shortest",
+                    str(out_file)
+                ]
+            else:
+                cmd_preview = [
+                    "ffmpeg", "-y",
+                    "-f", "lavfi", "-i", f"color=c=black:s={FRAME_SIZE}:r={FPS}",
+                    "-i", str(master_audio_path),
+                    "-t", f"{total_audio_duration:.6f}",
+                    "-c:v", "libx264",
+                    "-preset", "veryfast",
+                    "-pix_fmt", "yuv420p",
+                    "-c:a", "aac",
+                    "-shortest",
+                    str(out_file)
+                ]
+            print("  [Preview] 正在以极速模式生成音频预览视频...")
+            _run_ffmpeg(cmd_preview, "生成极速音频预览视频")
+        else:
+            # 正常直接合成视频流程
+            segments = _timeline_to_segments(timeline, total_audio_duration)
+            if not segments:
+                err = "没有有效视频片段，装配失败。"
+                print(f"[ERROR] {err}")
+                _write_step3_error(err)
+                sys.exit(1)
+
+            clip_paths = generate_silent_clips_via_ffmpeg(segments, temp_dir)
+            create_concat_list(clip_paths, concat_list_path)
+            assemble_final_video_ffmpeg(
+                concat_list_path,
+                silent_video_path,
+                master_audio_path,
+                out_file,
+                total_audio_duration,
+                subtitle_srt_path=None,  # 去除硬字幕烧录，保持画面纯净
+            )
         post_speed = float(
             os.getenv("STEP3_POST_PLAYBACK_SPEED", str(_DEFAULT_POST_PLAYBACK_SPEED))
         )

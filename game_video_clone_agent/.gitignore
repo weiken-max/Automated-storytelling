@@ -69,6 +69,20 @@ toolsrealesrgan/vcomp140d.dll
 toolsrealesrgan/models/*.bin
 toolsrealesrgan/*.zip
 
+# Scratch / temp debug scripts & artifacts (local only)
+scratch/
+data/scratch/
+previews/
+temp_test_*.py
+palette_studio_backup*.html
+
+# Third-party API reference docs & local docs (local only, kept out of repo)
+# These live in the repo root — rules for them are in the repo-root .gitignore
+# (gitignore cannot match parent directories)
+
+# JianyingPro drafts (large local project data)
+scratch/JianyingPro Drafts/
+
 # Media artifacts
 *.png
 *.jpg

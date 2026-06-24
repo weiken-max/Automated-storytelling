@@ -25,22 +25,31 @@ const state = {
   assets: [],      // 定妆照卡片
   storyboards: [], // 分镜帧底片
   storyboardGrids: [], // 16 宫格大图批次
-  relativeVideoPath: "", // 合成视频在 Runs 下的相对路径
+  selectedFrameIndexByBatch: {}, // 记录各个 batch_index 选中的 frameIndex
+  gridMode: "4x4", // 记录当前项目的 gridMode
+  relativeVideoPath: "", // 合成视频在 Runs 下 the 相对路径
   
   // 后画后悔药对比备份
   assetHistory: {}, // {card_id: {new_url, old_url}}
   frameHistory: {}, // {frame_idx: {new_url, old_url}}
+  tempCastPrompts: {}, // 临时缓存定妆提示词的各个分栏内容
+  runningRedraws: {}, // 后台正在运行重绘的 card_id 或 frame_id 字典
 };
 
 function performSessionRecovery(res) {
   if (!res) return;
   showToast("🔄 正在从后台读取项目进度并全盘治愈状态树...");
   
+  let targetStage = res.stage;
+  if (targetStage === "C") targetStage = "C1";
+  if (targetStage === "D") targetStage = "D1";
+  
   // 1. 恢复基本变量与智能识别频道
   state.modePath = res.mode_path;
   state.seed = res.seed;
   state.extractedEntities = res.entities;
   state.polishEnabled = res.polish_enabled;
+  state.gridMode = res.grid_mode || "4x4";
 
   // 智能匹配激活的频道 ID，并拉取专属提示词配置
   let recoveredChId = "ch_drama";
@@ -65,7 +74,7 @@ function performSessionRecovery(res) {
   
   // 同步顶部状态灯
   const stateBadge = document.getElementById("activeStateBadge");
-  if (stateBadge) stateBadge.innerText = `STATUS: SCREEN_${res.stage}`;
+  if (stateBadge) stateBadge.innerText = `STATUS: SCREEN_${targetStage}`;
   
   // 2. 恢复剧本大纲与编译文本
   if (res.synopsis) {
@@ -129,11 +138,31 @@ function performSessionRecovery(res) {
   }
   
   // 4. 恢复分镜 (v4.0 16宫格模式)
+  if (res.frames && res.frames.length > 0) {
+    state.storyboards = res.frames;
+  }
   if (res.grids && res.grids.length > 0) {
     state.storyboardGrids = res.grids;
     renderStoryboardGrids();
-  } else if (res.frames && res.frames.length > 0) {
-    state.storyboards = res.frames;
+  }
+  if (res.frames && res.frames.length > 0) {
+    res.frames.forEach((frm, idx) => {
+      const previewImg = document.getElementById(`framePreviewImg${idx}`);
+      if (previewImg) {
+        previewImg.innerHTML = `
+          <span class="absolute top-2 left-2 px-1.5 py-0.5 bg-black/80 text-[8px] font-bold rounded text-amber-500 font-mono">F-0${idx+1}</span>
+          ${frm.image_url ? `<img src="${frm.image_url}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />` : `<div class="text-[10px] text-slate-700 animate-pulse">Rendering...</div>`}
+        `;
+      }
+      const textPreview = document.getElementById(`frameTextPreview${idx}`);
+      if (textPreview && frm.text) {
+        textPreview.innerText = frm.text;
+      }
+      const timeEl = document.getElementById(`frameTime${idx}`);
+      if (timeEl && frm.time_range) {
+        timeEl.innerText = frm.time_range;
+      }
+    });
   }
   
   // 5. 恢复最终视频
@@ -150,8 +179,8 @@ function performSessionRecovery(res) {
     }
   }
   
-  navigateTo(res.stage);
-  showToast(`🎉 成功为您自动恢复至 [${res.stage} 界面]！`);
+  navigateTo(targetStage);
+  showToast(`🎉 成功为您自动恢复至 [${targetStage} 界面]！`);
 }
 
 // ── ✍️ D2 大纲意见反馈重写逻辑 ──
@@ -255,6 +284,32 @@ function syncRawScriptToState() {
   updateJsonPayloadViewer();
 }
 
+function insertEmotionTag() {
+  const ta = document.getElementById("rawScriptTextarea");
+  if (!ta) return;
+
+  const start = ta.selectionStart;
+  const end = ta.selectionEnd;
+  const val = ta.value;
+  const selectedText = val.substring(start, end);
+
+  const prefix = "<cot text=";
+  const placeholder = "情绪";
+  const suffix = ">" + selectedText + "</cot>";
+
+  const replacement = prefix + placeholder + suffix;
+  ta.value = val.substring(0, start) + replacement + val.substring(end);
+
+  // 同步状态与草稿存储
+  syncRawScriptToState();
+
+  // 重新聚焦并选定“情绪”占位符
+  ta.focus();
+  const selectStart = start + prefix.length;
+  const selectEnd = selectStart + placeholder.length;
+  ta.setSelectionRange(selectStart, selectEnd);
+}
+
 // C2 提示词编辑：修改后同步到激活频道的 presets
 function syncPromptToState(cat) {
   const el = document.getElementById(`promptText-${cat}`);
@@ -277,10 +332,14 @@ function loadPresetsIntoC2() {
   const pol = document.getElementById("promptText-polish");
   const voi = document.getElementById("promptText-voiceover");
   const out = document.getElementById("promptText-outline");
+  const stb = document.getElementById("promptText-storyboard");
+  const cas = document.getElementById("promptText-cast_prompt");
   if (img) img.value = presets.image || DEFAULT_PRESETS.image;
   if (pol) pol.value = presets.polish || DEFAULT_PRESETS.polish;
   if (voi) voi.value = presets.voiceover || DEFAULT_PRESETS.voiceover;
   if (out) out.value = presets.outline || DEFAULT_PRESETS.outline;
+  if (stb) stb.value = presets.storyboard || DEFAULT_PRESETS.storyboard;
+  if (cas) cas.value = presets.cast_prompt || DEFAULT_PRESETS.cast_prompt;
   updateJsonPayloadViewer();
 }
 
@@ -354,6 +413,8 @@ function navigateTo(targetState) {
     }
     // 加载该频道的草稿
     loadChannelDraft();
+    // 初始化 TTS 引擎选择和参数
+    initTtsSettingsFromState();
     // 更新 C1 顶部「⚙️ 当前频道提示词」按钮文字
     const promptBtnLabel = document.getElementById("c1PromptBtnLabel");
     if (promptBtnLabel && ch) promptBtnLabel.innerText = `${ch.emoji || ''} ${ch.name} 提示词`;
@@ -481,6 +542,142 @@ function loadChannelDraft() {
   updateJsonPayloadViewer();
 }
 
+// 解析 [标签] 内容为键值对
+function parseCastPrompt(castPromptStr) {
+  const result = {};
+  if (!castPromptStr) return result;
+  const regex = /\[([^\]]+)\]([\s\S]*?)(?=\[[^\]]+\]|$)/g;
+  let match;
+  while ((match = regex.exec(castPromptStr)) !== null) {
+    result[match[1].trim()] = match[2].trim();
+  }
+  return result;
+}
+
+// 判断资产名称是否属于通用名称（机制 A：无中文，则判定为通用资产）
+function isGenericLabel(label) {
+  if (!label) return true;
+  return !/[\u4e00-\u9fa5]/.test(label);
+}
+
+// 动态渲染多输入框 (融合机制 A 与 机制 B)
+function renderCastPromptFields() {
+  const container = document.getElementById("chEditorCastPromptContainer");
+  if (!container) return;
+  
+  // 暂存用户当前正在输入的内容，防止输入时重绘丢失焦点/输入值
+  const currentInputs = {};
+  container.querySelectorAll("textarea").forEach(ta => {
+    currentInputs[ta.dataset.label] = ta.value;
+  });
+  
+  container.innerHTML = "";
+  const channelType = document.querySelector('input[name="chChannelType"]:checked')?.value || "science";
+  
+  let fields = [];
+  
+  if (channelType === "science") {
+    fields = [{ label: "scene", displayName: "🔬 科普底图模板 (scene)", type: "scene" }];
+  } else if (channelType === "drama") {
+    fields = [
+      { label: "character", displayName: "👤 角色定妆模板 (character)", type: "character" },
+      { label: "scene", displayName: "🌅 场景定妆模板 (scene)", type: "scene" },
+      { label: "prop", displayName: "🎒 道具定妆模板 (prop)", type: "prop" }
+    ];
+  } else { // 自定义模式
+    const rows = document.querySelectorAll("#customAssetsList > div");
+    const genericTypesToShow = new Set();
+    const specificLabelsToShow = [];
+    
+    rows.forEach((row, idx) => {
+      const input = row.querySelector("input");
+      const select = row.querySelector("select");
+      if (!input || !select) return;
+      const l = input.value.trim() || `未命名卡片_${idx+1}`;
+      const type = select.value;
+      const customImagePath = row.dataset.customImagePath || "";
+      
+      if (isGenericLabel(l)) {
+        // 机制 A：通用资产（如 1, 2, A, B 等）
+        genericTypesToShow.add(type);
+      } else {
+        // 机制 B：专属中文资产（如 玩家, 老板 等）
+        specificLabelsToShow.push({ label: l, type: type, customImagePath: customImagePath });
+      }
+    });
+    
+    // 1. 渲染通用输入框 (Mechanism A)
+    if (genericTypesToShow.has("character")) {
+      fields.push({ label: "character", displayName: "👤 通用角色定妆模板 (character)", type: "character" });
+    }
+    if (genericTypesToShow.has("scene")) {
+      fields.push({ label: "scene", displayName: "🌅 通用场景定妆模板 (scene)", type: "scene" });
+    }
+    if (genericTypesToShow.has("prop")) {
+      fields.push({ label: "prop", displayName: "🎒 通用道具定妆模板 (prop)", type: "prop" });
+    }
+    
+    // 2. 渲染专属的中文输入框 (Mechanism B)
+    specificLabelsToShow.forEach(item => {
+      const typeEmoji = item.type === "character" ? "👤" : (item.type === "scene" ? "🌅" : "🎒");
+      fields.push({
+        label: item.label,
+        displayName: `${typeEmoji} 专属 [${item.label}] 定妆模板 (${item.type})`,
+        type: item.type,
+        customImagePath: item.customImagePath
+      });
+    });
+  }
+  
+  // 默认兜底提示词描述
+  const defaultDesc = {
+    character: "A tactical military character design sheet, orthographic view, depicting a modern operator representing {entity}. Wearing tactical military gear: a low-profile helmet with headset, tactical plate carrier vest, cargo pants in olive drab or khaki tan, clean 2D vector style with smooth flat colors, bold outlines, and a professional concept art aesthetic, pure white background #FFFFFF.",
+    scene: "A tactical military command center or surveillance room interior depicting {entity}. Clean 2D flat painting style, wide angle, high-tech monitors glowing with greenish tactical map HUD overlays, realist tactical military color palette, no characters.",
+    prop: "A 2D flat vector icon of a high-tech tactical object representing {entity}. A military-grade gadget, tactical tablet, or class badge, clean lines, olive drab and steel gray colors, pure white background #FFFFFF."
+  };
+  
+  fields.forEach(f => {
+    // 提取策略：优先提取用户当前在页面上打字的值，其次提取之前从 LocalStorage 中加载的值，最后用默认值兜底
+    const val = currentInputs[f.label] !== undefined 
+      ? currentInputs[f.label] 
+      : (state.tempCastPrompts[f.label] || defaultDesc[f.type] || "");
+      
+    // 同步到 state 临时缓存，以防止由于重新渲染导致的丢失
+    state.tempCastPrompts[f.label] = val;
+      
+    let uploadUI = "";
+    if (f.customImagePath) {
+      uploadUI = `
+        <div class="flex items-center gap-3 bg-[#0A0D1B] border border-indigo-950/40 rounded-xl p-2.5 mt-1.5 animate-fade-in">
+          <img src="${f.customImagePath}" class="w-12 h-12 rounded-lg object-cover border border-slate-800/80 shadow-md" />
+          <div class="flex flex-col gap-1.5 flex-1 min-w-0">
+            <span class="text-[10px] text-slate-400 font-mono truncate max-w-[220px]">${f.customImagePath}</span>
+            <div class="flex items-center gap-2">
+              <button type="button" onclick="autoDescribeAssetImage('${escapeHtml(f.label)}', '${f.type}', '${escapeHtml(f.customImagePath)}', this)" class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-slate-100 rounded-lg text-[9px] font-bold flex items-center gap-1 transition-all cursor-pointer whitespace-nowrap">
+                🤖 智能识别 (Gemini Pro)
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    const div = document.createElement("div");
+    div.className = "space-y-1 animate-fade-in";
+    div.innerHTML = `
+      <div class="flex justify-between items-center">
+        <span class="text-[10px] font-bold text-slate-400">${f.displayName}</span>
+      </div>
+      <textarea data-label="${f.label}" rows="3" 
+        class="w-full bg-[#05070E] border border-slate-800 rounded-xl p-3.5 text-xs font-mono text-slate-200 focus:border-indigo-500 focus:outline-none leading-relaxed"
+        oninput="state.tempCastPrompts['${f.label}'] = this.value"
+      >${val}</textarea>
+      ${uploadUI}
+    `;
+    container.appendChild(div);
+  });
+}
+
 // ── ✏️ 频道编辑器弹窗 ──
 const CHANNEL_COLORS = [
   "#EF4444","#F59E0B","#10B981","#3B82F6","#8B5CF6",
@@ -534,6 +731,9 @@ function openChannelEditor(channelId) {
     if (editorPolish) editorPolish.value    = ch.presets?.polish    || '';
     if (editorStoryboard) editorStoryboard.value = ch.presets?.storyboard || '';
 
+    // 解析已有的定妆提示词合并包
+    state.tempCastPrompts = parseCastPrompt(ch.presets?.cast_prompt || presets.cast_prompt || '');
+
     const chType = ch.channelType || "science";
     document.querySelectorAll('input[name="chChannelType"]').forEach(r => {
       r.checked = (r.value === chType);
@@ -546,7 +746,7 @@ function openChannelEditor(channelId) {
     if (assetsList) assetsList.innerHTML = "";
     if (chType === "custom" && ch.assets_config) {
       ch.assets_config.forEach(ast => {
-        addCustomAssetRow(ast.label, ast.type);
+        addCustomAssetRow(ast.label, ast.type, ast.custom_image_path || "");
       });
     }
     
@@ -573,6 +773,9 @@ function openChannelEditor(channelId) {
     if (editorVoiceover) editorVoiceover.value = "";
     if (editorPolish) editorPolish.value = "";
     if (editorStoryboard) editorStoryboard.value = "";
+    
+    // 清空临时提示词缓存
+    state.tempCastPrompts = {};
     
     const assetsList = document.getElementById("customAssetsList");
     if (assetsList) assetsList.innerHTML = "";
@@ -608,6 +811,7 @@ function _syncChannelTypeStyle() {
       customSection.classList.add("hidden");
     }
   }
+  renderCastPromptFields();
 }
 
 function selectEditorColor(clr) {
@@ -649,7 +853,18 @@ function saveChannelFromEditor() {
   const voiceover = chEditorVoiceover ? chEditorVoiceover.value.trim() : "";
   const polish = chEditorPolish ? chEditorPolish.value.trim() : "";
   const storyboard = chEditorStoryboard ? chEditorStoryboard.value.trim() : "";
-  const hasCustomPresets = outline || image || voiceover || polish || storyboard;
+  
+  // 从动态分栏输入框中读取并拼装定妆照提示词
+  const castPromptParts = [];
+  const taList = document.querySelectorAll("#chEditorCastPromptContainer textarea");
+  taList.forEach(ta => {
+    const lbl = ta.dataset.label;
+    const val = ta.value.trim();
+    castPromptParts.push(`[${lbl}]\n${val}`);
+  });
+  const cast_prompt = castPromptParts.join("\n\n").trim();
+
+  const hasCustomPresets = outline || image || voiceover || polish || storyboard || cast_prompt;
   const channelType = document.querySelector('input[name="chChannelType"]:checked')?.value || "science";
 
   let assets_config = null;
@@ -668,7 +883,8 @@ function saveChannelFromEditor() {
         showToast("⚠️ 卡片名称不能为空！");
         return;
       }
-      assets_config.push({ label: l, type: select.value });
+      const customImagePath = row.dataset.customImagePath || "";
+      assets_config.push({ label: l, type: select.value, custom_image_path: customImagePath });
     }
   }
 
@@ -684,9 +900,9 @@ function saveChannelFromEditor() {
         state.channels[idx].color = color;
         state.channels[idx].channelType = channelType;
         state.channels[idx].assets_config = assets_config;
-        state.channels[idx].presets = hasCustomPresets ? { outline, image, voiceover, polish, storyboard } : null;
+        state.channels[idx].presets = hasCustomPresets ? { outline, image, voiceover, polish, storyboard, cast_prompt } : null;
       } else {
-        state.channels[idx].presets = hasCustomPresets ? { outline, image, voiceover, polish, storyboard } : null;
+        state.channels[idx].presets = hasCustomPresets ? { outline, image, voiceover, polish, storyboard, cast_prompt } : null;
       }
     }
     showToast(`✅ 频道「${name}」已更新！`);
@@ -694,7 +910,7 @@ function saveChannelFromEditor() {
     const newId = "ch_custom_" + Date.now();
     state.channels.push({ id: newId, channelType, name, emoji, color, locked: false,
       assets_config,
-      presets: hasCustomPresets ? { outline, image, voiceover, polish, storyboard } : null
+      presets: hasCustomPresets ? { outline, image, voiceover, polish, storyboard, cast_prompt } : null
     });
     showToast(`🎉 频道「${name}」已创建！`);
   }
@@ -728,6 +944,11 @@ function rollbackChannelPresets() {
   if (vEl) vEl.value = bak.voiceover || '';
   if (pEl) pEl.value = bak.polish || '';
   if (sEl) sEl.value = bak.storyboard || '';
+  
+  // 回滚定妆提示词缓存并重新生成输入框
+  state.tempCastPrompts = parseCastPrompt(bak.cast_prompt || '');
+  renderCastPromptFields();
+  
   showToast("🔙 已还原到上一版本提示词。点『保存频道』确认应用。");
 }
 
@@ -759,7 +980,7 @@ function escapeHtml(str) {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
-function addCustomAssetRow(label = "", type = "character") {
+function addCustomAssetRow(label = "", type = "character", customImagePath = "") {
   const container = document.getElementById("customAssetsList");
   if (!container) return;
   if (container.children.length >= 6) {
@@ -767,19 +988,122 @@ function addCustomAssetRow(label = "", type = "character") {
     return;
   }
   const div = document.createElement("div");
-  div.className = "flex items-center gap-2 bg-[#020408] border border-slate-900/60 rounded-xl p-2";
+  div.className = "flex flex-col gap-2 bg-[#020408] border border-slate-900/60 rounded-xl p-2.5 animate-fade-in";
+  div.dataset.customImagePath = customImagePath;
   div.innerHTML = `
-    <input type="text" placeholder="卡片名称 (如: 主角)" class="flex-1 bg-[#05070E] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none" value="${escapeHtml(label)}">
-    <select class="bg-[#05070E] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:border-indigo-500 focus:outline-none">
-      <option value="character" ${type === 'character' ? 'selected' : ''}>👤 角色</option>
-      <option value="scene" ${type === 'scene' ? 'selected' : ''}>🌅 场景</option>
-      <option value="prop" ${type === 'prop' ? 'selected' : ''}>🎒 道具</option>
-    </select>
-    <button type="button" onclick="this.parentElement.remove()" class="p-1.5 text-slate-500 hover:text-red-400 transition-all cursor-pointer">
-      ✕
-    </button>
+    <div class="flex items-center gap-2 w-full">
+      <input type="text" placeholder="卡片名称 (如: 小红)" class="flex-1 bg-[#05070E] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none" value="${escapeHtml(label)}" oninput="onAssetLabelInput(this)">
+      <select class="bg-[#05070E] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 focus:border-indigo-500 focus:outline-none" onchange="renderCastPromptFields()">
+        <option value="character" ${type === 'character' ? 'selected' : ''}>👤 角色</option>
+        <option value="scene" ${type === 'scene' ? 'selected' : ''}>🌅 场景</option>
+        <option value="prop" ${type === 'prop' ? 'selected' : ''}>🎒 道具</option>
+      </select>
+      <div class="upload-btn-container"></div>
+      <button type="button" onclick="this.parentElement.parentElement.remove(); renderCastPromptFields();" class="p-1.5 text-slate-500 hover:text-red-400 transition-all cursor-pointer">
+        ✕
+      </button>
+    </div>
   `;
   container.appendChild(div);
+  updateAssetRowUploadButton(div);
+  renderCastPromptFields();
+}
+
+function onAssetLabelInput(input) {
+  const row = input.parentElement.parentElement;
+  updateAssetRowUploadButton(row);
+  renderCastPromptFields();
+}
+
+function updateAssetRowUploadButton(row) {
+  const input = row.querySelector("input");
+  const uploadContainer = row.querySelector(".upload-btn-container");
+  if (!input || !uploadContainer) return;
+  
+  const val = input.value.trim();
+  if (!isGenericLabel(val)) {
+    const path = row.dataset.customImagePath || "";
+    uploadContainer.innerHTML = `
+      <button type="button" onclick="uploadCustomAssetImage(this)" class="px-2 py-1.5 ${path ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-indigo-900/60 hover:bg-indigo-800 text-indigo-200'} border border-indigo-900/40 rounded-lg text-xs flex items-center gap-1 transition-all cursor-pointer whitespace-nowrap font-bold">
+        ${path ? '✔ 已选图' : '📤 上传图片'}
+      </button>
+    `;
+  } else {
+    uploadContainer.innerHTML = "";
+    row.dataset.customImagePath = "";
+  }
+}
+
+async function uploadCustomAssetImage(btn) {
+  if (typeof pywebview === 'undefined' || !pywebview.api) {
+    showToast("⚠️ 桌面系统接口未就绪，无法上传本地图片");
+    return;
+  }
+  const row = btn.parentElement.parentElement.parentElement;
+  const input = row.querySelector("input");
+  const label = input ? input.value.trim() : "custom_asset";
+  
+  btn.disabled = true;
+  const oldText = btn.innerHTML;
+  btn.innerText = "⏳ 请选择...";
+  
+  try {
+    const res = await pywebview.api.select_custom_asset_image({
+      channel_id: _editingChannelId || 'temp_channel',
+      label: label
+    });
+    
+    if (res.status === "success") {
+      row.dataset.customImagePath = res.image_path;
+      showToast("🎉 图片上传保存成功！");
+      updateAssetRowUploadButton(row);
+      renderCastPromptFields();
+    } else if (res.status === "cancel") {
+      showToast("已取消选择图片");
+      updateAssetRowUploadButton(row);
+    } else {
+      showToast(`⚠️ 上传失败: ${res.detail}`);
+      updateAssetRowUploadButton(row);
+    }
+  } catch (err) {
+    showToast(`⚠️ 上传异常: ${err}`);
+    updateAssetRowUploadButton(row);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function autoDescribeAssetImage(label, type, imagePath, btn) {
+  if (typeof pywebview === 'undefined' || !pywebview.api) {
+    showToast("⚠️ 桌面系统接口未就绪，无法使用智能识图");
+    return;
+  }
+  btn.disabled = true;
+  const oldText = btn.innerHTML;
+  btn.innerText = "🤖 智能识别中...";
+  
+  try {
+    const res = await pywebview.api.describe_custom_asset_image({
+      image_path: imagePath,
+      type: type
+    });
+    
+    if (res.status === "success" && res.description) {
+      const ta = document.querySelector(`textarea[data-label="${label}"]`);
+      if (ta) {
+        ta.value = res.description;
+        state.tempCastPrompts[label] = res.description;
+      }
+      showToast("🎉 智能识别成功，已自动填入描述！");
+    } else {
+      showToast(`⚠️ 智能识别失败: ${res.detail || "未知错误"}`);
+    }
+  } catch (err) {
+    showToast(`⚠️ 识别异常: ${err}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = oldText;
+  }
 }
 
 function renderAssetCards() {
@@ -814,9 +1138,12 @@ function renderAssetCards() {
       </div>
       
       <div class="space-y-1">
-        <div class="flex justify-between items-center">
-          <span class="text-xs font-bold text-slate-100" id="cardName${idx}">${escapeHtml(ast.name)}</span>
-          <span class="px-1.5 py-0.5 bg-indigo-900/40 text-[9px] font-bold text-indigo-300 rounded font-mono">CAST ID: 0${idx + 1}</span>
+        <div class="flex justify-between items-center gap-1.5">
+          <span class="text-xs font-bold text-slate-100 truncate" id="cardName${idx}">${escapeHtml(ast.name)}</span>
+          <div class="flex items-center gap-1 shrink-0">
+            ${ast.custom_image_path ? '<span class="px-1.5 py-0.5 bg-emerald-950/60 text-[9px] font-bold text-emerald-350 rounded font-mono">CUSTOM</span>' : ''}
+            <span class="px-1.5 py-0.5 bg-indigo-900/40 text-[9px] font-bold text-indigo-300 rounded font-mono">0${idx + 1}</span>
+          </div>
         </div>
         <p class="text-[10px] text-slate-400 line-clamp-2 leading-relaxed" id="cardPrompt${idx}">${escapeHtml(ast.prompt || 'Generating...')}</p>
       </div>
@@ -871,8 +1198,275 @@ function togglePolishSwitch() {
   updateJsonPayloadViewer();
 }
 
+// ── 🎙️ 火山/Edge TTS 控制层事件响应 ──
+function initTtsSettingsFromState() {
+  const engine = state.presets.tts_engine || "edge";
+  selectTtsEngine(engine, false);
+  
+  // 初始化滑块与文本框的值
+  const pitchRange = document.getElementById("voicePitchRange");
+  const pitchVal = document.getElementById("voicePitchVal");
+  if (pitchRange && pitchVal) {
+    pitchRange.value = state.presets.voice_pitch !== undefined ? state.presets.voice_pitch : 0;
+    pitchVal.innerText = pitchRange.value;
+  }
+  const volumeRange = document.getElementById("voiceVolumeRange");
+  const volumeVal = document.getElementById("voiceVolumeVal");
+  if (volumeRange && volumeVal) {
+    volumeRange.value = state.presets.voice_volume !== undefined ? state.presets.voice_volume : 0;
+    volumeVal.innerText = volumeRange.value;
+  }
+  const promptInput = document.getElementById("voicePromptInput");
+  if (promptInput) {
+    promptInput.value = state.presets.voice_prompt || "";
+  }
+}
+
+function selectTtsEngine(engine, triggerChange = true) {
+  state.presets.tts_engine = engine;
+  
+  const edgeBtn = document.getElementById("engineEdgeBtn");
+  const volcBtn = document.getElementById("engineVolcBtn");
+  
+  if (engine === "volc") {
+    if (edgeBtn) edgeBtn.className = "px-3 py-1 text-[10px] font-bold rounded transition-all cursor-pointer text-slate-400 hover:text-slate-200";
+    if (volcBtn) volcBtn.className = "px-3 py-1 text-[10px] font-bold rounded transition-all cursor-pointer bg-indigo-600 text-white shadow";
+    
+    // 显示情绪选择器、高级配置和提示卡片
+    const emoGroup = document.getElementById("voiceEmotionGroup");
+    if (emoGroup) emoGroup.classList.remove("hidden");
+    const advGroup = document.getElementById("volcAdvancedSettings");
+    if (advGroup) advGroup.classList.remove("hidden");
+    const tipCard = document.getElementById("volcEmotionTipCard");
+    if (tipCard) tipCard.classList.remove("hidden");
+  } else {
+    if (edgeBtn) edgeBtn.className = "px-3 py-1 text-[10px] font-bold rounded transition-all cursor-pointer bg-indigo-600 text-white shadow";
+    if (volcBtn) volcBtn.className = "px-3 py-1 text-[10px] font-bold rounded transition-all cursor-pointer text-slate-400 hover:text-slate-200";
+    
+    // 隐藏情绪选择器、高级配置和提示卡片
+    const emoGroup = document.getElementById("voiceEmotionGroup");
+    if (emoGroup) emoGroup.classList.add("hidden");
+    const advGroup = document.getElementById("volcAdvancedSettings");
+    if (advGroup) advGroup.classList.add("hidden");
+    const tipCard = document.getElementById("volcEmotionTipCard");
+    if (tipCard) tipCard.classList.add("hidden");
+  }
+  
+  populateVoiceRolesAndRates(false);
+  
+  if (triggerChange) {
+    onVoiceSettingChange();
+  }
+}
+
+function populateVoiceRolesAndRates(resetToDefault = false) {
+  const engine = state.presets.tts_engine || "edge";
+  const selector = document.getElementById("voiceRoleSelector");
+  if (!selector) return;
+  
+  selector.innerHTML = "";
+  
+  const edgeVoices = [
+    { value: "zh-CN-YunjianNeural", text: "👨 云健 (深沉男声/解说首选)" },
+    { value: "zh-CN-YunxiNeural", text: "👦 云希 (活泼男声/剧情首选)" },
+    { value: "zh-CN-XiaoxiaoNeural", text: "👧 晓晓 (温柔女声/甜美)" },
+    { value: "zh-CN-YunyangNeural", text: "🧔 云扬 (庄重男声/新闻播报)" },
+    { value: "zh-CN-XiaoyiNeural", text: "👩 晓伊 (温暖女声)" },
+    { value: "zh-CN-YunjieNeural", text: "🧔 云杰 (沉稳男声)" },
+    { value: "zh-CN-LiaoningNeural", text: "🗣️ 东北辽宁话 (特色方言)" },
+    { value: "zh-CN-ShaanxiNeural", text: "🗣️ 陕西方言 (特色方言)" },
+    { value: "zh-HK-HiuMaanNeural", text: "👩 晓曼 (粤语女声)" },
+    { value: "zh-HK-WanLungNeural", text: "👨 云龙 (粤语男声)" },
+    { value: "zh-TW-HsiaoChenNeural", text: "👩 晓臻 (闽南语女声)" },
+    { value: "zh-TW-YunJheNeural", text: "👨 云哲 (闽南语男声)" }
+  ];
+  
+  const volcVoices = [
+    { value: "zh_female_vv_uranus_bigtts", text: "👧 Vivi 2.0 (故事大模型女声)" },
+    { value: "saturn_zh_female_cancan_tob", text: "👧 知性灿灿 (大模型2.0角色扮演女声)" },
+    { value: "saturn_zh_female_kexinshaonv_tob", text: "👧 可馨女生 (大模型2.0角色扮演女声)" },
+    { value: "saturn_zh_female_tiaopigongzhu_tob", text: "👧 调皮公主 (大模型2.0角色扮演女声)" },
+    { value: "saturn_zh_male_shuangliangshaonian_tob", text: "👦 爽朗少年 (大模型2.0角色扮演男声)" },
+    { value: "saturn_zh_male_tiancaitongzhuo_tob", text: "👦 天才同桌 (大模型2.0角色扮演男声)" },
+    { value: "zh_female_xiaohe_uranus_bigtts", text: "👧 小何 2.0 (故事大模型女声)" },
+    { value: "zh_male_m191_uranus_bigtts", text: "👦 云舟 2.0 (故事大模型男声)" },
+    { value: "zh_female_peiqi_uranus_bigtts", text: "👧 佩奇 2.0 (故事大模型女声)" },
+    { value: "zh_male_xuanyijieshuo_uranus_bigtts", text: "🧔 悬疑解说 2.0 (故事大模型男声)" },
+    { value: "zh_male_deep_podcast_uranus_bigtts", text: "👨 深夜播客 (多情感1.0男声)" },
+    { value: "zh_female_giga_boss_uranus_bigtts", text: "👩 高冷御姐 (多情感1.0女声)" },
+    { value: "zh_female_neighbor_aunt_uranus_bigtts", text: "👩 邻居阿姨 (多情感1.0女声)" },
+    { value: "zh_female_shuangkuaisisi_moon_bigtts", text: "👧 爽快丝丝 (1.0经典女声)" },
+    { value: "zh_male_shuangkuaiyunjie_moon_bigtts", text: "👨 爽快云杰 (1.0经典男声)" },
+    { value: "zh_female_story_bigtts", text: "👩 讲述女声 (1.0故事女声)" },
+    { value: "zh_male_story_bigtts", text: "🧔 讲述男声 (1.0故事男声)" },
+    { value: "zh_male_boy_bigtts", text: "👦 阳光男孩 (1.0经典童声)" },
+    { value: "zh_female_girl_bigtts", text: "👧 甜美女孩 (1.0经典童声)" },
+    { value: "zh_male_game_bigtts", text: "🧔 游戏解说 (1.0解说男声)" },
+    { value: "zh_female_xiaoxue_bigtts", text: "👩 小雪 (温柔女声)" },
+    { value: "zh_female_miaomiao_bigtts", text: "👧 妙妙 (可爱女声)" },
+    { value: "zh_female_xiaojie_bigtts", text: "👩 小洁 (温暖女声)" },
+    { value: "zh_male_xiaohan_bigtts", text: "👦 小韩 (阳光男声)" },
+    { value: "zh_male_xiaokun_bigtts", text: "🧔 小坤 (沉稳男声)" },
+    { value: "S_SbhrW9GN1", text: "🎙️ 人生体验 (我的克隆音色)" },
+    { value: "icl_my_clone", text: "🎙️ 声音复刻 2.0 (ICL大模型)" },
+    { value: "custom", text: "✍️ 自定义输入音色标识..." }
+  ];
+  
+  const targetVoices = (engine === "volc") ? [...volcVoices] : [...edgeVoices];
+  
+  // 动态加载用户在 localStorage 中保存的自定义音色列表
+  let customVoices = [];
+  try {
+    const raw = localStorage.getItem("palette_custom_voices");
+    if (raw) {
+      customVoices = JSON.parse(raw);
+    }
+  } catch (e) {
+    console.error("加载自定义音色列表失败:", e);
+  }
+
+  // 过滤并插入自定义音色到 custom 选项前
+  customVoices.forEach(cv => {
+    if (cv.engine === engine) {
+      const item = { value: cv.id, text: `👤 [自定义] ${cv.name}` };
+      const customIndex = targetVoices.findIndex(v => v.value === "custom");
+      if (customIndex !== -1) {
+        targetVoices.splice(customIndex, 0, item);
+      } else {
+        targetVoices.push(item);
+      }
+    }
+  });
+
+  targetVoices.forEach(v => {
+    const opt = document.createElement("option");
+    opt.value = v.value;
+    opt.innerText = v.text;
+    selector.appendChild(opt);
+  });
+  
+  let currentVal = state.presets.voice_role;
+  const isVolc = (engine === "volc");
+  
+  // 检查当前值是否在此列表中
+  const valExists = targetVoices.some(v => v.value === currentVal);
+  
+  if (resetToDefault || !currentVal) {
+    currentVal = isVolc ? "saturn_zh_female_cancan_tob" : "zh-CN-YunjianNeural";
+  } else if (!valExists) {
+    // 如果值不存在且不是 custom，但在 volcano 引擎下，有可能是用户自己输入的自定义音色名（非 custom value）
+    if (isVolc && currentVal !== "custom") {
+      // 这是一个输入框定义的自定义值，我们自动将 select 指向 "custom"，并把输入框展现出来
+      selector.value = "custom";
+      const customInput = document.getElementById("customVoiceInput");
+      if (customInput) {
+        customInput.value = currentVal;
+        customInput.classList.remove("hidden");
+      }
+      // 直接返回
+      updateVoiceRateAndEmotionSelectors();
+      return;
+    } else {
+      // Edge-TTS 或者是其他，退回默认
+      currentVal = isVolc ? "saturn_zh_female_cancan_tob" : "zh-CN-YunjianNeural";
+    }
+  }
+  
+  selector.value = currentVal;
+  
+  // 处理自定义输入框的展现/隐藏
+  const customInput = document.getElementById("customVoiceInput");
+  if (customInput) {
+    if (currentVal === "custom") {
+      customInput.classList.remove("hidden");
+      customInput.value = "";
+    } else {
+      customInput.classList.add("hidden");
+    }
+  }
+  
+  toggleCustomVoicePanels();
+  updateVoiceRateAndEmotionSelectors();
+}
+
+function updateVoiceRateAndEmotionSelectors() {
+  const rateSelector = document.getElementById("voiceRateSelector");
+  if (rateSelector && state.presets.voice_rate) {
+    rateSelector.value = state.presets.voice_rate;
+  }
+  
+  const emotionSelector = document.getElementById("voiceEmotionSelector");
+  if (emotionSelector && state.presets.voice_emotion) {
+    emotionSelector.value = state.presets.voice_emotion;
+  }
+  
+  const pitchRange = document.getElementById("voicePitchRange");
+  const pitchVal = document.getElementById("voicePitchVal");
+  if (pitchRange && pitchVal) {
+    pitchRange.value = state.presets.voice_pitch !== undefined ? state.presets.voice_pitch : 0;
+    pitchVal.innerText = pitchRange.value;
+  }
+  
+  const volumeRange = document.getElementById("voiceVolumeRange");
+  const volumeVal = document.getElementById("voiceVolumeVal");
+  if (volumeRange && volumeVal) {
+    volumeRange.value = state.presets.voice_volume !== undefined ? state.presets.voice_volume : 0;
+    volumeVal.innerText = volumeRange.value;
+  }
+  
+  const promptInput = document.getElementById("voicePromptInput");
+  if (promptInput) {
+    promptInput.value = state.presets.voice_prompt || "";
+  }
+}
+
+function onVoiceSettingChange() {
+  const engine = state.presets.tts_engine || "edge";
+  const selector = document.getElementById("voiceRoleSelector");
+  const customInput = document.getElementById("customVoiceInput");
+  const rateSelector = document.getElementById("voiceRateSelector");
+  const emotionSelector = document.getElementById("voiceEmotionSelector");
+  const pitchRange = document.getElementById("voicePitchRange");
+  const volumeRange = document.getElementById("voiceVolumeRange");
+  const promptInput = document.getElementById("voicePromptInput");
+  
+  if (!selector) return;
+  
+  let role = selector.value;
+  if (role === "custom" && customInput) {
+    customInput.classList.remove("hidden");
+    role = customInput.value.trim() || "saturn_zh_female_cancan_tob";
+  } else if (customInput) {
+    customInput.classList.add("hidden");
+  }
+  
+  state.presets.voice_role = role;
+  if (rateSelector) state.presets.voice_rate = rateSelector.value;
+  if (emotionSelector) state.presets.voice_emotion = emotionSelector.value;
+  if (pitchRange) state.presets.voice_pitch = parseInt(pitchRange.value || 0);
+  if (volumeRange) state.presets.voice_volume = parseInt(volumeRange.value || 0);
+  if (promptInput) state.presets.voice_prompt = promptInput.value;
+  
+  // 同步到频道 Preset
+  const ch = getActiveChannel();
+  if (ch) {
+    if (!ch.presets) ch.presets = {};
+    ch.presets.tts_engine = state.presets.tts_engine;
+    ch.presets.voice_role = state.presets.voice_role;
+    ch.presets.voice_rate = state.presets.voice_rate;
+    ch.presets.voice_emotion = state.presets.voice_emotion;
+    ch.presets.voice_pitch = state.presets.voice_pitch;
+    ch.presets.voice_volume = state.presets.voice_volume;
+    ch.presets.voice_prompt = state.presets.voice_prompt;
+    saveChannelsToStorage();
+  }
+  
+  toggleCustomVoicePanels();
+  updateJsonPayloadViewer();
+}
+
 function switchPromptCategory(cat) {
-  const cats = ["image", "polish", "voiceover", "outline"];
+  const cats = ["image", "polish", "voiceover", "outline", "storyboard", "cast_prompt"];
   cats.forEach(c => {
     const area = document.getElementById(`promptArea-${c}`);
     if (area) area.classList.add("hidden");
@@ -917,6 +1511,7 @@ function savePresets() {
     ch.presets.voiceover = state.presets.voiceover;
     ch.presets.outline   = state.presets.outline;
     ch.presets.storyboard = state.presets.storyboard;
+    ch.presets.cast_prompt = state.presets.cast_prompt;
     saveChannelsToStorage();
   }
   showToast(`💾 「${ch ? ch.name : '当前频道'}」的提示词预设已同步！`);
@@ -935,11 +1530,20 @@ function updateJsonPayloadViewer() {
         immutable_lock: !state.polishEnabled
       },
       voiceover_flow: {
-        system_prompt: state.presets.voiceover
+        system_prompt: state.presets.voiceover,
+        engine: state.presets.tts_engine || "edge",
+        voice_role: state.presets.voice_role || "",
+        voice_rate: state.presets.voice_rate || "",
+        voice_emotion: state.presets.voice_emotion || "",
+        voice_pitch: parseInt(state.presets.voice_pitch || 0),
+        voice_volume: parseInt(state.presets.voice_volume || 0),
+        voice_prompt: state.presets.voice_prompt || ""
       },
       render_flow: {
         style_presets: state.presets.image,
-        seed: state.seed
+        seed: state.seed,
+        cast_prompt: state.presets.cast_prompt,
+        storyboard_prompt: state.presets.storyboard
       }
     }
   };
@@ -1091,10 +1695,20 @@ async function handleC1Launch(directText = null) {
             system_prompt: state.polishEnabled ? state.presets.polish : "",
             immutable_lock: !state.polishEnabled
           },
-          voiceover_flow: { system_prompt: state.presets.voiceover },
+          voiceover_flow: { 
+            system_prompt: state.presets.voiceover,
+            engine: state.presets.tts_engine || "edge",
+            voice_role: state.presets.voice_role || "",
+            voice_rate: state.presets.voice_rate || "",
+            voice_emotion: state.presets.voice_emotion || "",
+            voice_pitch: parseInt(state.presets.voice_pitch || 0),
+            voice_volume: parseInt(state.presets.voice_volume || 0),
+            voice_prompt: state.presets.voice_prompt || ""
+          },
           render_flow: { 
             style_presets: state.presets.image, 
             seed: state.seed,
+            cast_prompt: state.presets.cast_prompt,
             storyboard_prompt: state.presets.storyboard
           }
         }
@@ -1106,6 +1720,7 @@ async function handleC1Launch(directText = null) {
     state.compiledVoiceover = cData.data.compiled_voiceover;
     state.lastCompiledText = text;
     state.extractedEntities = cData.data.extracted_entities;
+    state.assets_to_generate = cData.data.assets_to_generate || [];
 
     if (p1Bar) p1Bar.style.width = "100%";
     if (p1Val) p1Val.innerText = "100%";
@@ -1151,7 +1766,8 @@ async function handleC1Launch(directText = null) {
     const aData = await pywebview.api.generate_assets({
         entities: state.extractedEntities,
         global_style_prompt: state.presets.image,
-        seed: state.seed
+        seed: state.seed,
+        assets_to_generate: state.assets_to_generate
       });
     clearInterval(logTimer);
     if (aData.status !== "success") {
@@ -1219,6 +1835,21 @@ function openD1_1(index) {
     };
   }
 
+  // Disable textarea and button if redrawing is in progress
+  const isRedrawing = state.runningRedraws[ast.id] === true;
+  const rebuildBtn = document.getElementById("rebuildAssetBtn");
+  if (promptInput) {
+    promptInput.disabled = isRedrawing;
+  }
+  if (rebuildBtn) {
+    rebuildBtn.disabled = isRedrawing;
+    if (isRedrawing) {
+      rebuildBtn.innerText = "🎨 后台正在重绘中...";
+    } else {
+      rebuildBtn.innerText = "💡 确定更新并进行局部重画";
+    }
+  }
+
   const overlay = document.getElementById("overlayD1_1");
   if (overlay) overlay.classList.remove("hidden");
 }
@@ -1248,47 +1879,85 @@ function switchD1_1PreviewMode(mode) {
 async function rebuildAssetCard() {
   const ast = state.assets[activeCardIndex];
   if (!ast) return;
+  
+  const card_id = ast.id;
+  if (state.runningRedraws[card_id]) {
+    showToast("⚠️ 该卡片正在重绘中，请勿重复操作！");
+    return;
+  }
+  
   const promptInput = document.getElementById("d1_1_PromptInput");
   const newPrompt = promptInput ? promptInput.value : "";
   
-  const rebuildBtn = document.getElementById("rebuildAssetBtn");
-  if (rebuildBtn) {
-    rebuildBtn.disabled = true;
-    rebuildBtn.innerText = "🎨 生图引擎重绘中...";
+  // Mark as running redraw
+  state.runningRedraws[card_id] = true;
+  
+  // Close the modal immediately
+  closeD1_1_Force();
+  
+  // Put the gallery card in local loading state
+  const targetIndex = activeCardIndex;
+  const imgCont = document.getElementById(`cardImg${targetIndex}`);
+  const originalHtml = imgCont ? imgCont.innerHTML : ""; // Keep original HTML in case of failure
+  
+  if (imgCont) {
+    // Show glassmorphic overlay + loading spinner
+    imgCont.style.position = "relative";
+    imgCont.innerHTML = `
+      ${originalHtml}
+      <div class="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex flex-col items-center justify-center text-white z-10">
+        <svg class="animate-spin h-8 w-8 text-indigo-400 mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span class="text-xs font-semibold animate-pulse text-indigo-200">重画中...</span>
+      </div>
+    `;
   }
-
-  try {
-    const res = await pywebview.api.render_single_frame({
-        target_id: ast.id,
-        prompt: newPrompt,
-        seed: state.seed,
-        style_lock: true
-      });
-    if (res.status === "success") {
-      state.assetHistory[ast.id].old_url = ast.image_url;
-      state.assetHistory[ast.id].new_url = res.render_url;
+  
+  // Background asynchronous call
+  pywebview.api.render_single_frame({
+    target_id: card_id,
+    prompt: newPrompt,
+    seed: state.seed,
+    style_lock: true
+  })
+  .then(res => {
+    if (res && res.status === "success") {
+      state.assetHistory[card_id].old_url = ast.image_url;
+      state.assetHistory[card_id].new_url = res.render_url;
       
       ast.image_url = res.render_url;
       ast.prompt = newPrompt;
       
-      const prmLabel = document.getElementById(`cardPrompt${activeCardIndex}`);
+      const prmLabel = document.getElementById(`cardPrompt${targetIndex}`);
       if (prmLabel) prmLabel.innerText = newPrompt;
-      const imgCont = document.getElementById(`cardImg${activeCardIndex}`);
-      if (imgCont) imgCont.innerHTML = `<img src="${res.render_url}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />`;
-      
-      switchD1_1PreviewMode("new");
-      showToast("✨ 定妆卡片局部重绘成功！");
+      const finalImgCont = document.getElementById(`cardImg${targetIndex}`);
+      if (finalImgCont) {
+        finalImgCont.innerHTML = `<img src="${res.render_url}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />`;
+      }
+      showToast(`✨ 定妆照 [${ast.name}] 后台重绘成功！`);
     } else {
-      showCustomModal("⚠️ 生图失败", "重绘失败，请重试！");
+      // Restore card visual state
+      const finalImgCont = document.getElementById(`cardImg${targetIndex}`);
+      if (finalImgCont) {
+        finalImgCont.innerHTML = originalHtml;
+      }
+      showCustomModal("⚠️ 生图失败", `定妆照 [${ast.name}] 重绘失败，请重试！`);
     }
-  } catch(err) {
-    handleApiError(err, rebuildAssetCard);
-  } finally {
-    if (rebuildBtn) {
-      rebuildBtn.disabled = false;
-      rebuildBtn.innerText = "💡 确定更新并进行局部重画";
+  })
+  .catch(err => {
+    // Restore card visual state
+    const finalImgCont = document.getElementById(`cardImg${targetIndex}`);
+    if (finalImgCont) {
+      finalImgCont.innerHTML = originalHtml;
     }
-  }
+    showCustomModal("⚠️ 接口调用异常", `定妆照 [${ast.name}] 重绘失败: ` + String(err));
+  })
+  .finally(() => {
+    // Release the redraw lock
+    delete state.runningRedraws[card_id];
+  });
 }
 
 function closeD1_1(event) {
@@ -1316,32 +1985,72 @@ async function handleD1Next() {
   navigateTo("E");
   showToast("🎞️ 正在物理切分旁白并插值生图分镜大宫格...");
   
+  const densitySelect = document.getElementById("storyboardDensity");
+  const density = densitySelect ? densitySelect.value : "medium";
+  const gridModeSelect = document.getElementById("gridModeSelector");
+  const gridMode = gridModeSelect ? gridModeSelect.value : "4x4";
+  const panelsCount = gridMode === "2x2" ? 4 : (gridMode === "3x3" ? 9 : 16);
+  
   const container = document.getElementById("storyboardGrid");
   if (container) {
     container.className = "flex items-center justify-center py-20 w-full";
     container.innerHTML = `
       <div class="text-center space-y-4">
         <div class="w-10 h-10 border-4 border-slate-750 border-t-indigo-500 rounded-full animate-spin mx-auto"></div>
-        <div class="text-indigo-400 text-xs font-semibold tracking-wider animate-pulse">正在调用大模型极速渲染 16 宫格大图，请稍后...</div>
+        <div class="text-indigo-400 text-xs font-semibold tracking-wider animate-pulse">正在调用大模型极速渲染 ${panelsCount} 宫格大图，请稍后...</div>
       </div>
     `;
   }
   
   try {
-    const res = await pywebview.api.generate_storyboard();
+    const res = await pywebview.api.generate_storyboard({ 
+      density: density,
+      grid_mode: gridMode
+    });
     if (res.status === "success") {
       state.storyboardGrids = res.grids;
+      if (res.frames) {
+        state.storyboards = res.frames;
+      }
+      state.gridMode = res.grid_mode || gridMode;
       renderStoryboardGrids();
-      showToast("🎞️ 16宫格切图大网格渲染完毕！");
+      showToast(`🎞️ ${panelsCount}宫格切图大网格渲染完毕！`);
     } else {
       showCustomModal("⚠️ 生成失败", res.detail || "底片插值失败，请重试！");
+      renderStoryboardError(res.detail || "底片插值失败，请重试！");
     }
   } catch(err) {
     handleApiError(err, handleD1Next);
+    renderStoryboardError(err.message || String(err));
   } finally {
     state.isRunning = false;
   }
 }
+
+function renderStoryboardError(errorMsg) {
+  const container = document.getElementById("storyboardGrid");
+  if (!container) return;
+  
+  container.className = "flex items-center justify-center py-16 w-full";
+  container.innerHTML = `
+    <div class="text-center space-y-4 max-w-lg bg-[#141B37] border border-red-500/20 p-6 rounded-2xl shadow-xl w-full">
+      <div class="text-red-400 text-3xl">⚠️</div>
+      <div class="text-sm font-bold text-slate-200">生成分镜失败</div>
+      <div class="text-xs text-slate-450 font-mono text-left bg-[#0B0F22] p-3 rounded-lg overflow-auto max-h-40 border border-slate-800 leading-relaxed">${errorMsg}</div>
+      <div class="pt-2">
+        <button onclick="handleD1Next_ForceRetry()" class="px-6 py-2.5 bg-indigo-650 hover:bg-indigo-550 text-white font-bold rounded-xl shadow-lg transition text-xs tracking-wider cursor-pointer">
+          🔄 重新尝试当前步骤
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+async function handleD1Next_ForceRetry() {
+  state.storyboardGrids = null;
+  await handleD1Next();
+}
+
 
 function renderStoryboardGrids() {
   const container = document.getElementById("storyboardGrid");
@@ -1349,14 +2058,14 @@ function renderStoryboardGrids() {
   
   const headerTextEl = container.previousElementSibling ? container.previousElementSibling.querySelector("p") : null;
   if (headerTextEl) {
-    headerTextEl.innerHTML = `系统根据旁白句数科学组织了 ${state.storyboardGrids ? state.storyboardGrids.length : 0} 个 16 宫格大图批次。点击单个大图可放大审阅，修改文本框提示词后点击“打回重画”可重新渲染该批次。`;
+    headerTextEl.innerHTML = `系统根据旁白句数科学组织了 ${state.storyboardGrids ? state.storyboardGrids.length : 0} 个宫格大图批次。点击任意子分镜格子可对该格进行精雕重绘，修改提示词后点击“打回重画”即可。`;
   }
   
   if (!state.storyboardGrids || state.storyboardGrids.length === 0) {
     container.className = "flex items-center justify-center py-12";
     container.innerHTML = `
       <div class="text-center space-y-3">
-        <div class="text-slate-655 text-3xl">📭</div>
+        <div class="text-slate-600 text-3xl">📭</div>
         <div class="text-slate-500 text-xs font-mono">暂无分镜大宫格数据，请点击生成</div>
       </div>
     `;
@@ -1367,48 +2076,318 @@ function renderStoryboardGrids() {
   
   let html = "";
   state.storyboardGrids.forEach(grid => {
+    const batchIndex = grid.batch_index;
+    let N = 4;
+    if (state.gridMode === "2x2") N = 2;
+    else if (state.gridMode === "3x3") N = 3;
+    const panelsCount = N * N;
+    const batchStart = (batchIndex - 1) * panelsCount;
+    
+    // We render the cells of the grid:
+    let cellsHtml = "";
+    for (let i = 0; i < panelsCount; i++) {
+      const globalFrameIdx = batchStart + i;
+      const frameLabel = "F-" + String(globalFrameIdx + 1).padStart(2, '0');
+      
+      if (globalFrameIdx < state.storyboards.length) {
+        const frame = state.storyboards[globalFrameIdx];
+        const isRedrawing = state.runningRedraws[globalFrameIdx];
+        const isSelected = state.selectedFrameIndexByBatch[batchIndex] === globalFrameIdx;
+        
+        let cellStyleHtml = "";
+        if (frame && frame.image_url) {
+          cellStyleHtml = `background-image: url('${frame.image_url}'); background-size: cover; background-position: center;`;
+        } else if (grid.image_url) {
+          const r = Math.floor(i / N);
+          const c = i % N;
+          const pctX = N > 1 ? (c / (N - 1)) * 100 : 0;
+          const pctY = N > 1 ? (r / (N - 1)) * 100 : 0;
+          cellStyleHtml = `background-image: url('${grid.image_url}'); background-size: ${N * 100}% ${N * 100}%; background-position: ${pctX}% ${pctY}%;`;
+        }
+        
+        const selectedClasses = isSelected ? "ring-2 ring-indigo-500 border-indigo-500 z-10 scale-[1.02]" : "";
+        const loadingClasses = isRedrawing ? "" : "hidden";
+        
+        cellsHtml += `
+          <div id="gridCell_${globalFrameIdx}" 
+               data-frame-idx="${globalFrameIdx}"
+               onclick="selectSubGridCell(${batchIndex}, ${globalFrameIdx})" 
+               class="sub-grid-cell relative overflow-hidden cursor-pointer aspect-[16/9] border border-slate-850 hover:border-indigo-500/80 rounded-xl transition-all duration-200 bg-slate-950 group ${selectedClasses}" 
+               style="${cellStyleHtml}">
+            
+            <!-- Frame Label Overlay -->
+            <span class="absolute top-1.5 left-1.5 px-1.5 py-0.5 bg-black/80 text-[8px] font-bold rounded text-amber-500 font-mono select-none">${frameLabel}</span>
+            
+            <!-- Hover Overlay -->
+            <div class="absolute inset-0 bg-indigo-500/10 opacity-0 group-hover:opacity-100 transition duration-200"></div>
+            
+            <!-- Loading Frosted Glass Overlay -->
+            <div id="cellOverlay_${globalFrameIdx}" class="loading-overlay absolute inset-0 bg-slate-950/70 backdrop-blur-xs flex flex-col items-center justify-center space-y-1 transition duration-200 ${loadingClasses}">
+              <div class="w-4 h-4 border-2 border-slate-700 border-t-indigo-500 rounded-full animate-spin"></div>
+              <span class="text-[8px] text-slate-400 font-semibold tracking-wider font-mono">重画中...</span>
+            </div>
+          </div>
+        `;
+      } else {
+        // Placeholder cells
+        cellsHtml += `
+          <div class="bg-slate-950/60 border border-slate-900 aspect-[16/9] rounded-xl flex items-center justify-center text-[8px] text-slate-700 font-mono select-none">
+            Placeholder
+          </div>
+        `;
+      }
+    }
+    
+    // Now construct the grid container columns class
+    let gridColsClass = "grid-cols-4";
+    if (N === 2) gridColsClass = "grid-cols-2";
+    else if (N === 3) gridColsClass = "grid-cols-3";
+    
+    // Check if currently selected
+    const selectedFrameIdx = state.selectedFrameIndexByBatch[batchIndex];
+    let panelTitle = "📝 批次提示词微调控制盘";
+    let textareaVal = grid.prompt;
+    let buttonHtml = `<span>🔄 打回当前整组宫格重画</span>`;
+    let isBtnDisabled = "";
+    let returnBtnClass = "hidden";
+    let buttonOnClick = `handleRegenBatch(${batchIndex}, this)`;
+    let buttonColorClass = "bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-rose-200 border border-rose-900/50 hover:border-rose-700/50";
+    
+    if (selectedFrameIdx !== undefined) {
+      const frame = state.storyboards[selectedFrameIdx];
+      const frameLabel = "F-" + String(selectedFrameIdx + 1).padStart(2, '0');
+      panelTitle = `📝 选中分镜 [${frameLabel}] 提示词精雕`;
+      textareaVal = frame ? frame.prompt : "";
+      returnBtnClass = "";
+      
+      const isRedrawing = state.runningRedraws[selectedFrameIdx];
+      if (isRedrawing) {
+        isBtnDisabled = "disabled";
+        buttonHtml = `
+          <div class="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+          <span>正在重画中...</span>
+        `;
+      } else {
+        buttonHtml = `<span>🎨 打回单个子分镜 [${frameLabel}] 重画</span>`;
+      }
+      buttonColorClass = "bg-red-600 hover:bg-red-500 text-white border border-red-700";
+      buttonOnClick = `handleRegenSingleCell(${batchIndex}, ${selectedFrameIdx}, this)`;
+    }
+    
     html += `
       <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 space-y-4 transition-all hover:border-indigo-500/50 duration-300 flex flex-col md:flex-row gap-6">
-        <!-- Left Side: Image Preview -->
-        <div class="w-full md:w-2/5 flex flex-col justify-between space-y-3">
+        <!-- Left Side: Image Preview Grid -->
+        <div class="w-full md:w-1/2 flex flex-col justify-between space-y-3">
           <div>
             <div class="flex items-center justify-between mb-2">
               <span class="px-2.5 py-1 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 text-[10px] font-bold rounded-lg font-mono">${grid.range_text}</span>
               <span class="text-[10px] text-slate-500 font-mono">BATCH_${String(grid.batch_index).padStart(3, '0')}</span>
             </div>
-            <div onclick="showLargeGridImage('${grid.image_url}')" class="relative group aspect-[16/9] w-full bg-slate-950 rounded-xl border border-slate-850 flex items-center justify-center overflow-hidden cursor-zoom-in">
-              ${grid.image_url ? `
-                <img src="${grid.image_url}" class="w-full h-full object-cover group-hover:scale-[1.03] transition duration-500" />
-                <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all duration-300">
-                  <span class="text-white text-[10px] bg-indigo-650 px-3 py-1.5 rounded-lg shadow-lg font-bold">🔍 点击放大审阅 16 宫格</span>
-                </div>
-              ` : `
-                <div class="text-[10px] text-slate-500 font-mono flex flex-col items-center space-y-2">
-                  <div class="w-6 h-6 border-2 border-slate-700 border-t-indigo-500 rounded-full animate-spin"></div>
-                  <span>大模型全力绘制 16 宫格中...</span>
-                </div>
-              `}
+            
+            <!-- Grid Container -->
+            <div id="gridContainer_${batchIndex}" class="grid ${gridColsClass} gap-1.5 aspect-[16/9] w-full bg-slate-950 rounded-xl border border-slate-850 p-1.5 overflow-hidden">
+              ${cellsHtml}
             </div>
           </div>
-          
-          <button onclick="handleRegenBatch(${grid.batch_index}, this)" class="w-full py-2.5 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-rose-200 border border-rose-900/50 hover:border-rose-700/50 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2 shadow-sm cursor-pointer">
-            <span>🔄 打回当前 16 宫格重画</span>
-          </button>
         </div>
 
         <!-- Right Side: Prompts Editor -->
-        <div class="flex-1 flex flex-col space-y-2.5">
+        <div id="gridControlPanel_${batchIndex}" class="flex-1 flex flex-col space-y-2.5 justify-between">
           <div class="flex items-center justify-between">
-            <span class="text-xs font-semibold text-slate-350">📝 批次提示词微调控制盘</span>
-            <span class="text-[9px] text-slate-500">* 支持修改后打回重画</span>
+            <span class="text-xs font-semibold text-slate-350 panel-title">${panelTitle}</span>
+            <div id="returnBtnContainer_${batchIndex}" class="${returnBtnClass}">
+              <button onclick="deselectSubGridCell(${batchIndex})" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-[10px] font-semibold transition-all border border-slate-700 shadow-sm cursor-pointer">
+                返回整组修改
+              </button>
+            </div>
           </div>
-          <textarea id="gridPromptArea_${grid.batch_index}" rows="8" class="w-full flex-1 bg-slate-950 border border-slate-850 focus:border-indigo-500/50 rounded-xl p-3.5 text-[11px] text-slate-355 font-mono leading-relaxed focus:outline-none resize-none scrollbar-thin">${grid.prompt}</textarea>
+          
+          <textarea id="gridPromptArea_${batchIndex}" 
+                    rows="6" 
+                    oninput="handlePromptInput(${batchIndex}, this)"
+                    class="w-full flex-1 bg-slate-950 border border-slate-850 focus:border-indigo-500/50 rounded-xl p-3.5 text-[11px] text-slate-355 font-mono leading-relaxed focus:outline-none resize-none scrollbar-thin">${textareaVal}</textarea>
+          
+          <button id="regenBtn_${batchIndex}" 
+                  ${isBtnDisabled}
+                  onclick="${buttonOnClick}" 
+                  class="w-full py-2.5 ${buttonColorClass} rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2 shadow-sm cursor-pointer">
+            ${buttonHtml}
+          </button>
         </div>
       </div>
     `;
   });
   
   container.innerHTML = html;
+}
+
+function selectSubGridCell(batchIndex, globalFrameIdx) {
+  state.selectedFrameIndexByBatch[batchIndex] = globalFrameIdx;
+  
+  // Highlight cell in DOM
+  const container = document.getElementById(`gridContainer_${batchIndex}`);
+  if (container) {
+    const cells = container.querySelectorAll(".sub-grid-cell");
+    cells.forEach(cell => {
+      const idx = parseInt(cell.getAttribute("data-frame-idx"));
+      if (idx === globalFrameIdx) {
+        cell.classList.add("ring-2", "ring-indigo-500", "border-indigo-500", "z-10", "scale-[1.02]");
+      } else {
+        cell.classList.remove("ring-2", "ring-indigo-500", "border-indigo-500", "z-10", "scale-[1.02]");
+      }
+    });
+  }
+  
+  // Update control panel to single frame mode
+  updateBatchControls(batchIndex);
+}
+
+function deselectSubGridCell(batchIndex) {
+  delete state.selectedFrameIndexByBatch[batchIndex];
+  
+  // Update cell styles in DOM
+  const container = document.getElementById(`gridContainer_${batchIndex}`);
+  if (container) {
+    const cells = container.querySelectorAll(".sub-grid-cell");
+    cells.forEach(cell => {
+      cell.classList.remove("ring-2", "ring-indigo-500", "border-indigo-500", "z-10", "scale-[1.02]");
+    });
+  }
+  
+  // Restore control panel to batch mode
+  updateBatchControls(batchIndex);
+}
+
+function handlePromptInput(batchIndex, textarea) {
+  const selectedFrameIdx = state.selectedFrameIndexByBatch[batchIndex];
+  if (selectedFrameIdx === undefined) {
+    // Batch Mode: update grid.prompt in memory
+    const grid = state.storyboardGrids.find(g => g.batch_index === batchIndex);
+    if (grid) grid.prompt = textarea.value;
+  } else {
+    // Single Frame Mode: update frame prompt in memory
+    const frame = state.storyboards[selectedFrameIdx];
+    if (frame) frame.prompt = textarea.value;
+  }
+}
+
+function updateBatchControls(batchIndex) {
+  const selectedFrameIdx = state.selectedFrameIndexByBatch[batchIndex];
+  const controlPanel = document.getElementById(`gridControlPanel_${batchIndex}`);
+  if (!controlPanel) return;
+  
+  const titleEl = controlPanel.querySelector(".panel-title");
+  const textarea = document.getElementById(`gridPromptArea_${batchIndex}`);
+  const actionBtn = document.getElementById(`regenBtn_${batchIndex}`);
+  const returnBtnContainer = document.getElementById(`returnBtnContainer_${batchIndex}`);
+  
+  const grid = state.storyboardGrids.find(g => g.batch_index === batchIndex);
+  if (!grid) return;
+  
+  if (selectedFrameIdx === undefined) {
+    // Batch Mode
+    if (titleEl) titleEl.innerText = "📝 批次提示词微调控制盘";
+    if (textarea) {
+      textarea.value = grid.prompt;
+      textarea.readOnly = false;
+    }
+    if (actionBtn) {
+      actionBtn.className = "w-full py-2.5 bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-rose-200 border border-rose-900/50 hover:border-rose-700/50 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2 shadow-sm cursor-pointer";
+      actionBtn.innerHTML = `<span>🔄 打回当前整组宫格重画</span>`;
+      actionBtn.disabled = false;
+      actionBtn.onclick = function() { handleRegenBatch(batchIndex, this); };
+    }
+    if (returnBtnContainer) {
+      returnBtnContainer.classList.add("hidden");
+    }
+  } else {
+    // Single Frame Mode
+    const frame = state.storyboards[selectedFrameIdx];
+    const frameLabel = "F-" + String(selectedFrameIdx + 1).padStart(2, '0');
+    
+    if (titleEl) titleEl.innerText = `📝 选中分镜 [${frameLabel}] 提示词精雕`;
+    if (textarea) {
+      textarea.value = frame ? frame.prompt : "";
+      textarea.readOnly = false;
+    }
+    if (actionBtn) {
+      actionBtn.className = "w-full py-2.5 bg-red-600 hover:bg-red-500 text-white border border-red-700 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-2 shadow-sm cursor-pointer";
+      
+      const isRedrawing = state.runningRedraws[selectedFrameIdx];
+      if (isRedrawing) {
+        actionBtn.disabled = true;
+        actionBtn.innerHTML = `
+          <div class="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+          <span>正在重画中...</span>
+        `;
+      } else {
+        actionBtn.disabled = false;
+        actionBtn.innerHTML = `<span>🎨 打回单个子分镜 [${frameLabel}] 重画</span>`;
+      }
+      actionBtn.onclick = function() { handleRegenSingleCell(batchIndex, selectedFrameIdx, this); };
+    }
+    if (returnBtnContainer) {
+      returnBtnContainer.classList.remove("hidden");
+      returnBtnContainer.innerHTML = `
+        <button onclick="deselectSubGridCell(${batchIndex})" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-[10px] font-semibold transition-all border border-slate-700 shadow-sm cursor-pointer">
+          返回整组修改
+        </button>
+      `;
+    }
+  }
+}
+
+async function handleRegenSingleCell(batchIndex, globalFrameIdx, btn) {
+  const frame = state.storyboards[globalFrameIdx];
+  if (!frame) return;
+  
+  // Set redrawing status
+  state.runningRedraws[globalFrameIdx] = true;
+  
+  // Show loading overlay on cell immediately
+  const overlay = document.getElementById(`cellOverlay_${globalFrameIdx}`);
+  if (overlay) overlay.classList.remove("hidden");
+  
+  // Update control panel button (if currently selected)
+  updateBatchControls(batchIndex);
+  
+  showToast(`🎨 正在后台重绘单分镜 F-${String(globalFrameIdx + 1).padStart(2, '0')}...`);
+  
+  try {
+    const res = await pywebview.api.render_single_frame({
+      target_id: `frame_${globalFrameIdx + 1}`,
+      prompt: frame.prompt
+    });
+    
+    if (res.status === "success") {
+      showToast(`✅ 单分镜 F-${String(globalFrameIdx + 1).padStart(2, '0')} 重绘成功！`);
+      
+      // Update image url with timestamp to bust cache
+      const newUrl = res.render_url + (res.render_url.includes('?') ? '&' : '?') + 't=' + Date.now();
+      frame.image_url = newUrl;
+      
+      // Update cell background in DOM in place
+      const cell = document.getElementById(`gridCell_${globalFrameIdx}`);
+      if (cell) {
+        cell.style.backgroundImage = `url('${newUrl}')`;
+        cell.style.backgroundSize = 'cover';
+        cell.style.backgroundPosition = 'center';
+      }
+    } else {
+      showCustomModal("⚠️ 重绘失败", res.detail || "单分镜重绘失败，请重试！");
+    }
+  } catch(err) {
+    showCustomModal("❌ 出错了", err.message || "请求发送失败！");
+  } finally {
+    delete state.runningRedraws[globalFrameIdx];
+    
+    // Hide loading overlay
+    const overlay = document.getElementById(`cellOverlay_${globalFrameIdx}`);
+    if (overlay) overlay.classList.add("hidden");
+    
+    // Update control panel button (if currently selected)
+    updateBatchControls(batchIndex);
+  }
 }
 
 function showLargeGridImage(url) {
@@ -1454,11 +2433,26 @@ async function handleRegenBatch(batchIndex, btn) {
     });
     
     if (res.status === "success") {
-      showToast(`` + `✅ 第 ${batchIndex} 批次分镜重画绘制成功！`);
+      showToast(`✅ 第 ${batchIndex} 批次分镜重画绘制成功！`);
       const targetIndex = state.storyboardGrids.findIndex(g => g.batch_index === batchIndex);
       if (targetIndex !== -1) {
         state.storyboardGrids[targetIndex] = res.grid;
       }
+      
+      // Clear manual redraws for this batch in frontend state
+      let N = 4;
+      if (state.gridMode === "2x2") N = 2;
+      else if (state.gridMode === "3x3") N = 3;
+      const panelsCount = N * N;
+      const batchStart = (batchIndex - 1) * panelsCount;
+      for (let i = 0; i < panelsCount; i++) {
+        const globalFrameIdx = batchStart + i;
+        if (state.storyboards && state.storyboards[globalFrameIdx]) {
+          state.storyboards[globalFrameIdx].image_url = "";
+        }
+      }
+      delete state.selectedFrameIndexByBatch[batchIndex];
+      
       renderStoryboardGrids();
     } else {
       showCustomModal("⚠️ 重画失败", res.detail || "请求失败，请重试！");
@@ -1471,7 +2465,6 @@ async function handleRegenBatch(batchIndex, btn) {
     btn.innerHTML = oldBtnHtml;
   }
 }
-
 async function forceGenerateStoryboard() {
   showCustomModal(
     "⚠️ 重新生成分镜确认",
@@ -1520,6 +2513,21 @@ function openE1(index) {
     };
   }
 
+  // Disable textarea and button if redrawing is in progress
+  const isRedrawing = state.runningRedraws[frame_id] === true;
+  const rebuildBtn = document.getElementById("rebuildFrameBtn");
+  if (promptInput) {
+    promptInput.disabled = isRedrawing;
+  }
+  if (rebuildBtn) {
+    rebuildBtn.disabled = isRedrawing;
+    if (isRedrawing) {
+      rebuildBtn.innerText = "🎨 后台正在重绘中...";
+    } else {
+      rebuildBtn.innerText = "💡 确定更新并重新画本帧";
+    }
+  }
+
   const overlay = document.getElementById("overlayE1");
   if (overlay) overlay.classList.remove("hidden");
 }
@@ -1550,51 +2558,86 @@ function switchE1PreviewMode(mode) {
 async function rebuildFrameCard() {
   const frm = state.storyboards[activeFrameIndex];
   if (!frm) return;
-  const promptInput = document.getElementById("e1_PromptInput");
-  const newPrompt = promptInput ? promptInput.value : "";
+  
   const frame_id = `frame_0${activeFrameIndex+1}`;
-
-  const rebuildBtn = document.getElementById("rebuildFrameBtn");
-  if (rebuildBtn) {
-    rebuildBtn.disabled = true;
-    rebuildBtn.innerText = "🎨 生图引擎单帧重绘中...";
+  if (state.runningRedraws[frame_id]) {
+    showToast("⚠️ 该分镜正在重绘中，请勿重复操作！");
+    return;
   }
 
-  try {
-    const res = await pywebview.api.render_single_frame({
-        target_id: frame_id,
-        prompt: newPrompt,
-        seed: state.seed,
-        style_lock: true
-      });
-    if (res.status === "success") {
+  const promptInput = document.getElementById("e1_PromptInput");
+  const newPrompt = promptInput ? promptInput.value : "";
+  
+  // Mark as running redraw
+  state.runningRedraws[frame_id] = true;
+  
+  // Close the modal immediately
+  closeE1_Force();
+  
+  // Put the frame card in local loading state
+  const targetIndex = activeFrameIndex;
+  const previewImg = document.getElementById(`framePreviewImg${targetIndex}`);
+  const originalHtml = previewImg ? previewImg.innerHTML : ""; // Keep original HTML in case of failure
+  
+  if (previewImg) {
+    // Show glassmorphic overlay + loading spinner
+    previewImg.style.position = "relative";
+    previewImg.innerHTML = `
+      ${originalHtml}
+      <div class="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex flex-col items-center justify-center text-white z-10">
+        <svg class="animate-spin h-6 w-6 text-indigo-400 mb-1" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span class="text-[9px] font-semibold animate-pulse text-indigo-200">重画中...</span>
+      </div>
+    `;
+  }
+  
+  // Background asynchronous call
+  pywebview.api.render_single_frame({
+    target_id: frame_id,
+    prompt: newPrompt,
+    seed: state.seed,
+    style_lock: true
+  })
+  .then(res => {
+    if (res && res.status === "success") {
       state.frameHistory[frame_id].old_url = frm.image_url;
       state.frameHistory[frame_id].new_url = res.render_url;
       
       frm.image_url = res.render_url;
       frm.prompt = newPrompt;
       
-      const previewImg = document.getElementById(`framePreviewImg${activeFrameIndex}`);
-      if (previewImg) {
-        previewImg.innerHTML = `
-          <span class="absolute top-2 left-2 px-1.5 py-0.5 bg-black/80 text-[8px] font-bold rounded text-amber-500 font-mono">F-0${activeFrameIndex+1}</span>
+      const finalPreviewImg = document.getElementById(`framePreviewImg${targetIndex}`);
+      if (finalPreviewImg) {
+        finalPreviewImg.innerHTML = `
+          <span class="absolute top-2 left-2 px-1.5 py-0.5 bg-black/80 text-[8px] font-bold rounded text-amber-500 font-mono">F-0${targetIndex+1}</span>
           <img src="${res.render_url}" class="w-full h-full object-cover group-hover:scale-105 transition duration-500" />
         `;
       }
-      
-      switchE1PreviewMode("new");
-      showToast("✨ 分镜单帧重画渲染完成！");
+      showToast(`✨ 分镜帧 F-0${targetIndex+1} 后台重绘成功！`);
     } else {
-      showCustomModal("⚠️ 生图失败", "重绘单帧失败，请重试！");
+      // Restore card visual state
+      const finalPreviewImg = document.getElementById(`framePreviewImg${targetIndex}`);
+      if (finalPreviewImg) {
+        finalPreviewImg.innerHTML = originalHtml;
+      }
+      showCustomModal("⚠️ 生图失败", `分镜帧 F-0${targetIndex+1} 重画失败，请重试！`);
     }
-  } catch(err) {
-    handleApiError(err, rebuildFrameCard);
-  } finally {
-    if (rebuildBtn) {
-      rebuildBtn.disabled = false;
-      rebuildBtn.innerText = "💡 确定更新并重新画本帧";
+  })
+  .catch(err => {
+    // Restore card visual state
+    const finalPreviewImg = document.getElementById(`framePreviewImg${targetIndex}`);
+    if (finalPreviewImg) {
+      finalPreviewImg.innerHTML = originalHtml;
     }
-  }
+    showCustomModal("⚠️ 接口调用异常", `分镜帧 F-0${targetIndex+1} 重画失败: ` + String(err));
+  })
+  .finally(() => {
+    // Release the redraw lock
+    delete state.runningRedraws[frame_id];
+  });
 }
 
 function closeE1(event) {
@@ -1617,8 +2660,17 @@ async function handleSynthesize() {
   if (vPlayer) vPlayer.classList.add("hidden");
   if (vPlaceholder) vPlaceholder.classList.remove("hidden");
 
+  const speedupCheck = document.getElementById("enableSpeedup");
+  const enableSpeedup = speedupCheck ? speedupCheck.checked : true;
+
+  const compileTypeSelect = document.getElementById("compileTypeSelector");
+  const compileType = compileTypeSelect ? compileTypeSelect.value : "video";
+
   try {
-    const res = await pywebview.api.synthesize_video();
+    const res = await pywebview.api.synthesize_video({ 
+      enable_speedup: enableSpeedup,
+      compile_type: compileType
+    });
     if (res.status === "success") {
       state.relativeVideoPath = res.relative_path;
       
@@ -1729,6 +2781,24 @@ function handleApiError(err, retryCallback) {
   );
 }
 
+function toggleStageCalls(idx) {
+  if (!state.backstageExpandedStages) {
+    state.backstageExpandedStages = {};
+  }
+  const el = document.getElementById(`stageCalls_${idx}`);
+  const caret = document.getElementById(`caret_${idx}`);
+  if (el) {
+    const isHidden = el.classList.toggle('hidden');
+    if (isHidden) {
+      delete state.backstageExpandedStages[idx];
+      if (caret) caret.innerText = "▼";
+    } else {
+      state.backstageExpandedStages[idx] = true;
+      if (caret) caret.innerText = "▲";
+    }
+  }
+}
+
 function renderBackstageData(stages) {
   const listEl = document.getElementById("backstageStageList");
   if (!listEl) return;
@@ -1772,8 +2842,10 @@ function renderBackstageData(stages) {
     const stageEl = document.createElement("div");
     stageEl.className = `p-4 rounded-2xl border ${borderClass} ${bgClass} ${pulseClass} space-y-3 transition-all duration-300 hover:border-indigo-500/30`;
     
+    const isExpanded = !!(state.backstageExpandedStages && state.backstageExpandedStages[idx]);
+    
     let headerHtml = `
-      <div class="flex justify-between items-start cursor-pointer" onclick="document.getElementById('stageCalls_${idx}').classList.toggle('hidden')">
+      <div class="flex justify-between items-start cursor-pointer" onclick="toggleStageCalls(${idx})">
         <div class="space-y-1">
           <div class="text-[9px] text-slate-500 font-mono tracking-widest uppercase">STAGE 0${idx+1}</div>
           <div class="text-xs ${titleColor} flex items-center space-x-1.5">
@@ -1783,12 +2855,12 @@ function renderBackstageData(stages) {
         </div>
         <div class="flex items-center space-x-2">
           ${statusBadge}
-          <span class="text-[9px] text-slate-600 font-mono select-none">▼</span>
+          <span id="caret_${idx}" class="text-[9px] text-slate-600 font-mono select-none">${isExpanded ? '▲' : '▼'}</span>
         </div>
       </div>
     `;
     
-    let callsHtml = `<div id="stageCalls_${idx}" class="hidden pt-3 border-t border-slate-850/50 space-y-2.5">`;
+    let callsHtml = `<div id="stageCalls_${idx}" class="${isExpanded ? '' : 'hidden'} pt-3 border-t border-slate-850/50 space-y-2.5">`;
     if (stage.calls.length === 0) {
       callsHtml += `<div class="text-[10px] text-slate-500 italic pl-1 font-light">等待前置流水线推进以唤醒此节点...</div>`;
     } else {
@@ -1836,3 +2908,402 @@ function renderBackstageData(stages) {
     listEl.appendChild(stageEl);
   });
 }
+
+// ── 🎙️ 旁白音色试听预览控制逻辑 ──
+let currentPreviewAudio = null; // 全局试听 Audio 引用
+
+function previewSelectedVoice() {
+  const engine = state.presets.tts_engine || "edge";
+  const voice = state.presets.voice_role || "";
+  const rate = state.presets.voice_rate || "+0%";
+  const emotion = state.presets.voice_emotion || "none";
+  const pitch = parseInt(state.presets.voice_pitch || 0);
+  const volume = parseInt(state.presets.voice_volume || 0);
+  const prompt = state.presets.voice_prompt || "";
+  
+  const btnText = document.getElementById("ttsPreviewText");
+  if (!btnText) return;
+  
+  // 如果当前正在播放，则停止播放并恢复文字
+  if (currentPreviewAudio && !currentPreviewAudio.paused) {
+    currentPreviewAudio.pause();
+    btnText.innerText = "🔊 试听当前设置";
+    return;
+  }
+  
+  btnText.innerText = "⏳ 正在合成并加载...";
+  
+  const payload = { engine, voice, rate, emotion, pitch, volume, prompt };
+  
+  // 区分是 PyQt 桌面程序 Bridge 还是 API Standalone 模式
+  if (window.pywebview && window.pywebview.api) {
+    window.pywebview.api.tts_preview(payload).then(res => {
+      handleTtsPreviewResult(res);
+    }).catch(err => {
+      showToast("试听音频生成失败: " + err);
+      btnText.innerText = "🔊 试听当前设置";
+    });
+  } else {
+    // API 模式，发送 HTTP POST 请求
+    fetch("http://127.0.0.1:8000/api/story/v1/tts-preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(res => {
+      handleTtsPreviewResult(res);
+    })
+    .catch(err => {
+      showToast("网络请求失败，请确保 API 服务在后台正常运行");
+      btnText.innerText = "🔊 试听当前设置";
+    });
+  }
+}
+
+function handleTtsPreviewResult(res) {
+  const btnText = document.getElementById("ttsPreviewText");
+  if (!btnText) return;
+  
+  if (res.status === "success" && res.audio_url) {
+    // 实例化并播放音频
+    if (currentPreviewAudio) {
+      currentPreviewAudio.pause();
+    }
+    currentPreviewAudio = new Audio(res.audio_url);
+    
+    currentPreviewAudio.onplay = () => {
+      btnText.innerText = "⏸️ 正在播放试听";
+    };
+    
+    currentPreviewAudio.onended = () => {
+      btnText.innerText = "🔊 试听当前设置";
+    };
+    
+    currentPreviewAudio.onerror = (e) => {
+      showToast("播放音频失败，请重试");
+      btnText.innerText = "🔊 试听当前设置";
+    };
+    
+    currentPreviewAudio.play().catch(err => {
+      showToast("浏览器限制自动播放，请点击允许或重试");
+      btnText.innerText = "🔊 试听当前设置";
+    });
+  } else {
+    showToast(res.detail || "试听生成失败");
+    btnText.innerText = "🔊 试听当前设置";
+  }
+}
+
+// ── 🎙️ 自定义音色管理功能 (保存/重命名/删除) ──
+
+function toggleCustomVoicePanels() {
+  const selector = document.getElementById("voiceRoleSelector");
+  const savePanel = document.getElementById("customVoiceSavePanel");
+  const managePanel = document.getElementById("customVoiceManagePanel");
+  const customInput = document.getElementById("customVoiceInput");
+  
+  if (!selector) return;
+  
+  const val = selector.value;
+  
+  // 加载自定义保存的音色列表
+  let customVoices = [];
+  try {
+    const raw = localStorage.getItem("palette_custom_voices");
+    if (raw) customVoices = JSON.parse(raw);
+  } catch(e) {}
+  
+  const isSavedCustom = customVoices.some(cv => cv.id === val);
+  
+  if (val === "custom") {
+    if (customInput) customInput.classList.remove("hidden");
+    if (savePanel) savePanel.classList.remove("hidden");
+    if (managePanel) managePanel.classList.add("hidden");
+  } else if (isSavedCustom) {
+    if (customInput) customInput.classList.add("hidden");
+    if (savePanel) savePanel.classList.add("hidden");
+    if (managePanel) managePanel.classList.remove("hidden");
+  } else {
+    if (savePanel) savePanel.classList.add("hidden");
+    if (managePanel) managePanel.classList.add("hidden");
+  }
+}
+
+function saveCustomVoice() {
+  const engine = state.presets.tts_engine || "edge";
+  const customInput = document.getElementById("customVoiceInput");
+  const nameInput = document.getElementById("customVoiceNameInput");
+  
+  if (!customInput || !nameInput) return;
+  
+  const id = customInput.value.trim();
+  const name = nameInput.value.trim();
+  
+  if (!id) {
+    showToast("请输入音色标识 ID！");
+    return;
+  }
+  if (!name) {
+    showToast("请为该音色取一个名字！");
+    return;
+  }
+  
+  let customVoices = [];
+  try {
+    const raw = localStorage.getItem("palette_custom_voices");
+    if (raw) customVoices = JSON.parse(raw);
+  } catch(e) {}
+  
+  const existingIndex = customVoices.findIndex(cv => cv.id === id);
+  if (existingIndex !== -1) {
+    customVoices[existingIndex].name = name;
+    customVoices[existingIndex].engine = engine;
+  } else {
+    customVoices.push({ id, name, engine });
+  }
+  
+  localStorage.setItem("palette_custom_voices", JSON.stringify(customVoices));
+  showToast(`音色「${name}」保存成功！`);
+  
+  nameInput.value = "";
+  
+  state.presets.voice_role = id;
+  populateVoiceRolesAndRates();
+  onVoiceSettingChange();
+}
+
+function renameCustomVoice() {
+  const selector = document.getElementById("voiceRoleSelector");
+  if (!selector) return;
+  
+  const id = selector.value;
+  
+  let customVoices = [];
+  try {
+    const raw = localStorage.getItem("palette_custom_voices");
+    if (raw) customVoices = JSON.parse(raw);
+  } catch(e) {}
+  
+  const voice = customVoices.find(cv => cv.id === id);
+  if (!voice) return;
+  
+  const newName = prompt(`请输入音色「${voice.name}」的新名称:`, voice.name);
+  if (newName === null) return;
+  
+  const trimmed = newName.trim();
+  if (!trimmed) {
+    showToast("音色名称不能为空！");
+    return;
+  }
+  
+  voice.name = trimmed;
+  localStorage.setItem("palette_custom_voices", JSON.stringify(customVoices));
+  showToast("重命名成功！");
+  
+  populateVoiceRolesAndRates();
+}
+
+function deleteCustomVoice() {
+  const selector = document.getElementById("voiceRoleSelector");
+  if (!selector) return;
+  
+  const id = selector.value;
+  
+  let customVoices = [];
+  try {
+    const raw = localStorage.getItem("palette_custom_voices");
+    if (raw) customVoices = JSON.parse(raw);
+  } catch(e) {}
+  
+  const voice = customVoices.find(cv => cv.id === id);
+  if (!voice) return;
+  
+  if (!confirm(`确定要删除自定义音色「${voice.name}」吗？`)) {
+    return;
+  }
+  
+  customVoices = customVoices.filter(cv => cv.id !== id);
+  localStorage.setItem("palette_custom_voices", JSON.stringify(customVoices));
+  showToast("删除成功！");
+  
+  const engine = state.presets.tts_engine || "edge";
+  state.presets.voice_role = (engine === "volc") ? "saturn_zh_female_cancan_tob" : "zh-CN-YunjianNeural";
+  
+  populateVoiceRolesAndRates();
+  onVoiceSettingChange();
+}
+
+// ================================================================
+// ⚙️ 全局模型配置面板交互逻辑
+// ================================================================
+async function openModelSettingsModal() {
+  if (typeof pywebview === 'undefined' || !pywebview.api) {
+    showToast("⚠️ 桌面系统接口未就绪，无法配置模型");
+    return;
+  }
+  try {
+    const res = await pywebview.api.get_model_settings();
+    if (res.status !== "success") {
+      showCustomModal("⚠️ 获取模型配置失败", res.detail || "未知错误");
+      return;
+    }
+    
+    const settings = res.data;
+    
+    // 初始化/同步 LLM Select
+    const llmSel = document.getElementById("settingLlmPreset");
+    const llmCustom = document.getElementById("settingLlmCustom");
+    if (llmSel && llmCustom) {
+      let isLlmPreset = Array.from(llmSel.options).some(opt => opt.value === settings.MODEL_LLM);
+      if (isLlmPreset) {
+        llmSel.value = settings.MODEL_LLM;
+        llmCustom.classList.add("hidden");
+      } else {
+        llmSel.value = "custom";
+        llmCustom.value = settings.MODEL_LLM;
+        llmCustom.classList.remove("hidden");
+      }
+    }
+    
+    // 初始化/同步 VLM Select
+    const vlmSel = document.getElementById("settingVlmPreset");
+    const vlmCustom = document.getElementById("settingVlmCustom");
+    if (vlmSel && vlmCustom) {
+      let isVlmPreset = Array.from(vlmSel.options).some(opt => opt.value === settings.MODEL_VLM);
+      if (isVlmPreset) {
+        vlmSel.value = settings.MODEL_VLM;
+        vlmCustom.classList.add("hidden");
+      } else {
+        vlmSel.value = "custom";
+        vlmCustom.value = settings.MODEL_VLM;
+        vlmCustom.classList.remove("hidden");
+      }
+    }
+    
+    // 初始化/同步 IMG Cast Select
+    const imgCastSel = document.getElementById("settingImgCastPreset");
+    const imgCastCustom = document.getElementById("settingImgCastCustom");
+    if (imgCastSel && imgCastCustom) {
+      let isImgPreset = Array.from(imgCastSel.options).some(opt => opt.value === settings.MODEL_IMG_CAST);
+      if (isImgPreset) {
+        imgCastSel.value = settings.MODEL_IMG_CAST;
+        imgCastCustom.classList.add("hidden");
+      } else {
+        imgCastSel.value = "custom";
+        imgCastCustom.value = settings.MODEL_IMG_CAST;
+        imgCastCustom.classList.remove("hidden");
+      }
+    }
+
+    // 初始化/同步 IMG Story Select
+    const imgStorySel = document.getElementById("settingImgStoryPreset");
+    const imgStoryCustom = document.getElementById("settingImgStoryCustom");
+    if (imgStorySel && imgStoryCustom) {
+      let isImgPreset = Array.from(imgStorySel.options).some(opt => opt.value === settings.MODEL_IMG_STORY);
+      if (isImgPreset) {
+        imgStorySel.value = settings.MODEL_IMG_STORY;
+        imgStoryCustom.classList.add("hidden");
+      } else {
+        imgStorySel.value = "custom";
+        imgStoryCustom.value = settings.MODEL_IMG_STORY;
+        imgStoryCustom.classList.remove("hidden");
+      }
+    }
+    
+    document.getElementById("modelSettingsModal").classList.remove("hidden");
+  } catch (err) {
+    showCustomModal("⚠️ 获取接口异常", err.message || err);
+  }
+}
+
+function closeModelSettingsModal() {
+  const modal = document.getElementById("modelSettingsModal");
+  if (modal) modal.classList.add("hidden");
+}
+
+function syncModelPreset(role) {
+  const sel = document.getElementById(`setting${role}Preset`);
+  const customInput = document.getElementById(`setting${role}Custom`);
+  if (!sel || !customInput) return;
+  
+  if (sel.value === "custom") {
+    customInput.classList.remove("hidden");
+    customInput.focus();
+  } else {
+    customInput.classList.add("hidden");
+  }
+}
+
+async function saveModelSettings() {
+  if (typeof pywebview === 'undefined' || !pywebview.api) return;
+  
+  // LLM Model Name
+  const llmSel = document.getElementById("settingLlmPreset");
+  const llmCustom = document.getElementById("settingLlmCustom");
+  let llmModel = llmSel.value;
+  if (llmModel === "custom") {
+    llmModel = llmCustom.value.trim();
+  }
+  if (!llmModel) {
+    showToast("⚠️ 文本大模型名称不能为空！");
+    return;
+  }
+  
+  // VLM Model Name
+  const vlmSel = document.getElementById("settingVlmPreset");
+  const vlmCustom = document.getElementById("settingVlmCustom");
+  let vlmModel = vlmSel.value;
+  if (vlmModel === "custom") {
+    vlmModel = vlmCustom.value.trim();
+  }
+  if (!vlmModel) {
+    showToast("⚠️ 多模态识别模型名称不能为空！");
+    return;
+  }
+  
+  // IMG Cast Model Name
+  const imgCastSel = document.getElementById("settingImgCastPreset");
+  const imgCastCustom = document.getElementById("settingImgCastCustom");
+  let imgCastModel = imgCastSel.value;
+  if (imgCastModel === "custom") {
+    imgCastModel = imgCastCustom.value.trim();
+  }
+  if (!imgCastModel) {
+    showToast("⚠️ 定妆照生图模型名称不能为空！");
+    return;
+  }
+
+  // IMG Story Model Name
+  const imgStorySel = document.getElementById("settingImgStoryPreset");
+  const imgStoryCustom = document.getElementById("settingImgStoryCustom");
+  let imgStoryModel = imgStorySel.value;
+  if (imgStoryModel === "custom") {
+    imgStoryModel = imgStoryCustom.value.trim();
+  }
+  if (!imgStoryModel) {
+    showToast("⚠️ 分镜图生图模型名称不能为空！");
+    return;
+  }
+  
+  const payload = {
+    "MODEL_LLM": llmModel,
+    "MODEL_VLM": vlmModel,
+    "MODEL_IMG_CAST": imgCastModel,
+    "MODEL_IMG_STORY": imgStoryModel
+  };
+  
+  try {
+    const res = await pywebview.api.save_model_settings(payload);
+    if (res.status === "success") {
+      showToast("🎉 模型配置保存成功并已应用！");
+      closeModelSettingsModal();
+    } else {
+      showCustomModal("⚠️ 保存失败", res.detail || "未知错误");
+    }
+  } catch (err) {
+    showCustomModal("⚠️ 接口调用异常", err.message || err);
+  }
+}
+
+

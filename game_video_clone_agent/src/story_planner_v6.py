@@ -339,7 +339,7 @@ def polish_user_script_synopsis(
 
 
 def get_client():
-    return OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
+    return OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL, timeout=60.0)
 
 
 def _compute_narration_targets(duration_min: float) -> tuple[int, int]:

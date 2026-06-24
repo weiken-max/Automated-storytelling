@@ -245,14 +245,49 @@ def _build_gemini_image_config(size: str | None) -> dict:
                     image_size = "2K"
                 else:
                     image_size = "1K"
+
+            # 允许通过环境变量强制限制在 1K 画质，解决中转网关超时断开问题
+            if os.environ.get("IMAGE_GEN_FORCE_1K", "").strip().lower() in ("1", "true", "yes"):
+                image_size = "1K"
         except Exception:
             pass
 
     return {"aspectRatio": aspect, "imageSize": image_size}
 
 
+def _get_1k_fallback_size(current_size: str) -> str:
+    """如果大图生图失败，自动计算并返回对应的 1K 画质尺寸"""
+    if not current_size:
+        return "1024x768"
+    low = current_size.lower().replace("*", "x")
+    if "x" in low:
+        try:
+            w_str, h_str = low.split("x", 1)
+            w, h = int(w_str.strip()), int(h_str.strip())
+            # 根据宽高比自动匹配 1K 分辨率
+            if w * 9 == h * 16:
+                return "1280x720"
+            elif w * 16 == h * 9:
+                return "720x1280"
+            elif w == h:
+                return "1024x1024"
+            elif w * 3 == h * 4:
+                return "1024x768"
+            elif w * 4 == h * 3:
+                return "768x1024"
+            elif w * 2 == h * 3:
+                return "768x1152"
+            elif w * 3 == h * 2:
+                return "1152x768"
+        except Exception:
+            pass
+    if "2k" in low or "4k" in low:
+        return "1280x720"
+    return "1024x768"
+
+
 # --- [适配器 A] 豆包 (Volcengine Ark SDK) ---
-async def _generate_doubao(prompt: str, image_refs: list = None, size: str = None) -> bytes:
+async def _generate_doubao(prompt: str, image_refs: list = None, size: str = None, model: str = None) -> bytes:
     VENDOR = "豆包 (火山方舟)"
     from volcenginesdkarkruntime import Ark
     client = Ark(api_key=IMG_API_KEY, base_url=f"{IMG_BASE_URL.rstrip('/')}/api/v3")
@@ -265,10 +300,11 @@ async def _generate_doubao(prompt: str, image_refs: list = None, size: str = Non
 
     use_size = size or IMG_EXTRA_PARAMS.get("size", "1312x736")
     use_stream = IMG_EXTRA_PARAMS.get("stream", True)
+    use_model = model or MODEL_IMG
 
     try:
         resp = client.images.generate(
-            model=MODEL_IMG,
+            model=use_model,
             prompt=prompt,
             image=payload_images if payload_images else None,
             size=use_size,
@@ -308,7 +344,7 @@ async def _generate_doubao(prompt: str, image_refs: list = None, size: str = Non
 
 
 # --- [适配器 B] 阿里云 (DashScope) ---
-async def _generate_aliyun(prompt: str, image_refs: list = None, size: str = None) -> bytes:
+async def _generate_aliyun(prompt: str, image_refs: list = None, size: str = None, model: str = None) -> bytes:
     VENDOR = "阿里云 DashScope"
     from dashscope import MultiModalConversation
     import dashscope
@@ -321,10 +357,11 @@ async def _generate_aliyun(prompt: str, image_refs: list = None, size: str = Non
             else: content.append({"image": ref})
     content.append({"text": prompt})
 
+    use_model = model or MODEL_IMG
     def _call():
         return MultiModalConversation.call(
             api_key=IMG_API_KEY,
-            model=MODEL_IMG,
+            model=use_model,
             messages=[{"role": "user", "content": content}],
             negative_prompt=NEGATIVE_PROMPT,
             parameters={"size": size or IMG_SIZE}
@@ -360,7 +397,7 @@ async def _generate_aliyun(prompt: str, image_refs: list = None, size: str = Non
 
 
 # --- [适配器 D] OpenAI 兼容生图接口 (gribo_img 专用) ---
-async def _generate_openai_images(prompt: str, image_refs: list = None, size: str = None) -> bytes:
+async def _generate_openai_images(prompt: str, image_refs: list = None, size: str = None, model: str = None) -> bytes:
     """使用 OpenAI /v1/images/generations 公岗调用生图（gribo 代理支持）"""
     VENDOR = "Gribo Image (OpenAI层)"
     from openai import OpenAI as _OAI
@@ -368,10 +405,11 @@ async def _generate_openai_images(prompt: str, image_refs: list = None, size: st
         api_key=IMG_API_KEY,
         base_url=IMG_BASE_URL.rstrip("/") + "/v1"
     )
+    use_model = model or MODEL_IMG
     try:
         # 如果有参考图，拼接成文字描述传入（该接口不支持图片输入）
         resp = client.images.generate(
-            model=MODEL_IMG,
+            model=use_model,
             prompt=prompt[:4000],  # 防止prompt过长
             n=1,
             size=(size or "1024x768"),
@@ -392,7 +430,7 @@ async def _generate_openai_images(prompt: str, image_refs: list = None, size: st
         print(f"  └─ ❌ [{VENDOR}] 生图异常: {e}")
         return None
 
-async def _generate_gemini(prompt: str, image_refs: list = None, size: str = None) -> bytes:
+async def _generate_gemini(prompt: str, image_refs: list = None, size: str = None, model: str = None) -> bytes:
     VENDOR = "Gemini 中转站 (gemini_proxy_v3)"
     parts = [{"text": prompt}]
     if image_refs:
@@ -409,8 +447,9 @@ async def _generate_gemini(prompt: str, image_refs: list = None, size: str = Non
     if clean_base.endswith("/v1"):
         clean_base = clean_base[:-3]
     
+    use_model = model or MODEL_IMG
     gen_endpoint = IMG_EXTRA_PARAMS.get("gen_endpoint", "/v1beta/models/{model}:generateContent")
-    url = f"{clean_base}{gen_endpoint.replace('{model}', MODEL_IMG)}?key={IMG_API_KEY}"
+    url = f"{clean_base}{gen_endpoint.replace('{model}', use_model)}?key={IMG_API_KEY}"
     headers = {
         "Content-Type": "application/json"
     }
@@ -448,6 +487,118 @@ async def _generate_gemini(prompt: str, image_refs: list = None, size: str = Non
         _check_http_error(resp.status_code, resp_text, VENDOR)
         print(f"  └─ ❌ [{VENDOR}] HTTP {resp.status_code}: {resp_text[:300]}")
         return None
+
+
+def _determine_gpt_aspect_ratio(size: str = None) -> str:
+    cfg = _build_gemini_image_config(size)
+    return cfg.get("aspectRatio", "4:3")
+
+
+async def _generate_gribo_gpt_images(prompt: str, image_refs: list = None, size: str = None, model: str = None) -> bytes:
+    VENDOR = "Gribo GPT Image (OpenAI edits格式)"
+    clean_base = IMG_BASE_URL.rstrip('/')
+    url = f"{clean_base}/images/edits"
+    headers = {
+        "Authorization": f"Bearer {IMG_API_KEY}"
+    }
+    
+    # 将 image_refs (Base64 串列表) 解码回二进制文件流
+    binary_images = []
+    if image_refs:
+        for ref in image_refs:
+            ref_str = str(ref).strip()
+            if not ref_str:
+                continue
+            if ref_str.startswith("data:"):
+                try:
+                    header, base64_data = ref_str.split(",", 1)
+                except ValueError:
+                    base64_data = ref_str
+            else:
+                base64_data = ref_str
+            try:
+                binary_images.append(base64.b64decode(base64_data))
+            except Exception as e:
+                print(f"  ⚠️ [{VENDOR}] base64解码失败: {e}")
+                
+    # 若无参考图，则自动生成一张 1x1 的白色 PNG 二进制文件流以满足接口必填校验
+    if not binary_images:
+        print(f"  ℹ️ [{VENDOR}] 未提供参考图，生成 1x1 像素白色占位图用于 API 校验")
+        try:
+            from PIL import Image
+            img = Image.new("RGB", (1, 1), color="white")
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            binary_images.append(buf.getvalue())
+        except Exception as e:
+            print(f"  ⚠️ [{VENDOR}] 本地占位图绘制失败: {e}")
+            
+    # 构建 files 参数 (multipart/form-data)
+    files = []
+    for idx, img_bytes in enumerate(binary_images):
+        files.append(('image', (f"ref_{idx}.png", img_bytes, "image/png")))
+        
+    aspect_ratio = _determine_gpt_aspect_ratio(size)
+    
+    # 允许通过环境变量强制限制在 1K 画质，解决中转网关超时断开问题
+    if os.environ.get("IMAGE_GEN_FORCE_1K", "").strip().lower() in ("1", "true", "yes"):
+        if aspect_ratio == "16:9":
+            size = "1280x720"
+        elif aspect_ratio == "4:3":
+            size = "1024x768"
+        elif aspect_ratio == "1:1":
+            size = "1024x1024"
+        elif aspect_ratio == "9:16":
+            size = "720x1280"
+        elif aspect_ratio == "3:4":
+            size = "768x1024"
+        elif aspect_ratio == "2:3":
+            size = "768x1152"
+        elif aspect_ratio == "3:2":
+            size = "1152x768"
+        else:
+            size = "1024x768"
+
+    use_model = model or MODEL_IMG
+    
+    data = {
+        "model": use_model,
+        "prompt": prompt,
+        "aspect_ratio": aspect_ratio
+    }
+    if size:
+        data["size"] = size
+    # 对于 gpt-image-1 系列模型，自动开启官方的高清质量模式（quality=high）
+    if "gpt-image-1" in str(use_model).lower():
+        data["quality"] = "high"
+    
+    print(f"  └─ [{VENDOR}] model={use_model}, aspect_ratio={aspect_ratio}, size={size}, files_count={len(files)}")
+    
+    _http_timeout = max(180.0, float(_GEN_TIMEOUT_SECONDS) + 30.0)
+    async with httpx.AsyncClient(timeout=_http_timeout) as client:
+        resp = await client.post(url, data=data, files=files, headers=headers)
+        
+        if resp.status_code == 200:
+            result = resp.json()
+            data_list = result.get("data", [])
+            if data_list:
+                img_item = data_list[0]
+                if "b64_json" in img_item:
+                    return base64.b64decode(img_item["b64_json"])
+                elif "url" in img_item:
+                    url_val = img_item["url"]
+                    print(f"  └─ [{VENDOR}] 返回了URL，正在下载: {url_val}")
+                    r = requests.get(url_val, timeout=60)
+                    return r.content
+            print(f"  └─ ⚠️ [{VENDOR}] 返回200但未包含有效数据: {result}")
+            return None
+            
+        # 错误分析
+        resp_text = resp.text
+        _check_http_error(resp.status_code, resp_text, VENDOR)
+        print(f"  └─ ❌ [{VENDOR}] HTTP {resp.status_code}: {resp_text[:300]}")
+        return None
+
 
 
 # ================================================================
@@ -543,6 +694,14 @@ async def generate_image(prompt: str,
     await _wait_for_cooldown()
 
     vendor = vendor_key or ACTIVE_IMG_VENDOR
+    
+    # ── 🚩 智能根据阶段选用生图模型 (定妆照 vs 分镜图) ──
+    from src.api_audit import PHASE_CASTING
+    from src.model_presets import MODEL_IMG_CAST, MODEL_IMG_STORY
+    if audit_phase == PHASE_CASTING or audit_phase == "casting":
+        active_model = MODEL_IMG_CAST
+    else:
+        active_model = MODEL_IMG_STORY
 
     # ── 🚩 V7.8 物理路经对位补丁：强制转换路径为 B64 ──
     final_image_refs = []
@@ -600,13 +759,19 @@ async def generate_image(prompt: str,
     else:
         full_prompt = prompt
 
-    async def _dispatch_once() -> bytes:
+    async def _dispatch_once(current_size: str) -> bytes:
+        # 1. 优先根据模型名判断是否为 GPT 家族的生图模型 (通过 edits 接口调用)
+        model_lower = str(active_model).lower()
+        if "gpt-image" in model_lower or "flux-kontext" in model_lower or "gpt-imagine" in model_lower:
+            return await _generate_gribo_gpt_images(full_prompt, final_image_refs, current_size, model=active_model)
+
+        # 2. 原生适配器分发
         if "doubao" in vendor or "seedream" in vendor:
-            return await _generate_doubao(full_prompt, final_image_refs, size)
+            return await _generate_doubao(full_prompt, final_image_refs, current_size, model=active_model)
         if "aliyun" in vendor or "dashscope" in vendor:
-            return await _generate_aliyun(full_prompt, final_image_refs, size)
+            return await _generate_aliyun(full_prompt, final_image_refs, current_size, model=active_model)
         if "gemini" in vendor or "banana" in vendor or "gribo" in vendor:
-            return await _generate_gemini(full_prompt, final_image_refs, size)
+            return await _generate_gemini(full_prompt, final_image_refs, current_size, model=active_model)
         if "starflow" in vendor:
             print("  ⚠️ 星流 (LibLib) 适配器将在后续阶段完善。")
             return None
@@ -615,10 +780,17 @@ async def generate_image(prompt: str,
 
     sem = _get_gen_semaphore()
     async with sem:
+        current_size = size
         for attempt in range(1, _GEN_MAX_RETRIES + 1):
+            if attempt > 1 and size:
+                fallback_size = _get_1k_fallback_size(size)
+                if fallback_size != current_size:
+                    print(f"  └─ 🔄 [ImageEngine] 检测到此前尝试超时或失败，重试时自动降级为 1K 分辨率 ({fallback_size}) 以尝试成功生成！")
+                    current_size = fallback_size
+
             t_dispatch = time.perf_counter()
             try:
-                result_bytes = await asyncio.wait_for(_dispatch_once(), timeout=_GEN_TIMEOUT_SECONDS)
+                result_bytes = await asyncio.wait_for(_dispatch_once(current_size), timeout=_GEN_TIMEOUT_SECONDS)
                 ms = (time.perf_counter() - t_dispatch) * 1000
                 if result_bytes:
                     _update_last_gen_time()
@@ -629,9 +801,9 @@ async def generate_image(prompt: str,
                             "image_gen",
                             ok=True,
                             duration_ms=ms,
-                            model=str(MODEL_IMG),
+                            model=str(active_model),
                             attempt=attempt,
-                            extra={"vendor": vendor, "size": size or ""},
+                            extra={"vendor": vendor, "size": current_size or ""},
                         )
                     return result_bytes
                 if audit_phase:
@@ -641,7 +813,7 @@ async def generate_image(prompt: str,
                         "image_gen",
                         ok=False,
                         duration_ms=ms,
-                        model=str(MODEL_IMG),
+                        model=str(active_model),
                         attempt=attempt,
                         error="empty_response",
                         extra={"vendor": vendor},
@@ -655,13 +827,13 @@ async def generate_image(prompt: str,
                         "image_gen",
                         ok=False,
                         duration_ms=(time.perf_counter() - t_dispatch) * 1000,
-                        model=str(MODEL_IMG),
+                        model=str(active_model),
                         attempt=attempt,
                         error=str(e),
                         extra={"vendor": vendor},
                     )
                 print(f"  🚨 [ImageEngine] 生图鉴权/额度异常 ({e})，将自动生成高科技取景框占位图兜底。")
-                return _create_placeholder_image(size)
+                return _create_placeholder_image(current_size)
             except asyncio.TimeoutError:
                 ms = (time.perf_counter() - t_dispatch) * 1000
                 if audit_phase:
@@ -671,7 +843,7 @@ async def generate_image(prompt: str,
                         "image_gen",
                         ok=False,
                         duration_ms=ms,
-                        model=str(MODEL_IMG),
+                        model=str(active_model),
                         attempt=attempt,
                         error=f"timeout_after_{_GEN_TIMEOUT_SECONDS}s",
                         extra={"vendor": vendor},
@@ -686,7 +858,7 @@ async def generate_image(prompt: str,
                         "image_gen",
                         ok=False,
                         duration_ms=ms,
-                        model=str(MODEL_IMG),
+                        model=str(active_model),
                         attempt=attempt,
                         error=str(e),
                         extra={"vendor": vendor},
@@ -705,13 +877,13 @@ async def generate_image(prompt: str,
             "image_gen",
             ok=False,
             duration_ms=0.0,
-            model=str(MODEL_IMG),
+            model=str(active_model),
             attempt=_GEN_MAX_RETRIES,
             error="exhausted_retries",
             extra={"vendor": vendor},
         )
     print(f"  🚨 [ImageEngine] 生图重试全部失败，将自动生成高科技取景框占位图兜底。")
-    return _create_placeholder_image(size)
+    return _create_placeholder_image(current_size)
 
 # ================================================================
 # 4. 高层包装器 (供 V6 异步调用)
@@ -798,9 +970,9 @@ async def generate_grid_image(batch_metadata: list, output_path: Path, layout_mo
     try:
         img_bytes = await generate_image(
             full_prompt,
-            image_refs=list(batch_refs),  # 🔒 注入物理路径列表
-            tags=list(batch_tags),
-            scenes=list(batch_scenes),
+            image_refs=sorted(list(batch_refs)),  # 🔒 注入排好序的物理路径列表
+            tags=sorted(list(batch_tags)),
+            scenes=sorted(list(batch_scenes)),
             size=requested_size,
             audit_phase=PHASE_GRID,
             audit_step=f"grid_container_{actual_layout}",

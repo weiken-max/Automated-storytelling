@@ -159,9 +159,9 @@ def upscale_image(img_path: Path) -> bool:
             tmp.unlink(missing_ok=True)
         return True
 
-def process_16_grid(image_path: Path, output_dir: Path, start_idx: int) -> int:
+def process_16_grid(image_path: Path, output_dir: Path, start_idx: int, grid_mode: str = "4x4", skip_indices=None) -> int:
     """
-    将 4x4 宫格图按像素均分为 16 张子图（不做去白边；格子已铺满画布）。
+    将 NxN 宫格图按像素均分为 N*N 张子图（不做去白边；格子已铺满画布）。
     返回下一个可用的 subshot_id 序号。
     """
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -169,13 +169,25 @@ def process_16_grid(image_path: Path, output_dir: Path, start_idx: int) -> int:
     if img is None:
         raise ValueError(f"无法读取图片: {image_path}")
 
+    if grid_mode == "2x2":
+        N = 2
+    elif grid_mode == "3x3":
+        N = 3
+    else:
+        N = 4
+
     h, w = img.shape[:2]
-    cell_h, cell_w = h // 4, w // 4
+    cell_h, cell_w = h // N, w // N
     
     current_idx = start_idx
     
-    for row in range(4):
-        for col in range(4):
+    for row in range(N):
+        for col in range(N):
+            if skip_indices and current_idx in skip_indices:
+                print(f"  [Slice] 跳过已手动重绘的分镜 S_{current_idx:03d}.png")
+                current_idx += 1
+                continue
+
             # 1. 物理等分提取子网格
             y1, y2 = row * cell_h, (row + 1) * cell_h
             x1, x2 = col * cell_w, (col + 1) * cell_w

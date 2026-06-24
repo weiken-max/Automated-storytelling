@@ -4,7 +4,15 @@ const DEFAULT_PRESETS = {
   polish: "你是一位专业的资深编剧与剧本医生。\n任务：请阅读用户提供的原始素材（梗概、片段或小说节选均可），在【完全保留用户原始创意、情节走向和核心设定】的前提下，进行专业润色。\n\n输出：仅 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"short_title\":\"12字内标题\",\"era\":\"时代背景\",\"identity\":\"主角身份\",\"industry_rules\":[\"规则\"]}",
   voiceover: "你是一个极其冷峻、犀利的短视频旁白文案大师。\n任务：按用户指示写出一段沉浸式旁白。\n全程使用「你」，极简冷峻。禁止分镜标签。只输出旁白正文。",
   outline: "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满利益算计、阶层跃迁与人性异化的第二人称人生副本梗概。\n分幕结构硬性：输出 synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n输出 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"时代\",\"identity\":\"主角终极身份\",\"industry_rules\":[\"潜规则\"]}",
-  storyboard: "【画风锚点】\nCyanide and Happiness comic style, 2D vector / flat graphic cartoon, bold black outlines, vivid flat color fills, pure 2D, no photoreal skin texture, no 3D/CGI. 允许卡通级光向（key direction, warm/cool, simple hard-edge shadow shapes），禁止电影级体积光与写实 subsurface skin。\n\n【分镜表现规则】\n★ 动态表情与肢体（核心要求：打破参考图的呆滞感！）：必须深度解析当前分镜的故事情节，强制赋予角色强烈且符合情境的情绪反应。\n1. 必须采用【核心情绪词 + 氰化物式五官拆解】组合。例如不要只写 mouth line，必须写：terrified expression, sharply angled frowning eyebrows, wide dilated dot eyes, screaming jagged mouth shape.\n2. 明确指令：绝不允许角色保持中立或被参考图的默认表情带偏（DO NOT copy the neutral expression from reference）。\n3. 肢体辅助：情绪必须配合夸张的肢体动作（如 recoiling in horror, pointing aggressively, slumping in defeat）。\n4. 脸部特写：当情绪是当前帧重点时，明确写明 close-up on explicit facial expression。"
+  storyboard: "【画风锚点】\nCyanide and Happiness comic style, 2D vector / flat graphic cartoon, bold black outlines, vivid flat color fills, pure 2D, no photoreal skin texture, no 3D/CGI. 允许卡通级光向（key direction, warm/cool, simple hard-edge shadow shapes），禁止电影级体积光与写实 subsurface skin。\n\n【分镜表现规则】\n★ 动态表情与肢体（核心要求：打破参考图的呆滞感！）：必须深度解析当前分镜的故事情节，强制赋予角色强烈且符合情境的情绪反应。\n1. 必须采用【核心情绪词 + 氰化物式五官拆解】组合。例如不要只写 mouth line，必须写：terrified expression, sharply angled frowning eyebrows, wide dilated dot eyes, screaming jagged mouth shape.\n2. 明确指令：绝不允许角色保持中立或被参考图的默认表情带偏（DO NOT copy the neutral expression from reference）。\n3. 肢体辅助：情绪必须配合夸张的肢体动作（如 recoiling in horror, pointing aggressively, slumping in defeat）。\n4. 脸部特写：当情绪是当前帧重点时，明确写明 close-up on explicit facial expression。",
+  cast_prompt: "[character]\nA cute cartoon stickman style representation of {entity}. Flat colors, strong outline, white background.\n\n[scene]\nA flat 2D vector style minimalist cartoon background scenery depicting {entity}. Flat shades, no character.\n\n[prop]\nA flat 2D vector icon cartoon object depicting {entity}. Primitive shape, flat color fill, white background.",
+  tts_engine: "edge",
+  voice_role: "zh-CN-YunjianNeural",
+  voice_rate: "+0%",
+  voice_emotion: "none",
+  voice_pitch: 0,
+  voice_volume: 0,
+  voice_prompt: ""
 };
 
 // ── 🎨 全局出厂原厂频道（locked=true 不可删除） ──
@@ -102,7 +110,15 @@ function getChannelPresets(channel) {
     polish:     channel.presets.polish     || DEFAULT_PRESETS.polish,
     voiceover:  channel.presets.voiceover  || DEFAULT_PRESETS.voiceover,
     outline:    channel.presets.outline    || DEFAULT_PRESETS.outline,
-    storyboard: channel.presets.storyboard || DEFAULT_PRESETS.storyboard
+    storyboard: channel.presets.storyboard || DEFAULT_PRESETS.storyboard,
+    cast_prompt: channel.presets.cast_prompt || DEFAULT_PRESETS.cast_prompt,
+    tts_engine: channel.presets.tts_engine || DEFAULT_PRESETS.tts_engine,
+    voice_role: channel.presets.voice_role || DEFAULT_PRESETS.voice_role,
+    voice_rate: channel.presets.voice_rate || DEFAULT_PRESETS.voice_rate,
+    voice_emotion: channel.presets.voice_emotion || DEFAULT_PRESETS.voice_emotion,
+    voice_pitch: channel.presets.voice_pitch !== undefined ? channel.presets.voice_pitch : DEFAULT_PRESETS.voice_pitch,
+    voice_volume: channel.presets.voice_volume !== undefined ? channel.presets.voice_volume : DEFAULT_PRESETS.voice_volume,
+    voice_prompt: channel.presets.voice_prompt !== undefined ? channel.presets.voice_prompt : DEFAULT_PRESETS.voice_prompt
   };
 }
 

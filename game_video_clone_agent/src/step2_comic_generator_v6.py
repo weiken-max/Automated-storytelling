@@ -30,9 +30,10 @@ from PIL import Image
 import re
 
 # ── Windows GBK 终端编码修复 ──
-if hasattr(sys.stdout, "buffer"):
-    from io import TextIOWrapper
-    sys.stdout = TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -166,7 +167,7 @@ def _collect_ordered_paths_for_batch(batch_shots: list) -> list:
         al = str(shot.get("anchor_look") or "").strip()
         if al and al not in ordered:
             ordered.append(al)
-    return ordered
+    return sorted(ordered)
 
 
 def _path_to_anchor_key(abs_path: str, physical_anchors: dict) -> str:
@@ -192,15 +193,24 @@ def _ref_key_to_english_label(ref_key: str, cast_registry: dict) -> str:
     cr = cast_registry or {}
     pro = cr.get("protagonist") or {}
     pname = str(pro.get("display_name_en") or "Protagonist").strip()
+    
     if ref_key in {"child", "youth", "middle", "elderly"}:
         return f"{pname} (protagonist, life stage {ref_key})"
+        
+    if "scene" in ref_key:
+        return f"{ref_key} (scene/environment reference)"
+        
+    if "prop" in ref_key:
+        return f"{ref_key} (object/prop reference)"
+        
     if ref_key.startswith("supporting_"):
         rid = ref_key[len("supporting_"):]
         for s in cr.get("supporting") or []:
             if s.get("role_id") == rid:
                 dn = str(s.get("display_name_en") or rid).strip()
-                return f"{dn} (supporting)"
-        return f"{rid} (supporting)"
+                return f"{dn} (supporting character)"
+        return f"{rid} (supporting character)"
+        
     return ref_key or "reference"
 
 
@@ -210,32 +220,76 @@ def _build_global_ref_mapping_sentence(
     if not ordered_paths:
         return ""
     parts: list[str] = []
+    has_character = False
+    has_scene = False
+    has_prop = False
     for i, p in enumerate(ordered_paths, 1):
         k = _path_to_anchor_key(p, physical_anchors)
         label = _ref_key_to_english_label(k, cast_registry) if k else f"reference_{i}"
-        parts.append(f"{i}) {label}")
-    return (
-        "REFERENCE IMAGES ORDER (inline images follow this exact order; match each character face to the named reference only): "
-        + "; ".join(parts)
-        + "\n\n"
-    )
+        
+        if "scene" in label:
+            parts.append(f"- Image {i} is the visual background scene reference for '{label}'.")
+            has_scene = True
+        elif "prop" in label:
+            parts.append(f"- Image {i} is the visual object/prop reference for '{label}'.")
+            has_prop = True
+        else:
+            parts.append(f"- Image {i} is the visual reference character sheet for '{label}'.")
+            has_character = True
+            
+    sentence = "[VISUAL REFERENCES]\n" + "\n".join(parts)
+    if has_character:
+        sentence += "\nYou MUST keep the visual appearance, face, and clothing features of characters in all panels strictly consistent with their respective reference Image."
+    if has_scene:
+        sentence += "\nYou MUST keep the background layout, spatial perspective, architectural structure, and lighting conditions of environments strictly consistent with their respective scene reference Image."
+    if has_prop:
+        sentence += "\nYou MUST keep the shape and visual appearance of objects/props consistent with their respective prop reference Image."
+        
+    return sentence + "\n\n"
 
 
 def _strip_redundant_style_prefix(visual_prompt: str) -> str:
     """
-    去掉每个 panel 内重复的风格前缀，避免与全局风格声明重复堆叠。
-    仅清理开头的固定模板，不改动后续镜头语义内容。
+    去掉每个 panel 内重复的风格前缀/后缀，避免与全局风格声明重复堆叠。
     """
     s = str(visual_prompt or "").strip()
     if not s:
         return s
-    s = re.sub(
-        r"^\s*Cyanide and Happiness comic style,\s*flat illustration,\s*simple line art,\s*(?:pure\s*)?2D,\s*solid colors\.\s*",
-        "",
-        s,
-        flags=re.IGNORECASE,
-    )
-    return s.strip()
+
+    # 1. 剥离句首的画风引导语
+    patterns_to_strip_start = [
+        r"^\s*Cyanide\s+and\s+Happiness\s+(?:web)?comic\s+style\s*[\.,;,]?\s*",
+        r"^\s*minimalist\s+vector\s+art\s*[\.,;,]?\s*",
+        r"^\s*flat\s+illustration\s*[\.,;,]?\s*",
+        r"^\s*2D\s+vector\s+flat\s+graphic\s+cartoon\s*[\.,;,]?\s*",
+        r"^\s*bold\s+black\s+outlines\s*[\.,;,]?\s*",
+    ]
+    for pattern in patterns_to_strip_start:
+        s = re.sub(pattern, "", s, flags=re.IGNORECASE)
+
+    # 2. 剥离句中或句尾独立的画风参数修饰词
+    patterns_to_strip_general = [
+        r"\bthick\s+(?:bold\s+)?(?:uniform\s+)?black\s+outlines\b",
+        r"\bthick\s+(?:bold\s+)?outlines\b",
+        r"\bflat\s+bright\s+colors\b",
+        r"\bflat\s+colors\b",
+        r"\bsolid\s+colors\b",
+        r"\bminimalist\s+vector\s+art\b",
+        r"\bno\s+shading\b",
+        r"\bno\s+3D/CGI\b",
+        r"\bpure\s+2D\b",
+    ]
+    for pattern in patterns_to_strip_general:
+        s = re.sub(pattern, "", s, flags=re.IGNORECASE)
+
+    # 3. 清理残留的多余逗号、句号和多余空格
+    s = re.sub(r'\s+[\.,]\s*$', '.', s)  # 清理尾部无内容的标点
+    s = re.sub(r'[\.,\s]{2,}', ', ', s)  # 清理连续的标点
+    s = s.strip().rstrip(',').strip()
+    if s and not s.endswith('.'):
+        s += '.'
+    return s
+
 
 
 def _save_valid_grid_image(img_bytes: bytes, grid_path: Path) -> tuple[bool, str]:
@@ -275,20 +329,28 @@ async def generate_grid_batch(
     global_era_prefix: str = "",
     physical_anchors: dict | None = None,
     cast_registry: dict | None = None,
+    grid_mode: str = "4x4",
 ):
-    """提交 16 宫格生图请求"""
-    print(f"\n  [Grid Render] 正在生成第 {batch_index}/{total_batches} 批次 (包含 {len(batch_shots)} 个分镜)...")
+    """提交宫格生图请求"""
+    print(f"\n  [Grid Render] 正在生成第 {batch_index}/{total_batches} 批次 (包含 {len(batch_shots)} 个分镜, 模式 {grid_mode})...")
 
     ordered_paths = _collect_ordered_paths_for_batch(batch_shots)
     global_ref_txt = _build_global_ref_mapping_sentence(
         ordered_paths, physical_anchors or {}, cast_registry or {}
     )
 
+    if grid_mode == "2x2":
+        panels_count = 4
+    elif grid_mode == "3x3":
+        panels_count = 9
+    else:
+        panels_count = 16
+
     # 构建聚合 Prompt（前置时代锁 + 参考图序说明 + 宫格硬约束 + 动态读取 UI 选择的画风风格预设）
     global_style = os.environ.get("STYLE_ANCHOR", "Cyanide and Happiness comic style, flat illustration, pure 2D. ")
     combined_prompt = (global_era_prefix or "") + global_ref_txt + (
         "Generate ONE single 16:9 landscape canvas comic page. "
-        "Strict 4×4 grid only: exactly 16 EQUAL rectangular panels; NO merged cells. "
+        f"Strict {grid_mode} grid only: exactly {panels_count} EQUAL rectangular panels; NO merged cells. "
         f"{global_style.strip()} "
     )
     combined_prompt += "The grid contains the following sequential scenes:\n"
@@ -298,9 +360,9 @@ async def generate_grid_batch(
         panel_prompt = _strip_redundant_style_prefix(shot.get("visual_prompt", ""))
         combined_prompt += f"Panel {i+1}: {panel_prompt}\n"
 
-    # 尾批不足 16 时补齐占位格：纯白板易被模型画乱布局；改为「白底 + 居中英文标题」占位，利于维持 4×4。
-    if len(batch_shots) < 16:
-        for panel_idx in range(len(batch_shots) + 1, 17):
+    # 尾批不足 panels_count 时补齐占位格
+    if len(batch_shots) < panels_count:
+        for panel_idx in range(len(batch_shots) + 1, panels_count + 1):
             combined_prompt += (
                 f"Panel {panel_idx}: PLACEHOLDER PANEL. "
                 "Flat white or very light gray fill filling the entire cell. "
@@ -308,12 +370,15 @@ async def generate_grid_batch(
                 "in simple flat comic lettering (black outlines, no characters, no scenery, no props).\n"
             )
         
-    # 生图 API：Gemini 在 imageConfig 中传档位；使用 2560x1440 对应 16:9 + 2K（见 _build_gemini_image_config）。
+    # 根据宫格模式动态决定请求分辨率：2x2 请求 1K (1280x720)，3x3 和 4x4 默认请求 2K (2560x1440)
+    grid_size = "1280x720" if grid_mode == "2x2" else "2560x1440"
+
+    # 生图 API：使用 grid_size 作为请求尺寸。
     try:
         img_bytes = await generate_image(
             prompt=combined_prompt,
             image_refs=batch_refs,
-            size="2560x1440",
+            size=grid_size,
             audit_phase=PHASE_GRID,
             audit_step=f"grid_batch_{batch_index:03d}",
         )
@@ -355,7 +420,7 @@ async def generate_grid_batch(
     return grid_path
 
 def _load_pipeline_context():
-    """加载流水线共享上下文：路径、蓝图、时代前缀、角色锚点。返回 (timeline, global_era_prefix, physical_flat, cast_reg, total_shots)"""
+    """加载流水线共享上下文：路径、蓝图、时代前缀、角色锚点。返回 (timeline, global_era_prefix, physical_flat, cast_reg, total_shots, grid_mode)"""
     global NARRATIVE_FINAL_PATH, STORYBOARDS_DIR, LOGS_DIR, RUN_ID
     paths = get_paths(create_if_missing=False)
     if not paths:
@@ -375,6 +440,8 @@ def _load_pipeline_context():
     if not timeline:
         print("❌ 蓝图 timeline 为空。")
         sys.exit(1)
+
+    grid_mode = (data.get("metadata") or {}).get("grid_mode", "4x4")
 
     era_raw = (data.get("metadata") or {}).get("era")
     global_era_prefix = build_image_global_prefix(era_raw)
@@ -396,31 +463,39 @@ def _load_pipeline_context():
 
     STORYBOARDS_DIR.mkdir(parents=True, exist_ok=True)
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    return timeline, global_era_prefix, physical_flat, cast_reg, len(timeline)
+    return timeline, global_era_prefix, physical_flat, cast_reg, len(timeline), grid_mode
 
 
 async def main_grid_only():
-    """Phase 2A：仅生成全部 16 宫格大图，不做裁切与高清。"""
+    """Phase 2A：仅生成全部宫格大图，不做裁切与高清。"""
     _apply_storyboard_preview_validate_defaults()
-    timeline, global_era_prefix, physical_flat, cast_reg, total_shots = _load_pipeline_context()
+    timeline, global_era_prefix, physical_flat, cast_reg, total_shots, grid_mode = _load_pipeline_context()
 
     print("\n=======================================================")
-    print("[Phase 2A] 16 宫格生成（仅生图，待人工审核）")
+    print(f"[Phase 2A] {grid_mode} 宫格生成（仅生图，待人工审核）")
     print(f"[Run] 当前批次: {RUN_ID}")
     print(f"[Shots] 总分镜数: {total_shots}")
     print("=======================================================")
 
-    # 清理旧宫格图（仅清理 grid_batch_*.png，不动 S_*.png）
-    for f in STORYBOARDS_DIR.glob("grid_batch_*.png"):
-        f.unlink()
+    if grid_mode == "2x2":
+        panels_count = 4
+    elif grid_mode == "3x3":
+        panels_count = 9
+    else:
+        panels_count = 16
 
-    batches = list(chunk_list(timeline, 16))
+    batches = list(chunk_list(timeline, panels_count))
     total_batches = len(batches)
     successful_batches = 0
     failed_batches = 0
 
     for i, batch in enumerate(batches, 1):
-        batch_start = (i - 1) * 16 + 1
+        grid_path = STORYBOARDS_DIR / f"grid_batch_{i:03d}.png"
+        if grid_path.exists():
+            print(f"  ✨ [Cache] 第 {i}/{total_batches} 批次宫格图已存在，跳过生成。")
+            successful_batches += 1
+            continue
+        batch_start = (i - 1) * panels_count + 1
         batch_end = min(batch_start + len(batch) - 1, total_shots)
         batch_ok = False
 
@@ -431,6 +506,7 @@ async def main_grid_only():
                     global_era_prefix=global_era_prefix,
                     physical_anchors=physical_flat,
                     cast_registry=cast_reg,
+                    grid_mode=grid_mode,
                 )
                 vault_backup(grid_path, f"storyboards/{grid_path.name}")
                 successful_batches += 1
@@ -465,10 +541,10 @@ async def main_grid_only():
 
 async def main_slice_only():
     """Phase 2B：对已有 grid_batch_*.png 执行裁切 + Real-ESRGAN 高清。"""
-    timeline, global_era_prefix, physical_flat, cast_reg, total_shots = _load_pipeline_context()
+    timeline, global_era_prefix, physical_flat, cast_reg, total_shots, grid_mode = _load_pipeline_context()
 
     print("\n=======================================================")
-    print("[Phase 2B] 宫格裁切与 Real-ESRGAN 高清")
+    print(f"[Phase 2B] {grid_mode} 宫格裁切与 Real-ESRGAN 高清")
     print(f"[Run] 当前批次: {RUN_ID}")
     print(f"[Shots] 总分镜数: {total_shots}")
     print("=======================================================")
@@ -478,9 +554,19 @@ async def main_slice_only():
         print("❌ 未找到任何 grid_batch_*.png 文件，请先执行 --phase grid-only。")
         sys.exit(1)
 
-    # 清理旧 S_*.png（避免新旧混杂）
-    for f in STORYBOARDS_DIR.glob("S_*.png"):
-        f.unlink()
+    # 收集手动已重绘的分镜索引
+    manually_redrawn_indices = set()
+    for idx, shot in enumerate(timeline):
+        if shot.get("manually_redrawn"):
+            manually_redrawn_indices.add(idx + 1)
+
+    if grid_mode == "2x2":
+        panels_count = 4
+    elif grid_mode == "3x3":
+        panels_count = 9
+    else:
+        panels_count = 16
+    batches = list(chunk_list(timeline, panels_count))
 
     total_batches = len(grid_files)
     current_subshot_idx = 1
@@ -488,11 +574,38 @@ async def main_slice_only():
     failed_batches = 0
 
     for i, grid_path in enumerate(grid_files, 1):
+        batch_shots = batches[i-1]
+        next_idx = current_subshot_idx + len(batch_shots)
+
+        # 检查该批次的切片是否均已存在且比宫格图新
+        all_slices_exist = True
+        grid_mtime = grid_path.stat().st_mtime
+        for idx in range(current_subshot_idx, next_idx):
+            slice_path = STORYBOARDS_DIR / f"S_{idx:03d}.png"
+            if not slice_path.exists() or slice_path.stat().st_mtime < grid_mtime:
+                all_slices_exist = False
+                break
+
+        if all_slices_exist:
+            print(f"  ✨ [Cache] 第 {i}/{total_batches} 批次切片与高清已存在且最新，跳过裁切。")
+            current_subshot_idx = next_idx
+            successful_batches += 1
+            continue
+
+        # 否则，在重新切分前先清理该范围内的旧非手动重绘切片
+        for idx in range(current_subshot_idx, next_idx):
+            slice_path = STORYBOARDS_DIR / f"S_{idx:03d}.png"
+            if slice_path.exists() and idx not in manually_redrawn_indices:
+                try:
+                    slice_path.unlink()
+                except Exception:
+                    pass
+
         batch_ok = False
         for attempt in range(1, MAX_BATCH_RETRIES + 1):
             try:
                 print(f"  [Process] 正在切分 + 高清处理: {grid_path.name} ...")
-                next_idx = process_16_grid(grid_path, STORYBOARDS_DIR, current_subshot_idx)
+                next_idx = process_16_grid(grid_path, STORYBOARDS_DIR, current_subshot_idx, grid_mode, skip_indices=manually_redrawn_indices)
                 current_subshot_idx = next_idx
                 successful_batches += 1
                 batch_ok = True
@@ -535,9 +648,16 @@ async def main_slice_only():
 async def main_single_batch(batch_index: int):
     """重新生成单个批次（1-indexed），覆盖已有的 grid_batch_{batch_index:03d}.png。"""
     _apply_storyboard_preview_validate_defaults()
-    timeline, global_era_prefix, physical_flat, cast_reg, total_shots = _load_pipeline_context()
+    timeline, global_era_prefix, physical_flat, cast_reg, total_shots, grid_mode = _load_pipeline_context()
 
-    batches = list(chunk_list(timeline, 16))
+    if grid_mode == "2x2":
+        panels_count = 4
+    elif grid_mode == "3x3":
+        panels_count = 9
+    else:
+        panels_count = 16
+
+    batches = list(chunk_list(timeline, panels_count))
     total_batches = len(batches)
 
     if batch_index < 1 or batch_index > total_batches:
@@ -545,11 +665,11 @@ async def main_single_batch(batch_index: int):
         sys.exit(1)
 
     batch = batches[batch_index - 1]
-    batch_start = (batch_index - 1) * 16 + 1
+    batch_start = (batch_index - 1) * panels_count + 1
     batch_end = min(batch_start + len(batch) - 1, total_shots)
 
     print("\n=======================================================")
-    print(f"[Phase 2A-Regen] 单批次重画：第 {batch_index}/{total_batches} 批次")
+    print(f"[Phase 2A-Regen] 单批次重画：第 {batch_index}/{total_batches} 批次 (模式 {grid_mode})")
     print(f"[Run] {RUN_ID} | 分镜范围: S_{batch_start:03d}~S_{batch_end:03d}")
     print("=======================================================")
 
@@ -560,6 +680,7 @@ async def main_single_batch(batch_index: int):
                 global_era_prefix=global_era_prefix,
                 physical_anchors=physical_flat,
                 cast_registry=cast_reg,
+                grid_mode=grid_mode,
             )
             vault_backup(grid_path, f"storyboards/{grid_path.name}")
             print(f"  ✅ 第 {batch_index} 批次重画成功（attempt {attempt}/{MAX_BATCH_RETRIES}）。")
@@ -582,10 +703,17 @@ async def main_full():
     # 无人值守全量跑：强制做宫格线校验（可被用户在 shell 中 GRID_SKIP_LAYOUT_VALIDATE=1 覆盖）
     if "GRID_SKIP_LAYOUT_VALIDATE" not in os.environ:
         os.environ["GRID_SKIP_LAYOUT_VALIDATE"] = "0"
-    timeline, global_era_prefix, physical_flat, cast_reg, total_shots = _load_pipeline_context()
+    timeline, global_era_prefix, physical_flat, cast_reg, total_shots, grid_mode = _load_pipeline_context()
+
+    if grid_mode == "2x2":
+        panels_count = 4
+    elif grid_mode == "3x3":
+        panels_count = 9
+    else:
+        panels_count = 16
 
     print("\n=======================================================")
-    print("[Phase 4-A] 16 宫格生成与智能裁切（完整模式）")
+    print(f"[Phase 4-A] {grid_mode} 宫格生成与智能裁切（完整模式）")
     print(f"[Run] 当前批次: {RUN_ID}")
     print("=======================================================")
 
@@ -593,7 +721,7 @@ async def main_full():
     for f in STORYBOARDS_DIR.glob("*.png"):
         f.unlink()
 
-    batches = list(chunk_list(timeline, 16))
+    batches = list(chunk_list(timeline, panels_count))
     total_batches = len(batches)
     current_subshot_idx = 1
     successful_batches = 0
@@ -611,10 +739,11 @@ async def main_full():
                     global_era_prefix=global_era_prefix,
                     physical_anchors=physical_flat,
                     cast_registry=cast_reg,
+                    grid_mode=grid_mode,
                 )
-                print("  [Process] 正在进行 16 宫格均分切图与 Real-ESRGAN 高清...")
+                print(f"  [Process] 正在进行 {grid_mode} 宫格均分切图与 Real-ESRGAN 高清...")
                 try:
-                    next_idx = process_16_grid(grid_path, STORYBOARDS_DIR, current_subshot_idx)
+                    next_idx = process_16_grid(grid_path, STORYBOARDS_DIR, current_subshot_idx, grid_mode)
                 except Exception as crop_err:
                     stage = "UPSCALE" if "realesrgan" in str(crop_err).lower() else "GRID_CROP"
                     code = "UPSCALE_FAILED" if stage == "UPSCALE" else "GRID_CROP_FAILED"

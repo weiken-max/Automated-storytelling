@@ -32,24 +32,222 @@
   },
   {
     "id": "ch_custom_1780380702511",
-    "channelType": "drama",
-    "name": "游戏的方式讲科普",
+    "channelType": "custom",
+    "name": "三角洲风格",
     "emoji": "🎬",
     "color": "#3B82F6",
     "locked": false,
     "presets": {
       "outline": "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满利益算计、阶层跃迁与人性异化的第二人称人生副本梗概。\n分幕结构硬性：输出 synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n输出 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"时代\",\"identity\":\"主角终极身份\",\"industry_rules\":[\"潜规则\"]}",
-      "image": "风格提示词：\n\n**核心风格描述：**\nA low-saturation, highly detailed, multi-layered 2D flat-illustration pixel narrative art style, blending retro aesthetic with painterly, textured surfaces. The image should have rough edges, visible pixel grids, and the texture of an old, aged parchment or worn paper.\n\n**风格元素：**\n*   **低饱和度与克制色调：** 限制色彩，使用静音、灰蒙蒙的色彩，如古旧羊皮纸黄、暗橄榄绿、砖红、莫兰迪灰蓝，没有刺眼的荧光色。\n*   **像素插画叙事：** 利用大量微型像素人物和物体，编织复杂的、多层次的非线性叙事意象，例如挤在长桌前的无数像素小人。\n*   **非写实与意象化表达：** 不追求物理真实，而是使用非写实构图和意象，例如用比例失调的巨大餐具切一块微小的发光蛋糕来表达概念。\n*   **绘画感与纹理：** 像素色块具有厚重的绘画肌理，如油画抹刀痕迹、色粉笔涂抹痕迹或颗粒感，使整体画面显得克制、冷峻而有质感。\n*   **致敬硬核独立游戏UI：** 界面元素，包括文本和图表（如雷达图），应具有像素风和复古仪表盘感，与背景纹理融合。",
+      "image": "\"A 2D flat painting style with a cinematic painterly texture, presenting a tactical modern military game perspective inspired by Delta Force Hawk Ops. The scene features clean lines, smooth color fills, and a strong graphic poster art aesthetic. The color palette is strictly dominated by realist tactical military colors: olive drab, khaki tan, sandy beige, steel gray, and tactical dull green. Integrated into the image is a sophisticated high-tech tactical HUD overlay, featuring a greenish digital interface, scanning lines, and military-grade UI elements. Dramatic cinematic lighting with high-contrast sharp shadows, providing a professional and premium visual style for a science explanation video.\"",
       "voiceover": "",
-      "polish": "",
-      "storyboard": "**核心风格描述：**\nA low-saturation, highly detailed, multi-layered 2D flat-illustration pixel narrative art style, blending retro aesthetic with painterly, textured surfaces. The image should have rough edges, visible pixel grids, and the texture of an old, aged parchment or worn paper.\n【分镜表现规则】\n★ 科普展示规范（优先信息清晰度与视觉隐喻）：\n1. 优先使用科学视觉隐喻：用可视化比喻表现抽象概念（如：芯片→精密数字城市，引力→时空网格弯曲，神经元→发光网络）。\n2. 镜头允许概念性大跳切，不强制空间连贯（如从微观细胞→宏观人体→地球）。\n3. 尽量减少拟人化情绪表达，以信息清晰度和视觉冲击力为第一优先。\n4. 数据与文字标注：当旁白含具体数字或术语时，在画面描述中明确要求将其可视化为标注图、对比图或比例示意图。"
+      "polish": "你是一位极具专业度的现代战术射击游戏（如《三角洲行动》危险区/暗区撤离玩法）骨灰级解说与战术分析师。\n任务：请阅读用户提供的原始素材，在【完全保留用户原始创意和逻辑内核】的前提下，将其彻底重构为一场“三角洲干员危险区摸金突围战”风格的游戏解说剧本梗概。\n\n润色与重写要求：\n1. 【战术撤离黑话映射】：无缝将现实概念翻译为战术射击与出金撤离术语。例如：\n   - 寻找风口红利（如AI开发） ➔ 游戏“带上装备潜入高危资源区（如航天基地/油井）去摸大金（金色物资）”\n   - 超额收益稀释 ➔ 游戏“热门资源点人满为患，到处都是满编队架枪，撤离点被老六蹲死，进副本只有白给，连底包都带不走”\n   - 普通人氪金与爆肝 ➔ 游戏“究竟是起全装（带高防弹甲和满配步枪）去硬碰硬，还是起半装甚至白嫖跑刀去偷箱子”\n   - 解决问题与转行 ➔ 游戏“重新规划突击/侦察干员配置，寻找冷门撤离点”\n2. 【战术解说口吻】：语气要像硬核FPS解说或战术教官。多使用“报告干员”、“战备值”、“架枪”、“起全装/跑刀”、“白给”、“出金安全撤离”等战术枪战解说词。\n3. 【分幕结构】：必须输出 synopsis_acts 数组，长度恰好为 6；每幕对应一场撤离战役的剧情推进，不要写小标题，总字符数不超过 1500 字。\n4. 【平衡规则提炼】：以“危险区干员生存守则”的角度提炼 1～2 条底层本质规律（填入 industry_rules 数组中）。\n\n输出要求：仅返回标准 JSON，不要包含任何 markdown 包裹围栏：\n{\n  \"synopsis_acts\": [共6个字符串，依次为第1幕…第6幕],\n  \"synopsis\": \"将 synopsis_acts 用两个换行符拼接的全文\",\n  \"short_title\": \"12字以内极其硬核的战术撤离解说标题\",\n  \"era\": \"战区时代背景（如：三角洲阿萨萨拉战区）\",\n  \"identity\": \"干员职业定位（如：战术突击干员）\",\n  \"industry_rules\": [\"干员生存法则1\", \"干员生存法则2\"]\n}",
+      "storyboard": "【画风底座 (Core Visual Anchor)】\nA 2D flat painting style with a cinematic painterly texture, presenting a tactical modern military game perspective inspired by Delta Force Hawk Ops. The scene features clean lines, smooth color fills, and a strong graphic poster art aesthetic. The color palette is strictly dominated by realist tactical military colors: olive drab, khaki tan, sandy beige, steel gray, and tactical dull green. Dramatic cinematic lighting with high-contrast sharp shadows.\n\n【战术 HUD 覆盖机制 (HUD Overlay Rules)】\nEvery shot must integrate a sophisticated high-tech tactical HUD overlay on the screen layer: a greenish digital interface, subtle grid scanlines, targeting reticles, status bars, coordinate grids, and military-grade UI elements. The HUD must blend seamlessly with the scene, appearing as if viewed through a tactical helmet visor or drone control feed.\n\n【游戏化科普表现规则 (Gamified Explanation)】\n★ 用游戏内战术UI对抽象概念进行可视化映射：\n1. 【超额收益稀释 / 玩家涌入】：表现为战术雷达屏幕上，大量密集的红色玩家/敌对热点信号拥挤在一个副本传送门（Crowded dungeon portal）或资源点周围，导致系统警报闪烁。\n2. 【AI 转职潮 / 职业选择】：表现为类似游戏大厅的“战术特种干员选择界面”或“技能树装备配置菜单”，高亮显示“AI 战术杠杆”装备。\n3. 【六维雷达图 / 属性评估】：在 HUD 中央叠加发光的绿色多边形属性图表（Glowing green hexagonal radar/stat chart overlay），标注出各种职业属性。\n4. 【战术冷静姿态】：画面中的人物应保持冷静、专业的战术姿态（如持枪警戒、观察监视器、在战术沙盘前筹划），禁止任何夸张搞笑的卡通情绪。",
+      "cast_prompt": "[character]\nA tactical military character design sheet, orthographic view, depicting a modern operator representing {entity}. Wearing tactical military gear: a low-profile helmet with headset, tactical plate carrier vest, cargo pants in olive drab or khaki tan, clean 2D vector style with smooth flat colors, bold outlines, and a professional concept art aesthetic, pure white background #FFFFFF.",
+      "tts_engine": "volc",
+      "voice_role": "zh_male_xuanyijieshuo_uranus_bigtts",
+      "voice_rate": "+10%",
+      "voice_emotion": "expressive"
     },
     "presetsBackup": {
-      "outline": "",
-      "image": "风格提示词：\n\n**核心风格描述：**\nA low-saturation, highly detailed, multi-layered 2D flat-illustration pixel narrative art style, blending retro aesthetic with painterly, textured surfaces. The image should have rough edges, visible pixel grids, and the texture of an old, aged parchment or worn paper.\n\n**风格元素：**\n*   **低饱和度与克制色调：** 限制色彩，使用静音、灰蒙蒙的色彩，如古旧羊皮纸黄、暗橄榄绿、砖红、莫兰迪灰蓝，没有刺眼的荧光色。\n*   **像素插画叙事：** 利用大量微型像素人物和物体，编织复杂的、多层次的非线性叙事意象，例如挤在长桌前的无数像素小人。\n*   **非写实与意象化表达：** 不追求物理真实，而是使用非写实构图和意象，例如用比例失调的巨大餐具切一块微小的发光蛋糕来表达概念。\n*   **绘画感与纹理：** 像素色块具有厚重的绘画肌理，如油画抹刀痕迹、色粉笔涂抹痕迹或颗粒感，使整体画面显得克制、冷峻而有质感。\n*   **致敬硬核独立游戏UI：** 界面元素，包括文本和图表（如雷达图），应具有像素风和复古仪表盘感，与背景纹理融合。",
+      "outline": "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满利益算计、阶层跃迁与人性异化的第二人称人生副本梗概。\n分幕结构硬性：输出 synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n输出 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"时代\",\"identity\":\"主角终极身份\",\"industry_rules\":[\"潜规则\"]}",
+      "image": "\"A 2D flat painting style with a cinematic painterly texture, presenting a tactical modern military game perspective inspired by Delta Force Hawk Ops. The scene features clean lines, smooth color fills, and a strong graphic poster art aesthetic. The color palette is strictly dominated by realist tactical military colors: olive drab, khaki tan, sandy beige, steel gray, and tactical dull green. Integrated into the image is a sophisticated high-tech tactical HUD overlay, featuring a greenish digital interface, scanning lines, and military-grade UI elements. Dramatic cinematic lighting with high-contrast sharp shadows, providing a professional and premium visual style for a science explanation video.\"",
+      "voiceover": "",
+      "polish": "你是一位极具专业度的现代战术射击游戏（如《三角洲行动》危险区/暗区撤离玩法）骨灰级解说与战术分析师。\n任务：请阅读用户提供的原始素材，在【完全保留用户原始创意和逻辑内核】的前提下，将其彻底重构为一场“三角洲干员危险区摸金突围战”风格的游戏解说剧本梗概。\n\n润色与重写要求：\n1. 【战术撤离黑话映射】：无缝将现实概念翻译为战术射击与出金撤离术语。例如：\n   - 寻找风口红利（如AI开发） ➔ 游戏“带上装备潜入高危资源区（如航天基地/油井）去摸大金（金色物资）”\n   - 超额收益稀释 ➔ 游戏“热门资源点人满为患，到处都是满编队架枪，撤离点被老六蹲死，进副本只有白给，连底包都带不走”\n   - 普通人氪金与爆肝 ➔ 游戏“究竟是起全装（带高防弹甲和满配步枪）去硬碰硬，还是起半装甚至白嫖跑刀去偷箱子”\n   - 解决问题与转行 ➔ 游戏“重新规划突击/侦察干员配置，寻找冷门撤离点”\n2. 【战术解说口吻】：语气要像硬核FPS解说或战术教官。多使用“报告干员”、“战备值”、“架枪”、“起全装/跑刀”、“白给”、“出金安全撤离”等战术枪战解说词。\n3. 【分幕结构】：必须输出 synopsis_acts 数组，长度恰好为 6；每幕对应一场撤离战役的剧情推进，不要写小标题，总字符数不超过 1500 字。\n4. 【平衡规则提炼】：以“危险区干员生存守则”的角度提炼 1～2 条底层本质规律（填入 industry_rules 数组中）。\n\n输出要求：仅返回标准 JSON，不要包含任何 markdown 包裹围栏：\n{\n  \"synopsis_acts\": [共6个字符串，依次为第1幕…第6幕],\n  \"synopsis\": \"将 synopsis_acts 用两个换行符拼接的全文\",\n  \"short_title\": \"12字以内极其硬核的战术撤离解说标题\",\n  \"era\": \"战区时代背景（如：三角洲阿萨萨拉战区）\",\n  \"identity\": \"干员职业定位（如：战术突击干员）\",\n  \"industry_rules\": [\"干员生存法则1\", \"干员生存法则2\"]\n}",
+      "storyboard": "【画风底座 (Core Visual Anchor)】\nA 2D flat painting style with a cinematic painterly texture, presenting a tactical modern military game perspective inspired by Delta Force Hawk Ops. The scene features clean lines, smooth color fills, and a strong graphic poster art aesthetic. The color palette is strictly dominated by realist tactical military colors: olive drab, khaki tan, sandy beige, steel gray, and tactical dull green. Dramatic cinematic lighting with high-contrast sharp shadows.\n\n【战术 HUD 覆盖机制 (HUD Overlay Rules)】\nEvery shot must integrate a sophisticated high-tech tactical HUD overlay on the screen layer: a greenish digital interface, subtle grid scanlines, targeting reticles, status bars, coordinate grids, and military-grade UI elements. The HUD must blend seamlessly with the scene, appearing as if viewed through a tactical helmet visor or drone control feed.\n\n【游戏化科普表现规则 (Gamified Explanation)】\n★ 用游戏内战术UI对抽象概念进行可视化映射：\n1. 【超额收益稀释 / 玩家涌入】：表现为战术雷达屏幕上，大量密集的红色玩家/敌对热点信号拥挤在一个副本传送门（Crowded dungeon portal）或资源点周围，导致系统警报闪烁。\n2. 【AI 转职潮 / 职业选择】：表现为类似游戏大厅的“战术特种干员选择界面”或“技能树装备配置菜单”，高亮显示“AI 战术杠杆”装备。\n3. 【六维雷达图 / 属性评估】：在 HUD 中央叠加发光的绿色多边形属性图表（Glowing green hexagonal radar/stat chart overlay），标注出各种职业属性。\n4. 【战术冷静姿态】：画面中的人物应保持冷静、专业的战术姿态（如持枪警戒、观察监视器、在战术沙盘前筹划），禁止任何夸张搞笑的卡通情绪。",
+      "cast_prompt": "[character]\nA tactical military character design sheet, orthographic view, depicting a modern operator representing {entity}. Wearing tactical military gear: a low-profile helmet with headset, tactical plate carrier vest, cargo pants in olive drab or khaki tan, clean 2D vector style with smooth flat colors, bold outlines, and a professional concept art aesthetic, pure white background #FFFFFF."
+    },
+    "assets_config": [
+      {
+        "label": "a",
+        "type": "character"
+      }
+    ]
+  },
+  {
+    "id": "ch_custom_1780670150109",
+    "channelType": "custom",
+    "name": "写实风格",
+    "emoji": "🎬",
+    "color": "#3B82F6",
+    "locked": false,
+    "assets_config": [
+      {
+        "label": "A",
+        "type": "scene"
+      }
+    ],
+    "presets": {
+      "outline": "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满利益算计、阶层跃迁与人性异化的第二人称人生副本梗概。\n分幕结构硬性：输出 synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n输出 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"时代\",\"identity\":\"主角终极身份\",\"industry_rules\":[\"潜规则\"]}",
+      "image": "A 16:9 cinematic documentary video screenshot, modern video explainer style. The image features a crisp, high-definition photorealistic broadcast-quality photograph as the main foreground asset. Overlaid directly on the scene are high-impact graphic design elements: massive bold sans-serif typography with smaller bilingual English translations underneath. Minimalist technical infographic indicators, featuring white dotted leader lines with small circular anchors pointing to specific details. Heavy information-driven aesthetic, television broadcast quality, perfectly clean background asset with absolutely no mobile phone UI, no app buttons, no status bars, --ar 16:9 --v 6.0",
       "voiceover": "",
       "polish": "",
-      "storyboard": ""
+      "storyboard": "【画风底座 (Core Visual Anchor)】\nA 16:9 cinematic documentary video screenshot, modern video explainer style. The scene features a crisp, high-definition realistic photograph of the core subject in the foreground, with natural lighting and sharp details. The background is a stylized backdrop (such as a cyan-blue grunge splash watercolor painted texture, or a realistic outdoor/indoor environment). Heavy editorial information-driven aesthetic.\n\n【大字报与文字排版层 (Typography & Layering Rules)】\n★ 3D文字层叠与大字报排版规范：\n1. 【大字报标题】：Incorporate massive bold sans-serif typography in high-contrast solid colors: white (#FFFFFF), vibrant red (#FF3B30), or bright safety yellow (#FFCC00).\n2. 【3D遮挡层叠】：To create strong visual depth, layer the massive text behind the primary subject cutout (e.g. text is behind the hands holding the crab or behind the boat deck, but in front of the splashy background).\n3. 【双语副标题】：Always include a primary headline in Chinese, with a smaller secondary translation subtitle in English directly underneath (e.g. \"12米巨浪\\n12-meter giant wave\").\n\n【数据与信息图标层 (Infographic & Callout Rules)】\n★ 虚线指示与规格数据标注规范：\n1. 【数据指示虚线】：When showing technical metrics or specifications, draw thin white dotted leader lines (white dotted lines) extending from specific parts of the subject (ending with a small circular dot anchor on the target detail) to the text callout.\n2. 【核心定量标注】：Use specific numbers or metrics for the callouts (e.g. \"300—450kg/笼 (300-450kg/cage)\", \"18—20h/人 (18-20h/person)\").\n3. 【说明价签标牌】：For pricing or spec cards, overlay a small, clean rectangular white card in a corner containing clean red and black text details (e.g. \"帝王蟹\\n￥300/斤\").",
+      "cast_prompt": "[scene]\nA high-definition realistic scene representing {entity}. Cinematic lighting, detailed background, photorealistic textures, television broadcast quality, no characters.",
+      "tts_engine": "volc",
+      "voice_role": "zh_male_jieshuoxiaoming_uranus_bigtts",
+      "voice_rate": "+10%",
+      "voice_emotion": "none"
+    },
+    "presetsBackup": {
+      "outline": "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满利益算计、阶层跃迁与人性异化的第二人称人生副本梗概。\n分幕结构硬性：输出 synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n输出 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"时代\",\"identity\":\"主角终极身份\",\"industry_rules\":[\"潜规则\"]}",
+      "image": "A 16:9 cinematic documentary video screenshot, modern video explainer style. The image features a crisp, high-definition photorealistic broadcast-quality photograph as the main foreground asset. Overlaid directly on the scene are high-impact graphic design elements: massive bold sans-serif typography with smaller bilingual English translations underneath. Minimalist technical infographic indicators, featuring white dotted leader lines with small circular anchors pointing to specific details. Heavy information-driven aesthetic, television broadcast quality, perfectly clean background asset with absolutely no mobile phone UI, no app buttons, no status bars, --ar 16:9 --v 6.0",
+      "voiceover": "",
+      "polish": "",
+      "storyboard": "【画风底座 (Core Visual Anchor)】\nA 16:9 cinematic documentary video screenshot, modern video explainer style. The scene features a crisp, high-definition realistic photograph of the core subject in the foreground, with natural lighting and sharp details. The background is a stylized backdrop (such as a cyan-blue grunge splash watercolor painted texture, or a realistic outdoor/indoor environment). Heavy editorial information-driven aesthetic.\n\n【大字报与文字排版层 (Typography & Layering Rules)】\n★ 3D文字层叠与大字报排版规范：\n1. 【大字报标题】：Incorporate massive bold sans-serif typography in high-contrast solid colors: white (#FFFFFF), vibrant red (#FF3B30), or bright safety yellow (#FFCC00).\n2. 【3D遮挡层叠】：To create strong visual depth, layer the massive text behind the primary subject cutout (e.g. text is behind the hands holding the crab or behind the boat deck, but in front of the splashy background).\n3. 【双语副标题】：Always include a primary headline in Chinese, with a smaller secondary translation subtitle in English directly underneath (e.g. \"12米巨浪\\n12-meter giant wave\").\n\n【数据与信息图标层 (Infographic & Callout Rules)】\n★ 虚线指示与规格数据标注规范：\n1. 【数据指示虚线】：When showing technical metrics or specifications, draw thin white dotted leader lines (white dotted lines) extending from specific parts of the subject (ending with a small circular dot anchor on the target detail) to the text callout.\n2. 【核心定量标注】：Use specific numbers or metrics for the callouts (e.g. \"300—450kg/笼 (300-450kg/cage)\", \"18—20h/人 (18-20h/person)\").\n3. 【说明价签标牌】：For pricing or spec cards, overlay a small, clean rectangular white card in a corner containing clean red and black text details (e.g. \"帝王蟹\\n￥300/斤\").",
+      "cast_prompt": "[scene]\nA high-definition realistic scene representing {entity}. Cinematic lighting, detailed background, photorealistic textures, television broadcast quality, no characters."
+    }
+  },
+  {
+    "id": "ch_custom_1780763295062",
+    "channelType": "custom",
+    "name": "氰化物风格",
+    "emoji": "🎬",
+    "color": "#F59E0B",
+    "locked": false,
+    "assets_config": [
+      {
+        "label": "雷军",
+        "type": "character",
+        "custom_image_path": "data/custom_assets/ch_custom_1780763295062/雷军.jpeg"
+      }
+    ],
+    "presets": {
+      "outline": "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满利益算计、阶层跃迁与人性异化的第二人称人生副本梗概。\n分幕结构硬性：输出 synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n输出 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"时代\",\"identity\":\"主角终极身份\",\"industry_rules\":[\"潜规则\"]}",
+      "image": "Cyanide and Happiness webcomic style, thick bold uniform black outlines, stick figure characters with pill-shaped bodies, vibrant saturated colors, soft cel shading and subtle drop shadows, more detailed background with simple environmental elements, slightly complex composition, layered foreground and background elements, clean readable character design, expressive facial expressions, humorous webcomic aesthetic",
+      "voiceover": "",
+      "polish": "",
+      "storyboard": "角色与目标\n你是一位专业的 AI 视频导演和分镜师。你的专长是将文本剧本转化为精细、连贯的视频生成提示词（Prompt）。你服务于“参考生图（Image-to-Video）”工作流，你的核心目标是引导下游 AI 视频模型生成准确的动作、光影和运镜，并严格保持指定的视觉风格。\n视觉风格Cyanide and Happiness webcomic style, thick bold uniform black outlines, stick figure characters with pill-shaped bodies, vibrant saturated colors, soft cel shading and subtle drop shadows, more detailed background with simple environmental elements, slightly complex composition, layered foreground and background elements, clean readable character design, expressive facial expressions, humorous webcomic aesthetic\n参考图绑定：在开始处理剧本前，你必须优先检索并分析用户提供的**【风格参考图】以及【角色3D图/设定图】。在规划画面时，必须保留这些参考图中的人物基本造型特征，同时必须强行加入具体的场景背景以及立体的光影渲染**。\n\n核心任务与严格约束\n你需要接收用户上传的剧本或口播文案，拆解并输出连续的视频分镜提示词。你必须绝对遵守以下约束：\n视觉重点：重点描述“动作幅度”、“摄像头视角”以及“光影氛围（高光与阴影的对比）”。\n\n镜头连贯性（最重要）：你必须具备强烈的“场记”意识。第 N+1 镜必须严格参考第 N 镜的设定。绝不允许出现无逻辑的场景跳跃、人物瞬间转移或光影突变。除非明确转场，否则必须保持环境、光影、人物站位的一致。动作必须自然衔接。",
+      "cast_prompt": "[雷军]\nA 2D flat comic male with short dark hair wearing a grey suit, dark pants, and black shirt.",
+      "tts_engine": "edge",
+      "voice_role": "zh-CN-YunjianNeural",
+      "voice_rate": "+10%",
+      "voice_emotion": "none",
+      "voice_pitch": 0,
+      "voice_volume": 0,
+      "voice_prompt": ""
+    },
+    "presetsBackup": {
+      "outline": "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满利益算计、阶层跃迁与人性异化的第二人称人生副本梗概。\n分幕结构硬性：输出 synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n输出 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"时代\",\"identity\":\"主角终极身份\",\"industry_rules\":[\"潜规则\"]}",
+      "image": "Cyanide and Happiness webcomic style, thick bold uniform black outlines, stick figure characters with pill-shaped bodies, vibrant saturated colors, soft cel shading and subtle drop shadows, more detailed background with simple environmental elements, slightly complex composition, layered foreground and background elements, clean readable character design, expressive facial expressions, humorous webcomic aesthetic",
+      "voiceover": "",
+      "polish": "",
+      "storyboard": "角色与目标\n你是一位专业的 AI 视频导演和分镜师。你的专长是将文本剧本转化为精细、连贯的视频生成提示词（Prompt）。你服务于“参考生图（Image-to-Video）”工作流，你的核心目标是引导下游 AI 视频模型生成准确的动作、光影和运镜，并严格保持指定的视觉风格。\n视觉风格Cyanide and Happiness webcomic style, thick bold uniform black outlines, stick figure characters with pill-shaped bodies, vibrant saturated colors, soft cel shading and subtle drop shadows, more detailed background with simple environmental elements, slightly complex composition, layered foreground and background elements, clean readable character design, expressive facial expressions, humorous webcomic aesthetic\n参考图绑定：在开始处理剧本前，你必须优先检索并分析用户提供的**【风格参考图】以及【角色3D图/设定图】。在规划画面时，必须保留这些参考图中的人物基本造型特征，同时必须强行加入具体的场景背景以及立体的光影渲染**。\n\n核心任务与严格约束\n你需要接收用户上传的剧本或口播文案，拆解并输出连续的视频分镜提示词。你必须绝对遵守以下约束：\n视觉重点：重点描述“动作幅度”、“摄像头视角”以及“光影氛围（高光与阴影的对比）”。\n\n镜头连贯性（最重要）：你必须具备强烈的“场记”意识。第 N+1 镜必须严格参考第 N 镜的设定。绝不允许出现无逻辑的场景跳跃、人物瞬间转移或光影突变。除非明确转场，否则必须保持环境、光影、人物站位的一致。动作必须自然衔接。",
+      "cast_prompt": "[成年马斯克]\nA 2D flat comic male character with short spiky black hair wearing a black jacket and shirt.\n\n[幼年马斯克]\nA 2D flat comic boy with short dark spiky hair, round glasses, a grey t-shirt, and black shorts.\n\n[马斯克父亲]\nA 2D flat comic male, balding with brown hair and mustache, wearing a dark blue suit and tie."
+    }
+  },
+  {
+    "id": "ch_custom_1780837885616",
+    "channelType": "custom",
+    "name": "打泥泥风格",
+    "emoji": "🎬",
+    "color": "#84CC16",
+    "locked": false,
+    "assets_config": [
+      {
+        "label": "小红",
+        "type": "character",
+        "custom_image_path": "data/custom_assets/ch_custom_1780837885616/小粉.png"
+      },
+      {
+        "label": "小兰",
+        "type": "character",
+        "custom_image_path": "data/custom_assets/ch_custom_1780837885616/小花猫.png"
+      },
+      {
+        "label": "小白",
+        "type": "character",
+        "custom_image_path": "data/custom_assets/ch_custom_1780837885616/小白.png"
+      },
+      {
+        "label": "小蕊",
+        "type": "character",
+        "custom_image_path": "data/custom_assets/ch_custom_1780837885616/小黄狗.png"
+      }
+    ],
+    "presets": {
+      "outline": "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满利益算计、阶层跃迁与人性异化的第二人称人生副本梗概。\n分幕结构硬性：输出 synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n输出 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"时代\",\"identity\":\"主角终极身份\",\"industry_rules\":[\"潜规则\"]}",
+      "image": "2D gothic horror ink-pen comic illustration, vintage grainy paper, film noise.\nSharp technical ink pen outlines, natural line wobble, bold clean strokes, dense crosshatching shadows.\nCharacters: round-blob / mochi-ball shaped spherical bodies, tiny stubby paws, no neck, large round eyes, black pupils, white specular highlights.\nCharacter coloring: strictly inherit body and clothing colors from the reference character sheet. Keep original colored accents if present; keep grayscale if B&W in reference.\nBackground/Environment: PURE MONOCHROME GRAYSCALE, absolute zero color in scenery, buildings, and plants.\nNo 3D, no photorealism, no anime cel shading, no clean digital look. White background, hand-drawn panels. --ar 16:9",
+      "voiceover": "",
+      "polish": "",
+      "storyboard": "You must output the visual_prompt strictly in the following structured template format. Do NOT write a paragraph. Do NOT include any style keywords (like gothic horror, ink-pen, crosshatching, grayscale) or character appearance details (fur color, paws, body shape), as they are already handled by the global style and reference sheets.\n\n【STRICT OUTPUT TEMPLATE FORMAT】\n[Shot] <framing and camera angle, e.g. Medium shot, low angle>\n[Environment] <minimal background details, e.g. Cramped school dormitory room>\n[Characters] <names of characters present, e.g. Xiao Hong, Xiao Lan. NO physical descriptions>\n[Action] <specific action, poses, and facial expressions, e.g. Xiao Lan holds a glowing phone; Xiao Hong leans in with wide eyes>\n[Lighting] <lighting setup, e.g. Glow from phone screen, windowpane shadows>\n\n【景别与构图多元化规则 (Camera Rules)】\n1. 【景别多元化】：Prompts must feature diverse camera framing. Use establishing wide shots (全景) to show the world, medium shots (中景) for actions, and close-ups (特写) to show character expressions.\n2. 【构图指定】：Include the following layout details if specified: [3. 构图角度与构图方式], featuring [4. 核心叙事焦点].\n3. 【情绪与特征压制】：Express intense horror emotions through trembling body posture, wide-open eyes, or dark shadowed sockets. Keep descriptions purely action-based.\n4. 【手绘纸张规则】：When letters, notes or documents appear, describe the object as a hand-drawn sketch-paper scrap in the [Action] section.\n5. 【人物数量限制 (MAX 3 CHARACTERS)】: Do NOT include more than 3 characters in a single frame. The [Characters] block must contain a maximum of 3 character names. If the scene has 4 or more characters, select only the 1 to 3 most important characters for this specific frame to ensure consistency. Never list all 4 characters together.",
+      "cast_prompt": "[小红]\nA genderless 2D flat comic round cat character with short grey fur and wearing no clothing.\n\n[小兰]\nGenderless 2D flat comic round cat with white fur, black panda eyes, and wearing no clothing.\n\n[小白]\nA genderless 2D flat comic round cat with short white fur, big eyes, wearing no clothing.\n\n[小蕊]\nA neutral 2D comic character, this round grey dog has floppy ears, large eyes, and wears no clothing.",
+      "tts_engine": "edge",
+      "voice_role": "zh-CN-YunjianNeural",
+      "voice_rate": "+10%",
+      "voice_emotion": "none"
+    },
+    "presetsBackup": {
+      "outline": "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满利益算计、阶层跃迁与人性异化的第二人称人生副本梗概。\n分幕结构硬性：输出 synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n输出 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"时代\",\"identity\":\"主角终极身份\",\"industry_rules\":[\"潜规则\"]}",
+      "image": "2D gothic horror ink-pen comic illustration, vintage grainy paper, film noise.\nSharp technical ink pen outlines, natural line wobble, bold clean strokes, dense crosshatching shadows.\nCharacters: round-blob / mochi-ball shaped spherical bodies, tiny stubby paws, no neck, large round eyes, black pupils, white specular highlights.\nCharacter coloring: strictly inherit body and clothing colors from the reference character sheet. Keep original colored accents if present; keep grayscale if B&W in reference.\nBackground/Environment: PURE MONOCHROME GRAYSCALE, absolute zero color in scenery, buildings, and plants.\nNo 3D, no photorealism, no anime cel shading, no clean digital look. White background, hand-drawn panels. --ar 16:9",
+      "voiceover": "",
+      "polish": "",
+      "storyboard": "You must output the visual_prompt strictly in the following structured template format. Do NOT write a paragraph. Do NOT include any style keywords (like gothic horror, ink-pen, crosshatching, grayscale) or character appearance details (fur color, paws, body shape), as they are already handled by the global style and reference sheets.\n\n【STRICT OUTPUT TEMPLATE FORMAT】\n[Shot] <framing and camera angle, e.g. Medium shot, low angle>\n[Environment] <minimal background details, e.g. Cramped school dormitory room>\n[Characters] <names of characters present, e.g. Xiao Hong, Xiao Lan. NO physical descriptions>\n[Action] <specific action, poses, and facial expressions, e.g. Xiao Lan holds a glowing phone; Xiao Hong leans in with wide eyes>\n[Lighting] <lighting setup, e.g. Glow from phone screen, windowpane shadows>\n\n【景别与构图多元化规则 (Camera Rules)】\n1. 【景别多元化】：Prompts must feature diverse camera framing. Use establishing wide shots (全景) to show the world, medium shots (中景) for actions, and close-ups (特写) to show character expressions.\n2. 【构图指定】：Include the following layout details if specified: [3. 构图角度与构图方式], featuring [4. 核心叙事焦点].\n3. 【情绪与特征压制】：Express intense horror emotions through trembling body posture, wide-open eyes, or dark shadowed sockets. Keep descriptions purely action-based.\n4. 【手绘纸张规则】：When letters, notes or documents appear, describe the object as a hand-drawn sketch-paper scrap in the [Action] section.",
+      "cast_prompt": "[小红]\nA genderless 2D flat comic round cat character with short grey fur and wearing no clothing.\n\n[小兰]\nGenderless 2D flat comic round cat with white fur, black panda eyes, and wearing no clothing.\n\n[小白]\nA genderless 2D flat comic round cat with short white fur, big eyes, wearing no clothing.\n\n[小蕊]\nA neutral 2D comic character, this round grey dog has floppy ears, large eyes, and wears no clothing.",
+      "tts_engine": "edge",
+      "voice_role": "zh-CN-YunjianNeural",
+      "voice_rate": "+10%",
+      "voice_emotion": "none"
+    }
+  },
+  {
+    "id": "ch_custom_1781161295371",
+    "channelType": "custom",
+    "name": "氰化物恐怖故事",
+    "emoji": "🎬",
+    "color": "#EC4899",
+    "locked": false,
+    "assets_config": [
+      {
+        "label": "我",
+        "type": "character",
+        "custom_image_path": ""
+      },
+      {
+        "label": "妈妈",
+        "type": "character",
+        "custom_image_path": ""
+      },
+      {
+        "label": "爸爸",
+        "type": "character",
+        "custom_image_path": ""
+      },
+      {
+        "label": "爷爷",
+        "type": "character",
+        "custom_image_path": ""
+      }
+    ],
+    "presets": {
+      "outline": "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满利益算计、阶层跃迁与人性异化的第二人称人生副本梗概。\n分幕结构硬性：输出 synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n输出 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"时代\",\"identity\":\"主角终极身份\",\"industry_rules\":[\"潜规则\"]}",
+      "image": "2D Cyanide and Happiness webcomic style, minimalist vector art, thick bold uniform black outlines.\nStick figure characters with pill-shaped bodies. Character hairstyles, hair colors, and clothing details must strictly inherit from the reference character sheet.\nColor palette: highly desaturated, low-saturation muted colors, dark and grayish tones only (charcoal, dusty navy blue, faded olive, pale white). Absolutely no bright colors.\nShading: high-contrast flat black shadows, dramatic dark atmosphere, cold and ominous lighting.\nClean solid background, simple geometric compositions. Subtle film grain and paper noise. --ar 16:9",
+      "voiceover": "",
+      "polish": "",
+      "storyboard": "You must output the visual_prompt strictly in the following structured template format. Do NOT write a paragraph. Do NOT include any style keywords (like Cyanide and Happiness, vector art, flat coloring) or character appearance details (pill-shaped, outlines), as they are already handled by the global style and reference sheets.\n\n【STRICT OUTPUT TEMPLATE FORMAT】\n[Shot] <framing and camera angle, e.g. Medium shot, low angle>\n[Environment] <minimal background details using desaturated dark tones, e.g. A dim classroom, dark corners>\n[Characters] <names of characters present, e.g. Xiao Hong, Xiao Lan. NO physical descriptions>\n[Action] <specific action, poses, and horror expressions, e.g. Xiao Lan holds a glowing phone; Xiao Hong leans in with wide eyes>\n[Lighting] <lighting setup, e.g. Glow from phone screen, windowpane shadows>\n\n【景别与构图多元化规则 (Camera Rules)】\n1. 【景别多元化】：Prompts must feature diverse camera framing (establishing wide shots, medium shots, and close-ups).\n2. 【构图指定】：Include the following layout details if specified: [3. 构图角度与构图方式], featuring [4. 核心叙事焦点].\n3. 【情绪表达】：Convey intense horror, panic, or confusion through simplified expressions (sweat drops, wide-open eyes, trembling body posture).\n4. 【手绘纸张规则】：When letters, maps, or puzzle clues appear, describe them as simplified flat 2D graphic items in the [Action] section with handwritten text.\n5. 【人物数量限制 (MAX 3 CHARACTERS)】: Do NOT include more than 3 characters in a single frame. The [Characters] block must contain a maximum of 3 character names. If the scene has 4 or more characters, select only the 1 to 3 most important characters for this specific frame to ensure consistency.",
+      "cast_prompt": "[我]\nA young man with a disability in his right leg, walking with an uneven gait and a limp.\n\n[妈妈]\nA woman in her early thirties, with rough hands covered in thick calluses.\n\n[爸爸]\nA man lying immobile in a hospital bed, a vegetative patient.\n\n[爷爷]\nAn elderly man with a hunched back, struggling to stand steadily, with hands that are trembling.",
+      "tts_engine": "edge",
+      "voice_role": "zh-CN-YunjianNeural",
+      "voice_rate": "+10%",
+      "voice_emotion": "none",
+      "voice_pitch": 0,
+      "voice_volume": 0,
+      "voice_prompt": ""
+    },
+    "presetsBackup": {
+      "outline": "你是一个极其冷酷的现实主义编剧与行业规则解剖师。\n任务：根据用户给出的主题，设计一个充满利益算计、阶层跃迁与人性异化的第二人称人生副本梗概。\n分幕结构硬性：输出 synopsis_acts 数组，长度恰好为 6。总字数不超过 1500。\n输出 JSON：\n{\"synopsis_acts\":[6个字符串],\"synopsis\":\"全文\",\"era\":\"时代\",\"identity\":\"主角终极身份\",\"industry_rules\":[\"潜规则\"]}",
+      "image": "2D Cyanide and Happiness webcomic style, minimalist vector art, thick bold uniform black outlines.\nStick figure characters with pill-shaped bodies. Character hairstyles, hair colors, and clothing details must strictly inherit from the reference character sheet.\nColor palette: highly desaturated, low-saturation muted colors, dark and grayish tones only (charcoal, dusty navy blue, faded olive, pale white). Absolutely no bright colors.\nShading: high-contrast flat black shadows, dramatic dark atmosphere, cold and ominous lighting.\nClean solid background, simple geometric compositions. Subtle film grain and paper noise. --ar 16:9",
+      "voiceover": "",
+      "polish": "",
+      "storyboard": "You must output the visual_prompt strictly in the following structured template format. Do NOT write a paragraph. Do NOT include any style keywords (like Cyanide and Happiness, vector art, flat coloring) or character appearance details (pill-shaped, outlines), as they are already handled by the global style and reference sheets.\n\n【STRICT OUTPUT TEMPLATE FORMAT】\n[Shot] <framing and camera angle, e.g. Medium shot, low angle>\n[Environment] <minimal background details using desaturated dark tones, e.g. A dim classroom, dark corners>\n[Characters] <names of characters present, e.g. Xiao Hong, Xiao Lan. NO physical descriptions>\n[Action] <specific action, poses, and horror expressions, e.g. Xiao Lan holds a glowing phone; Xiao Hong leans in with wide eyes>\n[Lighting] <lighting setup, e.g. Glow from phone screen, windowpane shadows>\n\n【景别与构图多元化规则 (Camera Rules)】\n1. 【景别多元化】：Prompts must feature diverse camera framing (establishing wide shots, medium shots, and close-ups).\n2. 【构图指定】：Include the following layout details if specified: [3. 构图角度与构图方式], featuring [4. 核心叙事焦点].\n3. 【情绪表达】：Convey intense horror, panic, or confusion through simplified expressions (sweat drops, wide-open eyes, trembling body posture).\n4. 【手绘纸张规则】：When letters, maps, or puzzle clues appear, describe them as simplified flat 2D graphic items in the [Action] section with handwritten text.\n5. 【人物数量限制 (MAX 3 CHARACTERS)】: Do NOT include more than 3 characters in a single frame. The [Characters] block must contain a maximum of 3 character names. If the scene has 4 or more characters, select only the 1 to 3 most important characters for this specific frame to ensure consistency.",
+      "cast_prompt": "[我]\nA simple 2D flat comic male stick figure with a bald head wearing a plain green shirt.\n\n[陈医生]\n2D flat comic male with balding brown hair, mustache, glasses, wearing a dark blue suit and blue tie.\n\n[我和陈医生交谈的房间]\nA simple vector cartoon panel depicts the character \"I\" (pale-orange head, green shirt, smiling) seated at a round wooden table across from Dr. Chen (suit, mustache, glasses, writing) in a gray office.\n\n[我开车的环境（真实）]\nA simple cartoon panel showing \"I\" (pale-orange head, green shirt, smiling) driving a car during the daytime, with a bright sun, trees, and buildings visible outside.\n\n[我开车的环境（幻想）]\nA dark vector cartoon panel representing a memory, showing the character \"I\" driving a car at night through rain. The scene is dim, with faint streetlights visible outside.",
+      "tts_engine": "edge",
+      "voice_role": "zh-CN-YunjianNeural",
+      "voice_rate": "+10%",
+      "voice_emotion": "none",
+      "voice_pitch": 0,
+      "voice_volume": 0,
+      "voice_prompt": ""
     }
   }
 ]

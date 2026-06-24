@@ -1,0 +1,6 @@
+{
+    "MODEL_LLM": "deepseek-v4-pro",
+    "MODEL_VLM": "gemini-2.5-flash",
+    "MODEL_IMG_CAST": "gpt-image-2",
+    "MODEL_IMG_STORY": "gpt-image-2"
+}

@@ -235,7 +235,7 @@ def llm_regen_supporting_prompt(
     topic: str, synopsis_payload: dict, role_id: str, display_name_en: str,
     feedback: str = "",
 ) -> dict | None:
-    client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL.rstrip("/"))
+    client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL.rstrip("/"), timeout=60.0)
     user = json.dumps(
         {
             "topic": topic,
@@ -280,10 +280,10 @@ You will receive one JSON object: the story synopsis package (topic fields + syn
 
 HARD RULES:
 1. Total distinct characters that need a face-locking reference sheet MUST be at most 4: exactly ONE protagonist + at most THREE supporting characters.
-2. protagonist.stages: choose only from ["child","youth","middle","elderly"], based on life span that actually appears in the story. Do NOT output a stage that the story does not need.
+2. protagonist.stages & supporting[i].stages: choose only from ["child","youth","middle","elderly"], based on life span that actually appears in the story. Do NOT output a stage that the story does not need. If a character does not age or change periods in the story, default to ["middle"].
 3. Each supporting role must have role_id: lowercase snake_case ASCII (letters, digits, underscores only), e.g. elder_patriarch, sheriff_kane.
 4. display_name_en: short English name or epithet for on-screen prompts (e.g. Jack, Elder, Sheriff).
-5. english_prompt (protagonist every stage + each supporting): ONE English paragraph per character entry, 60–95 words, flowing prose (no bullet lists). Each MUST include:
+5. english_prompt (for each character stage): ONE English paragraph per character stage entry, 60–95 words, flowing prose (no bullet lists). Each MUST include:
    (1) Role + plot function + social station in THIS synopsis.
    (2) Life-stage read matching the stage key (child/youth/middle/elderly).
    (3) Iconic costume or prop as SIMPLE SHAPE LANGUAGE (blocks/rectangles/loops)—NO buttons, lapels, stitching, logos, lace, jewelry close-ups, hair strands, pores, or face measurements.
@@ -293,14 +293,14 @@ HARD RULES:
    FORBIDDEN: photorealism, 3D/CGI, cinematic lighting vocabulary, runway fashion, long facial-feature lists, gore, brand names.
    If wording implies realistic muscled limbs or detailed shoes, rewrite to attitude + simple prop silhouettes.
    Also include anchor_description: one short Chinese phrase (20–40 chars) for humans only.
-6. stage_prompts must contain one entry per stage listed in protagonist.stages with matching keys.
+6. stage_prompts must contain one entry per stage listed in stages with matching keys.
 7. Omit supporting characters who barely appear or do not need a consistent face.
-8. VISUAL IDENTITY LOCK: The protagonist MUST maintain ONE hyper-consistent visual anchor across ALL life stages to ensure viewer recognition. You must force the exact same core color palette (e.g., "always wears a signature cyan shirt") OR the same specific accessory (e.g., "always wears square red glasses" or "has a star birthmark") into the english_prompt of EVERY stage. Do not change their signature color as they age!
+8. VISUAL IDENTITY LOCK: Each character (including protagonist and supporting characters) MUST maintain ONE hyper-consistent visual anchor across ALL their life stages to ensure viewer recognition. You must force the exact same core color palette (e.g., "always wears a signature cyan shirt") OR the same specific accessory (e.g., "always wears square red glasses" or "has a star birthmark") into the english_prompt of EVERY stage of that character. Do not change their signature color as they age!
 
 Output ONE JSON object only:
 {
   "protagonist": {
-    "display_name_en": "...",
+    "display_name_en": "Jack",
     "stages": ["youth", "middle"],
     "stage_prompts": {
       "youth": {"english_prompt": "...", "anchor_description": "..."},
@@ -311,8 +311,11 @@ Output ONE JSON object only:
     {
       "role_id": "elder_patriarch",
       "display_name_en": "Elder",
-      "english_prompt": "...",
-      "anchor_description": "..."
+      "stages": ["middle", "elderly"],
+      "stage_prompts": {
+        "middle": {"english_prompt": "...", "anchor_description": "..."},
+        "elderly": {"english_prompt": "...", "anchor_description": "..."}
+      }
     }
   ]
 }
@@ -404,18 +407,58 @@ def _validate_and_trim_cast(plan: dict) -> dict | None:
             rid = f"{rid}_{len(used_ids)}"
         used_ids.add(rid)
         dn = str(item.get("display_name_en") or rid).strip() or rid
-        ep = str(item.get("english_prompt") or "").strip()
-        if len(ep) < 45:
-            ep = (
-                f"Supporting character ({dn}): plot role and moral alignment; era-appropriate station and attitude; "
-                f"one iconic costume or prop as simple flat shapes; two main colors plus accent; cartoon-simple posture—no micro-detail."
-            )
+        
+        # Parse stages for supporting role
+        sup_stages = item.get("stages") or ["middle"]
+        if not isinstance(sup_stages, list):
+            sup_stages = ["middle"]
+        sup_stages = [s for s in sup_stages if s in ALLOWED_STAGES]
+        if not sup_stages:
+            sup_stages = ["middle"]
+            
+        seen_st = set()
+        ordered_sup_stages = []
+        for s in sup_stages:
+            if s not in seen_st:
+                seen_st.add(s)
+                ordered_sup_stages.append(s)
+                
+        sprompts = item.get("stage_prompts") or {}
+        if not isinstance(sprompts, dict):
+            sprompts = {}
+            
+        # Fallback if flat prompts are generated instead of stage_prompts
+        if not sprompts and item.get("english_prompt"):
+            sprompts = {
+                ordered_sup_stages[0]: {
+                    "english_prompt": item.get("english_prompt"),
+                    "anchor_description": item.get("anchor_description") or f"配角{dn}立绘"
+                }
+            }
+            
+        for st in ordered_sup_stages:
+            if st not in sprompts or not isinstance(sprompts.get(st), dict):
+                sprompts[st] = {
+                    "english_prompt": (
+                        f"Supporting character ({dn}) at the {st} life stage: plot role, social station, and attitude in plain prose; "
+                        f"one simple silhouette prop or outfit block (no micro-detail); two flat colors plus accent; cartoon-simple stance."
+                    ),
+                    "anchor_description": f"配角{dn}{st}阶段立绘"
+                }
+            else:
+                ep = str(sprompts[st].get("english_prompt") or "").strip()
+                if len(ep) < 45:
+                    sprompts[st]["english_prompt"] = (
+                        f"Same story’s supporting character ({dn}) in the {st} stage: plot role, era-appropriate station, and attitude in plain prose; "
+                        f"one simple silhouette prop or outfit block (no micro-detail); two flat colors plus accent; cartoon-simple stance."
+                    )
+                    
         cleaned.append(
             {
                 "role_id": rid,
                 "display_name_en": dn,
-                "english_prompt": ep,
-                "anchor_description": str(item.get("anchor_description") or f"配角{dn}立绘").strip() or f"配角{dn}",
+                "stages": ordered_sup_stages,
+                "stage_prompts": sprompts
             }
         )
     plan["supporting"] = cleaned
@@ -427,7 +470,7 @@ def _validate_and_trim_cast(plan: dict) -> dict | None:
 
 def llm_plan_cast_from_synopsis(topic: str, synopsis_payload: dict) -> dict | None:
     print(f"  🧠 [Cast] 根据梗概 JSON 规划主角阶段与配角（≤{MAX_REF_CHARACTERS} 人）...")
-    client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL.rstrip("/"))
+    client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL.rstrip("/"), timeout=60.0)
     user = json.dumps({"topic": topic, "synopsis_package": synopsis_payload}, ensure_ascii=False)
     try:
         response = log_llm_chat(
@@ -456,7 +499,7 @@ def llm_plan_cast_from_synopsis(topic: str, synopsis_payload: dict) -> dict | No
 def design_environments(topic: str):
     """使用 LLM 为当前主题构思 4 个核心场景锚点"""
     print(f"  🧠 [Design] 正在为主题【{topic}】构思核心场景锚点...")
-    client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL.rstrip("/"))
+    client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL.rstrip("/"), timeout=60.0)
 
     system_prompt = f"""你是一个顶级的电影美术指导。
 你的任务是根据一个视频主题，构思 4 个最具代表性的电影感核心场景。
@@ -516,7 +559,7 @@ def get_needed_stages(topic: str):
                 pass
     if not text_to_analyze:
         return ["middle"]
-    client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL.rstrip("/"))
+    client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL.rstrip("/"), timeout=60.0)
     system_prompt = """你是一个专业的剧本分析师。
 根据提供的文本，判定主角在整个故事中具体经历了哪些【人生阶段】。
 可选阶段：child, youth, middle, elderly。只输出 JSON 列表。"""
@@ -553,7 +596,7 @@ def design_character(topic: str, role_tag: str, stage: str = "middle", feedback:
     }.get(stage, "中年")
 
     print(f"  🧠 [Design] 正在构思角色: {role_tag} (阶段: {stage_name_cn})...")
-    client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL.rstrip("/"))
+    client = OpenAI(api_key=config.LLM_API_KEY, base_url=config.LLM_BASE_URL.rstrip("/"), timeout=60.0)
 
     system_prompt = f"""You are the "character ref english_prompt" writer for a Cyanide-and-Happiness–style pipeline.
 
@@ -793,18 +836,38 @@ def _build_ref_display_slots(cast_registry: dict, physical_anchors: dict) -> lis
             )
     for sup in cast_registry.get("supporting") or []:
         rid = sup.get("role_id")
-        pk = f"supporting_{rid}"
-        p = physical_anchors.get(pk)
-        if p:
-            slots.append(
-                {
-                    "kind": "supporting",
-                    "role_id": rid,
-                    "display_name_en": sup.get("display_name_en", rid),
-                    "path_key": pk,
-                    "abs_path": p,
-                }
-            )
+        stages = sup.get("stages") or ["middle"]
+        has_any_stage = False
+        for st in stages:
+            pk = f"supporting_{rid}_{st}"
+            p = physical_anchors.get(pk)
+            if p:
+                slots.append(
+                    {
+                        "kind": "supporting",
+                        "role_id": rid,
+                        "stage": st,
+                        "display_name_en": f"{sup.get('display_name_en', rid)} ({st})",
+                        "path_key": pk,
+                        "abs_path": p,
+                    }
+                )
+                has_any_stage = True
+                
+        # Backward compatibility fallback
+        if not has_any_stage:
+            pk_fallback = f"supporting_{rid}"
+            p_fallback = physical_anchors.get(pk_fallback)
+            if p_fallback:
+                slots.append(
+                    {
+                        "kind": "supporting",
+                        "role_id": rid,
+                        "display_name_en": sup.get("display_name_en", rid),
+                        "path_key": pk_fallback,
+                        "abs_path": p_fallback,
+                    }
+                )
     return slots
 
 
@@ -845,7 +908,14 @@ async def _run_synopsis_driven_protagonist_pipeline(topic: str):
             "display_name_en": plan["protagonist"]["display_name_en"],
             "stages": plan["protagonist"]["stages"],
         },
-        "supporting": [{"role_id": x["role_id"], "display_name_en": x["display_name_en"]} for x in plan["supporting"]],
+        "supporting": [
+            {
+                "role_id": x["role_id"], 
+                "display_name_en": x["display_name_en"],
+                "stages": x["stages"]
+            } 
+            for x in plan["supporting"]
+        ],
     }
 
     stages = plan["protagonist"]["stages"]
@@ -874,20 +944,49 @@ async def _run_synopsis_driven_protagonist_pipeline(topic: str):
     if sup_list:
         sem = asyncio.Semaphore(MAX_SUPPORTING_REF_CONCURRENCY)
 
-        async def _gen_one_supporting(sup: dict) -> tuple[str, Path | None, str]:
+        async def _gen_one_supporting_stages(sup: dict) -> tuple[str, list]:
             async with sem:
                 rid = sup["role_id"]
-                sdir = _run_ref_supporting_dir(rid)
-                gen_path = await generate_ref_sheet_at(sdir, sup["english_prompt"], None)
-                desc = sup.get("anchor_description", "") or ""
-                return rid, gen_path, desc
+                sup_stages = sup["stages"]
+                sup_stage_prompts = sup["stage_prompts"]
+                
+                # Sort stages: middle first
+                sorted_sup_stages = list(sup_stages)
+                if "middle" in sorted_sup_stages:
+                    sorted_sup_stages.remove("middle")
+                    sorted_sup_stages.insert(0, "middle")
+                
+                sup_base_anchor: Path | None = None
+                supporting_anchors = []
+                
+                for st in sorted_sup_stages:
+                    design = sup_stage_prompts[st]
+                    sdir = _run_ref_supporting_dir(rid) / st
+                    sdir.mkdir(parents=True, exist_ok=True)
+                    
+                    gen_path = await generate_ref_sheet_at(sdir, design["english_prompt"], sup_base_anchor)
+                    if gen_path:
+                        desc_f = gen_path.parent / "description.txt"
+                        desc_f.write_text(design.get("anchor_description", ""), encoding="utf-8")
+                        supporting_anchors.append((st, gen_path))
+                        if sup_base_anchor is None:
+                            sup_base_anchor = gen_path
+                return rid, supporting_anchors
 
-        results = await asyncio.gather(*[_gen_one_supporting(sup) for sup in sup_list])
-        for rid, gen_path, anchor_desc in results:
-            if gen_path:
-                desc_f = gen_path.parent / "description.txt"
-                desc_f.write_text(anchor_desc, encoding="utf-8")
-                physical_anchors[f"supporting_{rid}"] = str(gen_path.resolve())
+        results = await asyncio.gather(*[_gen_one_supporting_stages(sup) for sup in sup_list])
+        for rid, supporting_anchors in results:
+            for st, gen_path in supporting_anchors:
+                physical_anchors[f"supporting_{rid}_{st}"] = str(gen_path.resolve())
+            # Backward compatibility fallback
+            if supporting_anchors:
+                fallback_path = None
+                for st, gen_path in supporting_anchors:
+                    if st == "middle":
+                        fallback_path = gen_path
+                        break
+                if fallback_path is None:
+                    fallback_path = supporting_anchors[0][1]
+                physical_anchors[f"supporting_{rid}"] = str(fallback_path.resolve())
 
     ref_slots = _build_ref_display_slots(cast_registry, physical_anchors)
     target = _run_story_path(must_exist=True)

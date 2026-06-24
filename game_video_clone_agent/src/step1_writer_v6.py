@@ -10,14 +10,19 @@ import os
 import shutil
 import sys
 # ── Windows GBK 终端编码修复 ──
-if hasattr(sys.stdout, "buffer"):
-    from io import TextIOWrapper
-    sys.stdout = TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 
 import argparse
+import re
+import requests
 import subprocess
 import tempfile
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from openai import OpenAI
@@ -55,7 +60,7 @@ TTS_NETWORK_RETRY_BASE_SEC = 1.5
 
 
 def get_client():
-    return OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL)
+    return OpenAI(api_key=LLM_API_KEY, base_url=LLM_BASE_URL, timeout=60.0)
 
 
 # ── Phase 2 Beat 数量（影响 Phase 3 的 LLM 往返次数：每 Beat 约 2 次调用）────────
@@ -270,7 +275,16 @@ def _split_text_for_edge_tts(text: str, max_chars: int = TTS_CHUNK_MAX_CHARS) ->
     return chunks
 
 
-def _run_edge_tts_to_files(text: str, audio_path: Path, vtt_path: Path) -> None:
+def _run_edge_tts_to_files(text: str, audio_path: Path, vtt_path: Path, voice: str = "", rate: str = "") -> None:
+    if not voice:
+        voice = VOICE_ROLE
+    if not rate:
+        rate = VOICE_RATE
+        
+    # 过滤 XML/Cot 标签，Edge-TTS 会把标签当作原文朗读
+    text = re.sub(r'<cot[^>]*>', '', text)
+    text = text.replace("</cot>", "")
+
     temp_txt = audio_path.with_suffix(".txt")
     temp_txt.write_text(text, encoding="utf-8")
     cmd_candidates = [
@@ -279,8 +293,8 @@ def _run_edge_tts_to_files(text: str, audio_path: Path, vtt_path: Path) -> None:
             "-f", str(temp_txt),
             "--write-media", str(audio_path),
             "--write-subtitles", str(vtt_path),
-            "--voice", str(VOICE_ROLE),
-            "--rate", str(VOICE_RATE),
+            "--voice", str(voice),
+            "--rate", str(rate),
         ],
         [
             sys.executable,
@@ -289,8 +303,8 @@ def _run_edge_tts_to_files(text: str, audio_path: Path, vtt_path: Path) -> None:
             "-f", str(temp_txt),
             "--write-media", str(audio_path),
             "--write-subtitles", str(vtt_path),
-            "--voice", str(VOICE_ROLE),
-            "--rate", str(VOICE_RATE),
+            "--voice", str(voice),
+            "--rate", str(rate),
         ],
     ]
     try:
@@ -307,7 +321,7 @@ def _run_edge_tts_to_files(text: str, audio_path: Path, vtt_path: Path) -> None:
                             ok=True,
                             duration_ms=(time.perf_counter() - t_edge) * 1000,
                             attempt=attempt,
-                            extra={"cmd_candidate": idx, "voice": str(VOICE_ROLE)},
+                            extra={"cmd_candidate": idx, "voice": str(voice)},
                         )
                         return
                     except subprocess.CalledProcessError as e:
@@ -360,6 +374,227 @@ def _run_edge_tts_to_files(text: str, audio_path: Path, vtt_path: Path) -> None:
         temp_txt.unlink(missing_ok=True)
 
 
+def _run_volc_tts_to_files(text: str, audio_path: Path, voice: str = "", rate: str = "", emotion: str = "", pitch: int = 0, volume: int = 0, prompt: str = "") -> list:
+    """调用火山引擎（豆包）异步长文本语音合成 API，并解析为字幕句轴"""
+    from src.style_config import VOLC_TTS_API_KEY, VOLC_TTS_APPID
+    
+    # 再次兜底从环境变量拿，确保能动态读取
+    api_key = os.environ.get("VOLC_TTS_API_KEY", "").strip() or VOLC_TTS_API_KEY
+    appid = os.environ.get("VOLC_TTS_APPID", "").strip() or VOLC_TTS_APPID
+    
+    if not api_key or not appid:
+        raise RuntimeError("未配置 VOLC_TTS_API_KEY 或 VOLC_TTS_APPID。")
+        
+    print(f"  🔊 [TTS] 正在调用火山引擎(豆包)异步长接口进行语音合成...")
+    print(f"  🎙️ [TTS] 音色: {voice}, 语速: {rate}, 情绪: {emotion}, 音调: {pitch}, 音量: {volume}, 提示词: {prompt}")
+    
+    # 1. 自动推断 Resource-Id
+    resource_id = "seed-tts-2.0"  # 默认使用大模型合成2.0
+    lower_voice = voice.lower()
+    if "icl_" in lower_voice or lower_voice.startswith("s_"):
+        resource_id = "seed-icl-2.0"  # 声音复刻使用 icl-2.0
+    elif "deep_podcast" in lower_voice or "neighbor_aunt" in lower_voice or "giga_boss" in lower_voice:
+        resource_id = "seed-tts-1.0"  # 1.0 经典多情感音色
+    elif lower_voice.startswith("seed-tts-1"):
+        resource_id = "seed-tts-1.0"
+        
+    # 2. 转换语速
+    def _parse_rate_to_volc(rate_str: str) -> int:
+        cleaned = rate_str.replace("%", "").replace("+", "").strip()
+        try:
+            val = int(cleaned)
+            return max(-50, min(100, val))
+        except ValueError:
+            return 0
+            
+    speech_rate = _parse_rate_to_volc(rate)
+    
+    # 3. 构造请求负载
+    uid = str(uuid.uuid4())
+    submit_url = "https://openspeech.bytedance.com/api/v3/tts/submit"
+    
+    additions_dict = {
+        "disable_markdown_filter": True
+    }
+    
+    # 针对 Expressive 模型或声音复刻开启表现力增强大模型与标签解析
+    if "icl_" in lower_voice or lower_voice.startswith("s_") or emotion == "expressive":
+        payload = {
+            "user": {
+                "uid": "automated_storytelling_user"
+            },
+            "unique_id": uid,
+            "req_params": {
+                "text": text,
+                "speaker": voice,
+                "model": "seed-tts-2.0-expressive",
+                "audio_params": {
+                    "format": "mp3",
+                    "sample_rate": 24000,
+                    "speech_rate": speech_rate
+                }
+            }
+        }
+        additions_dict["use_tag_parser"] = True
+    else:
+        payload = {
+            "user": {
+                "uid": "automated_storytelling_user"
+            },
+            "unique_id": uid,
+            "req_params": {
+                "text": text,
+                "speaker": voice,
+                "audio_params": {
+                    "format": "mp3",
+                    "sample_rate": 24000,
+                    "speech_rate": speech_rate
+                }
+            }
+        }
+        
+    # 处理全局情绪与自定义提示词
+    if prompt and prompt.strip():
+        additions_dict["context_texts"] = [prompt.strip()]
+    elif emotion and emotion != "none" and emotion != "expressive":
+        if resource_id == "seed-tts-1.0":
+            # 1.0 走 emotion 参数
+            payload["req_params"]["audio_params"]["emotion"] = emotion
+            payload["req_params"]["audio_params"]["emotion_scale"] = 4
+        else:
+            # 2.0 走 additions.context_texts 情绪引导
+            emotion_zh_map = {
+                "angry": "非常生气愤怒",
+                "sad": "悲伤哭泣",
+                "happy": "开心喜悦",
+                "fearful": "恐惧害怕",
+                "hate": "厌恶憎恨",
+                "surprise": "惊讶意外",
+                "fear": "恐惧害怕",
+                "disgust": "厌恶憎恨"
+            }
+            if emotion in emotion_zh_map:
+                additions_dict["context_texts"] = [f"请使用{emotion_zh_map[emotion]}的语气朗读文本"]
+            else:
+                additions_dict["context_texts"] = [f"请使用{emotion}的语气朗读文本"]
+
+    # 音量 (loudness_rate)
+    if volume != 0:
+        payload["req_params"]["audio_params"]["loudness_rate"] = volume
+
+    # 音调 (pitch)
+    if pitch != 0:
+        additions_dict["post_process"] = {"pitch": pitch}
+
+    payload["req_params"]["additions"] = json.dumps(additions_dict)
+    payload["req_params"]["audio_params"]["enable_timestamp"] = True
+
+    # 4. 提交任务
+    headers = {
+        "X-Api-App-Id": appid,
+        "X-Api-Key": api_key,
+        "X-Api-Access-Key": api_key,
+        "X-Api-Resource-Id": resource_id,
+        "X-Api-Request-Id": str(uuid.uuid4()),
+        "Content-Type": "application/json"
+    }
+    
+    t_start = time.perf_counter()
+    try:
+        resp = requests.post(submit_url, json=payload, headers=headers, timeout=30)
+        resp.raise_for_status()
+        res_data = resp.json()
+    except Exception as e:
+        raise RuntimeError(f"网络异常，提交任务失败: {e}")
+        
+    code = res_data.get("code")
+    if code != 20000000:
+        msg = res_data.get("message", "未知错误")
+        raise RuntimeError(f"接口报错 (code={code}): {msg}")
+        
+    task_id = res_data.get("data", {}).get("task_id")
+    if not task_id:
+        raise RuntimeError("提交任务成功但未获取到 task_id")
+        
+    print(f"  ✅ [TTS] 任务提交成功，Task-ID: {task_id}，正在等待合成与轮询...")
+    
+    # 5. 轮询状态
+    query_url = "https://openspeech.bytedance.com/api/v3/tts/query"
+    query_payload = {"task_id": task_id}
+    
+    max_polls = 120  # 最大轮询 120 次
+    poll_interval = 2.0  # 每次等待 2 秒
+    sentences_data = []
+    audio_url = ""
+    
+    for poll in range(1, max_polls + 1):
+        time.sleep(poll_interval)
+        try:
+            qresp = requests.post(query_url, json=query_payload, headers=headers, timeout=20)
+            qresp.raise_for_status()
+            qres = qresp.json()
+        except Exception as e:
+            print(f"  ⚠️ [TTS] 轮询第 {poll} 次失败: {e}，将在下轮重试...")
+            continue
+            
+        qcode = qres.get("code")
+        if qcode != 20000000:
+            raise RuntimeError(f"查询接口报错 (code={qcode}): {qres.get('message')}")
+            
+        qdata = qres.get("data", {})
+        status = qdata.get("task_status")
+        
+        if status == 1:
+            continue
+        elif status == 2:
+            print(f"  🎉 [TTS] 火山音频合成成功！用时: {time.perf_counter() - t_start:.1f}s")
+            audio_url = qdata.get("audio_url")
+            sentences_data = qdata.get("sentences", [])
+            break
+        elif status == 3:
+            raise RuntimeError(f"任务处理失败 (task_status=3)，请检查文本内容。")
+        else:
+            raise RuntimeError(f"未知任务状态: {status}")
+    else:
+        raise TimeoutError("火山引擎 TTS 合成超时 (超过 240s)。")
+        
+    if not audio_url:
+        raise RuntimeError("合成成功但未返回音频下载链接 (audio_url)。")
+        
+    # 6. 下载音频保存
+    print("  ⬇️ [TTS] 正在下载主音轨...")
+    try:
+        audio_resp = requests.get(audio_url, timeout=60)
+        audio_resp.raise_for_status()
+        audio_path.write_bytes(audio_resp.content)
+    except Exception as e:
+        raise RuntimeError(f"下载音频失败: {e}")
+        
+    # 7. 解析时间轴并自动过滤清洗 COT 标签
+    srt_data = []
+    for s in sentences_data:
+        text_line = s.get("text", "")
+        # 正则剥离 XML 形式的情绪/语速标签
+        cleaned_text = re.sub(r'<cot[^>]*>', '', text_line)
+        cleaned_text = cleaned_text.replace("</cot>", "")
+        
+        srt_data.append({
+            "start_time": s.get("startTime", 0.0),
+            "end_time": s.get("endTime", 0.0),
+            "text": cleaned_text
+        })
+        
+    log_event(
+        PHASE_AUDIO_BEATS,
+        "volc_tts",
+        "tts_volc",
+        ok=True,
+        duration_ms=(time.perf_counter() - t_start) * 1000,
+        extra={"voice": voice, "task_id": task_id, "sentences_count": len(srt_data)}
+    )
+    return srt_data
+
+
 def _concat_mp3_files(part_paths: list[Path], out_path: Path) -> None:
     if not shutil.which("ffmpeg"):
         print("❌ [FATAL] 拼接长音频需要 ffmpeg，请安装并加入 PATH。")
@@ -390,7 +625,7 @@ def _concat_mp3_files(part_paths: list[Path], out_path: Path) -> None:
             pass
 
 
-def _generate_master_audio_chunked(text: str, audio_path: Path) -> list:
+def _generate_master_audio_chunked(text: str, audio_path: Path, voice: str = "", rate: str = "") -> list:
     chunks = _split_text_for_edge_tts(text, TTS_CHUNK_MAX_CHARS)
     print(f"  🔊 [TTS] 长旁白分 {len(chunks)} 段合成（每段约 ≤{TTS_CHUNK_MAX_CHARS} 字，规避 Edge 单次 ~10 分钟截断）...")
     vtt_path = audio_path.with_suffix(".vtt")
@@ -403,7 +638,7 @@ def _generate_master_audio_chunked(text: str, audio_path: Path) -> list:
         for idx, ch in enumerate(chunks):
             part_mp3 = tmp_root / f"part_{idx:03d}.mp3"
             part_vtt = tmp_root / f"part_{idx:03d}.vtt"
-            _run_edge_tts_to_files(ch, part_mp3, part_vtt)
+            _run_edge_tts_to_files(ch, part_mp3, part_vtt, voice=voice, rate=rate)
             dur = _ffprobe_duration_seconds(part_mp3)
             if dur <= 0:
                 print(f"❌ [TTS] 分块 {idx + 1} 音轨时长异常")
@@ -449,15 +684,62 @@ def _generate_master_audio_chunked(text: str, audio_path: Path) -> list:
             pass
 
 
-def generate_master_audio_and_srt(text: str, audio_path: Path) -> list:
-    """调用 edge-tts 生成音频并解析 VTT 为 JSON SRT，构建绝对物理时间轴。
-    长文本自动分块合成并拼接，避免 Edge 单次 ~600s 截断导致「有字幕、无声音」。"""
+def generate_master_audio_and_srt(
+    text: str, 
+    audio_path: Path, 
+    tts_engine: str = "edge",
+    tts_voice: str = "",
+    tts_rate: str = "",
+    tts_emotion: str = "",
+    tts_pitch: int = 0,
+    tts_volume: int = 0,
+    tts_prompt: str = ""
+) -> list:
+    """旁白音频与绝对时间轴合成引擎（支持 Edge-TTS 与 火山引擎 双端选择与回退）"""
+    if tts_engine == "volc":
+        # 检验火山配置
+        from src.style_config import VOLC_TTS_API_KEY, VOLC_TTS_APPID
+        api_key = os.environ.get("VOLC_TTS_API_KEY", "").strip() or VOLC_TTS_API_KEY
+        appid = os.environ.get("VOLC_TTS_APPID", "").strip() or VOLC_TTS_APPID
+        
+        if not api_key or not appid:
+            print("  ⚠️ [TTS] 火山引擎密钥(VOLC_TTS_API_KEY/APPID)未配置，自动回退到 Edge-TTS。")
+            tts_engine = "edge"
+        else:
+            try:
+                # 调用火山引擎合成
+                srt_data = _run_volc_tts_to_files(
+                    text=text,
+                    audio_path=audio_path,
+                    voice=tts_voice,
+                    rate=tts_rate,
+                    emotion=tts_emotion,
+                    pitch=tts_pitch,
+                    volume=tts_volume,
+                    prompt=tts_prompt
+                )
+                
+                # 写入 SRT
+                MASTER_SRT_PATH.write_text(json.dumps(srt_data, ensure_ascii=False, indent=2), encoding="utf-8")
+                vault_backup(MASTER_SRT_PATH, f"audio/{MASTER_SRT_PATH.name}")
+                print(f"  ✅ [TTS] 火山物理时间轴锚定成功！共解析出 {len(srt_data)} 个微句子 (Cues)。")
+                return srt_data
+            except Exception as e:
+                print(f"  ⚠️ [TTS] 调用火山引擎合成失败: {e}，正在紧急回退到 Edge-TTS 兜底机制...")
+                tts_engine = "edge"
+
+    # Edge-TTS 分支
+    # 如果音色不支持 Edge-TTS (即火山专有音色且不是 Edge 的 Neural 音色)，强制回退为默认音色
+    if tts_voice and "Neural" not in tts_voice:
+        print(f"  ⚠️ [TTS] 当前音色 '{tts_voice}' 不适用于 Edge-TTS，重置为默认音色 '{VOICE_ROLE}'。")
+        tts_voice = VOICE_ROLE
+
     if len(text) > TTS_CHUNK_MAX_CHARS:
-        return _generate_master_audio_chunked(text, audio_path)
+        return _generate_master_audio_chunked(text, audio_path, voice=tts_voice, rate=tts_rate)
 
     print("  🔊 [TTS] 正在调用 Edge-TTS 生成主音频与物理字幕...")
     vtt_path = audio_path.with_suffix(".vtt")
-    _run_edge_tts_to_files(text, audio_path, vtt_path)
+    _run_edge_tts_to_files(text, audio_path, vtt_path, voice=tts_voice, rate=tts_rate)
 
     lines = vtt_path.read_text(encoding="utf-8").strip().split("\n")
     srt_data = _parse_vtt_lines_to_srt_data(lines)
@@ -470,7 +752,7 @@ def generate_master_audio_and_srt(text: str, audio_path: Path) -> list:
                 f"  ⚠️ [TTS] 检测到音轨 {audio_dur:.1f}s 短于字幕末轴 {last_end:.1f}s（Edge 单次合成可能被截断），"
                 f"改用分块重合成..."
             )
-            return _generate_master_audio_chunked(text, audio_path)
+            return _generate_master_audio_chunked(text, audio_path, voice=tts_voice, rate=tts_rate)
 
     MASTER_SRT_PATH.write_text(json.dumps(srt_data, ensure_ascii=False, indent=2), encoding="utf-8")
     vault_backup(MASTER_SRT_PATH, f"audio/{MASTER_SRT_PATH.name}")
@@ -1162,6 +1444,119 @@ def _normalize_per_shot_ref_keys(
     return out
 
 
+
+def _get_asset_info_by_key(key: str, assets_to_generate: list) -> dict:
+    if not assets_to_generate:
+        return {}
+    
+    # 1. Protagonist stages
+    if key in ("child", "youth", "middle", "elderly"):
+        for ast in assets_to_generate:
+            if ast.get("role_id") == "protagonist" and ast.get("stage") == key:
+                return ast
+        for ast in assets_to_generate:
+            if ast.get("role_id") == "protagonist":
+                return ast
+                
+    # 2. Scene
+    if key == "supporting_scene":
+        scenes = [ast for ast in assets_to_generate if ast.get("type") == "scene"]
+        if scenes:
+            return scenes[0]
+    elif key.startswith("supporting_scene_"):
+        try:
+            idx = int(key.split("supporting_scene_")[1])
+            scenes = [ast for ast in assets_to_generate if ast.get("type") == "scene"]
+            if idx < len(scenes):
+                return scenes[idx]
+        except Exception:
+            pass
+
+    # 3. Prop
+    if key == "supporting_prop":
+        props = [ast for ast in assets_to_generate if ast.get("type") == "prop"]
+        if props:
+            return props[0]
+    elif key.startswith("supporting_prop_"):
+        try:
+            idx = int(key.split("supporting_prop_")[1])
+            props = [ast for ast in assets_to_generate if ast.get("type") == "prop"]
+            if idx < len(props):
+                return props[idx]
+        except Exception:
+            pass
+
+    # 4. Supporting character
+    if key.startswith("supporting_"):
+        sub = key[len("supporting_"):]
+        stages_suffix = ("_child", "_youth", "_middle", "_elderly")
+        role_id = sub
+        stage = None
+        for suffix in stages_suffix:
+            if sub.endswith(suffix):
+                role_id = sub[:-len(suffix)]
+                stage = suffix[1:]
+                break
+        for ast in assets_to_generate:
+            if ast.get("role_id") == role_id:
+                if stage and ast.get("stage") == stage:
+                    return ast
+                elif not stage:
+                    return ast
+                    
+    return {}
+
+
+import base64
+
+def _build_vlm_vision_payload(physical_anchors: dict, assets_to_generate: list) -> tuple[list[dict], str]:
+    """
+    Build the vision parts (base64 image URLs) for OpenAI-compatible client,
+    and returns the description text mapping each image index to its card name, type and key.
+    """
+    vision_parts = []
+    descriptions = []
+    
+    idx = 1
+    for k, path_str in sorted(physical_anchors.items()):
+        if not path_str:
+            continue
+        p = Path(path_str)
+        if not p.is_file():
+            print(f"    [VLM] Asset image file not found: {path_str}. Skipping this image.")
+            continue
+            
+        try:
+            with open(p, "rb") as f:
+                img_data = base64.b64encode(f.read()).decode("utf-8")
+        except Exception as e:
+            print(f"    [VLM] Failed to read asset image {path_str}: {e}. Skipping.")
+            continue
+            
+        ast = _get_asset_info_by_key(k, assets_to_generate)
+        label = ast.get("label") or ast.get("display_name_en") or k
+        asset_type = ast.get("type") or ("character" if k in ("child", "youth", "middle", "elderly") or "supporting" in k else "scene")
+        desc = ast.get("anchor_description") or ast.get("english_prompt") or "No detailed description."
+        
+        vision_parts.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/png;base64,{img_data}"
+            }
+        })
+        
+        descriptions.append(
+            f"【Image {idx}】\n"
+            f"- Card Name: {label}\n"
+            f"- Logical Key (refer in JSON as reference key): {k}\n"
+            f"- Type: {asset_type}\n"
+            f"- Visual Features: {desc}\n"
+        )
+        idx += 1
+        
+    desc_str = "\n".join(descriptions) if descriptions else "No reference images provided."
+    return vision_parts, desc_str
+
 def _generate_visual_prompts(
     text_segments: list[str],
     beat: dict,
@@ -1175,10 +1570,12 @@ def _generate_visual_prompts(
     cast_registry: dict | None = None,
 ) -> tuple[list[str], list[list[str]]]:
     """
-    【第二次 LLM 调用】
-    针对已定稿的 text_segments，逐条生成英文 visual_prompts 与 per_shot_ref_keys。
+    【第二次 VLM 多模态大模型调用】
+    针对已定稿的 text_segments，观察多张已上传资产图，逐条生成英文 visual_prompts 与 per_shot_ref_keys。
     失败返回 ([], [])。
     """
+    from src.style_config import MODEL_VLM, VLM_API_KEY, VLM_BASE_URL
+
     beat_summary = beat.get("summary", "")
     n = len(text_segments)
 
@@ -1204,6 +1601,18 @@ def _generate_visual_prompts(
     legal_keys = sorted((physical_anchors or {}).keys())
     key_help = ", ".join(legal_keys) if legal_keys else "(无)"
 
+    # Load assets_to_generate to map with physical anchors for VLM vision labeling
+    assets_to_generate = []
+    if FULL_STORY_V6_PATH.exists():
+        try:
+            story_data = json.loads(FULL_STORY_V6_PATH.read_text(encoding="utf-8"))
+            assets_to_generate = story_data.get("metadata", {}).get("assets_to_generate", [])
+        except Exception as e:
+            print(f"    [VLM] Failed to load assets_to_generate from full_story_v6.json: {e}")
+
+    # Build vision payload
+    vision_parts, vlm_desc_str = _build_vlm_vision_payload(physical_anchors, assets_to_generate)
+
     # ── 从环境变量读取本频道"画风锚点 + 分镜表现规则"（用户在 UI 可编辑，零 {} 占位符，零报错风险）──
     _storyboard_discipline = os.environ.get("STORYBOARD_PROMPT_TEMPLATE", "").strip()
     if not _storyboard_discipline:
@@ -1218,7 +1627,7 @@ def _generate_visual_prompts(
             "★ 动态表情与肢体（核心要求：打破参考图的呆滞感！）：必须深度解析当前分镜的故事情节，"
             "强制赋予角色强烈且符合情境的情绪反应。\n"
             "1. 必须采用【核心情绪词 + 氰化物式五官拆解】组合。例如不要只写 mouth line，必须写："
-            "terrified expression, sharply angled frowning eyebrows, wide dilated dot eyes, screaming jagged mouth shape.\n"
+            "terrified expression, sharply angled frowning eyebrows, wide dilated dot eyes, screaming jagged mouth shape。\n"
             "2. 明确指令：绝不允许角色保持中立或被参考图的默认表情带偏"
             "（DO NOT copy the neutral expression from reference）。\n"
             "3. 肢体辅助：情绪必须配合夸张的肢体动作"
@@ -1226,8 +1635,18 @@ def _generate_visual_prompts(
             "4. 脸部特写：当情绪是当前帧重点时，明确写明 close-up on explicit facial expression。"
         )
 
+    # 📸 多模态视觉一致性与对齐纪律
+    vlm_alignment_discipline = (
+        "【📸 多模态视觉一致性与对齐纪律 (CRITICAL) 📸】\n"
+        "你已同时接收到本剧本中上传的全部角色和场景/环境定妆参考图片（具体对应关系参见下面的“多模态参考图列表”）。\n"
+        "为了在后续生图时达到极高的一致性，你必须在写分镜提示词时严格遵守以下对齐纪律：\n"
+        "1. 👤 角色外观锚定：当分镜叙事涉及到某个角色时，你必须仔细观察对应的 Image，将其特征（如：短袖颜色、发型、发色、身形等衣服与外貌细节）原封不动地写进对应的 visual_prompt 里。严禁凭空编造外观或改动衣服发型。\n"
+        "2. 🪟 空间/背景结构锚定：当分镜发生于已有场景（例如“对面的窗户”）时，你必须仔细对照对应的 Image。在 visual_prompt 中必须用文字极其详尽、严丝合缝地描述相同的背景特征与透视结构（如：双开玻璃窗、斑驳的灰色墙面、暖白色/黄色的微弱室内灯光），确保每一格只要出现该场景，其空间元素在文字描述上完全一致。\n"
+        "3. 🔗 逻辑键引用：对于每个分镜，你必须在 per_shot_ref_keys 中声明它引用了哪些图片。引用的逻辑键必须严格与“多模态参考图列表”中的 Logical Key 保持一致（如 middle、supporting_scene 等）。\n"
+    )
+
     system_prompt = (
-        "你是一位 AI 分镜导演兼英文 prompt 写手。任务：为已切好的每条分镜文案生成一条英文 visual_prompt（用于生图），"
+        "你是一位 AI 分镜导演兼多模态英文 prompt 写手。任务：为已切好的每条分镜文案生成一条英文 visual_prompt（用于生图），"
         "并输出 per_shot_ref_keys。\n\n"
         "【叙事与场记】\n"
         f"- 上一章节（前情摘要）：{prev_ctx}\n"
@@ -1237,38 +1656,56 @@ def _generate_visual_prompts(
         f"{era_section}"
         "【强制画风与分镜表现纪律（须贯穿每条 visual_prompt）】\n"
         f"{_storyboard_discipline}\n\n"
+        f"{vlm_alignment_discipline}\n\n"
+        "【多模态参考图列表】\n"
+        f"{vlm_desc_str}\n\n"
         "主角人生阶段必须与输入 JSON 每条 segment 的 stage 一致。\n\n"
         "【角色外观语义锚点】\n"
         f"{text_anchors_str}\n\n"
-        "【物理定妆锚点路径】（逻辑键 → 磁盘路径）\n"
+        "【物理定妆锚点路径】（仅做逻辑键参考）\n"
         f"{physical_anchors_str}\n\n"
         "【已定案角色注册表 cast_registry】\n"
         "已注册角色必须用 display_name_en 点名，禁止 young man / old man / elderly stranger 等泛指。\n"
         f"{cast_blob}\n\n"
         "【每条 visual_prompt 的形式与内容】\n"
-        "每条必须是**一段连续英文**（不要用 Subject:/Environment: 等小标题分行），用 3–6 个完整句子自然串联，"
+        "1. 每条必须是**一段连续英文**（不要用 Subject:/Environment: 等小标题分行），用 3–6 个完整句子自然串联，"
         "但必须**隐含覆盖**以下维度（不必按固定顺序）：\n"
-        "主体（谁/何物）；具体环境（须与前情连贯）；构图与景别；客观画面事件；光影连贯。\n\n"
+        "主体（谁/何物）；具体环境（须与前情连贯）；构图与景别；客观画面事件；光影连贯。\n"
+        "2. 🚫 严禁写入通用风格词 (CRITICAL)：系统在后续生图时会自动在最前面统一添加全局画风前缀。你绝对不要在每条 visual_prompt 中写入任何通用风格名称或画风参数（例如不要包含 'Cyanide and Happiness webcomic style', 'minimalist vector art', 'thick bold black outlines', 'flat colors', 'no shading' 等）。请直接描述镜头景别与具体画面内容（例如直接以：'Close-up on the bald child...' 或 'The bald child stands...' 开始）。\n\n"
         "【数量与输出】\n"
         f"1. visual_prompt 恰好 {n} 条，顺序与输入 segments 一致。\n"
-        f"2. per_shot_ref_keys：与 visual_prompts 等长；每行为字符串数组，键必须从：{key_help} 选取。"
-        "主角键与当条 stage 一致；配角用 supporting_<role_id>；仅锁脸时列入。\n\n"
+        f"2. per_shot_ref_keys：与 visual_prompts 等长；每行为字符串数组，键必须从给定的多模态参考图列表 Logical Key 选取。"
+        "主角键与当条 stage 一致；配角用 supporting_<role_id> 或 supporting_<role_id>_<stage>；场景/环境键用 supporting_scene 或对应的场景键；仅画画需要参考该图时列入。\n\n"
         f'输出严格 JSON：{{"visual_prompts": [ ... 共 {n} 条 ... ], "per_shot_ref_keys": [ ... 共 {n} 行 ... ]}}'
     )
 
-    client = get_client()
+    client = OpenAI(api_key=VLM_API_KEY, base_url=VLM_BASE_URL.rstrip("/"), timeout=120.0)
     try:
         t_vis = time.perf_counter()
+        
+        if vision_parts:
+            user_content = [
+                {
+                    "type": "text",
+                    "text": (
+                        f"请仔细对照多模态参考图（Image 1~{len(vision_parts)}），为以下 {n} 个分镜段落逐条生成 visual_prompt 与 per_shot_ref_keys：\n\n"
+                        + json.dumps(segments_with_meta, ensure_ascii=False, indent=2)
+                    )
+                }
+            ] + vision_parts
+        else:
+            user_content = (
+                f"请为以下 {n} 个分镜段落逐条生成 visual_prompt 与 per_shot_ref_keys：\n\n"
+                + json.dumps(segments_with_meta, ensure_ascii=False, indent=2)
+            )
+
         response = client.chat.completions.create(
-            model=MODEL_WRITER,
+            model=MODEL_VLM,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {
                     "role": "user",
-                    "content": (
-                        f"请为以下 {n} 个分镜段落逐条生成 visual_prompt 与 per_shot_ref_keys：\n\n"
-                        + json.dumps(segments_with_meta, ensure_ascii=False, indent=2)
-                    ),
+                    "content": user_content,
                 },
             ],
             response_format={"type": "json_object"},
@@ -1280,7 +1717,7 @@ def _generate_visual_prompts(
             "llm_chat",
             ok=True,
             duration_ms=(time.perf_counter() - t_vis) * 1000,
-            model=MODEL_WRITER,
+            model=MODEL_VLM,
             attempt=max(1, int(attempt or 1)),
             extra={"n_segments": n, "phase": "prompts"},
         )
@@ -1298,13 +1735,13 @@ def _generate_visual_prompts(
                 raw=raw,
                 meta=f"finish_reason={finish_reason}\nrefusal={refusal}",
             )
-            print("    ⚠️ [Prompts] LLM 返回非 JSON，已写入 logs/phase3_prompts_* 诊断文件。")
+            print("    [Prompts] VLM 返回非 JSON，已写入 logs/phase3_prompts_* 诊断文件。")
             return [], []
         prompts = result.get("visual_prompts", [])
 
         if not isinstance(prompts, list) or len(prompts) != n:
             print(
-                f"    ⚠️ [Prompts] 返回数量不符：期望 {n}，"
+                f"    [Prompts] 返回数量不符：期望 {n}，"
                 f"实际 {len(prompts) if isinstance(prompts, list) else '非列表'}。"
             )
             return [], []
@@ -1321,12 +1758,12 @@ def _generate_visual_prompts(
             "llm_chat",
             ok=False,
             duration_ms=(time.perf_counter() - t_vis) * 1000,
-            model=MODEL_WRITER,
+            model=MODEL_VLM,
             attempt=max(1, int(attempt or 1)),
             error=str(e),
             extra={"phase": "prompts"},
         )
-        print(f"    ⚠️ [Prompts] 调用异常: {e}")
+        print(f"    [Prompts] 调用异常: {e}")
         return [], []
 
 
@@ -1344,6 +1781,16 @@ def _phase3_resolve_segments(
     beat_text = beat["text"]
     beat_summary = (beat.get("summary") or "").strip()
     beat_time = f"{beat.get('start_time', '?')}s ~ {beat.get('end_time', '?')}s"
+
+    cache_path = SCRIPTS_DIR / f"phase3_cache_{beat_id}.json"
+    if cache_path.exists():
+        try:
+            cache_data = json.loads(cache_path.read_text(encoding="utf-8"))
+            if cache_data.get("beat_text") == beat_text and "text_segments" in cache_data and cache_data["text_segments"]:
+                print(f"  ✨ [Cache] [{beat_id}] 从缓存中成功加载分段标签")
+                return cache_data["text_segments"]
+        except Exception as e:
+            print(f"  ⚠️ [Cache] [{beat_id}] 读取分段缓存失败: {e}")
 
     if not beat_summary:
         raise ValueError(
@@ -1377,6 +1824,18 @@ def _phase3_resolve_segments(
             print(f"    ❌ [{beat_id}] [Enforce] 第 {attempt} 次失败，{suffix}。")
             continue
 
+        # Write/Update the cache file
+        try:
+            cache_data = {}
+            if cache_path.exists():
+                cache_data = json.loads(cache_path.read_text(encoding="utf-8"))
+            cache_data["beat_text"] = beat_text
+            cache_data["text_segments"] = enforced_segs
+            cache_path.write_text(json.dumps(cache_data, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"  💾 [Cache] [{beat_id}] 已保存分段标签到缓存")
+        except Exception as e:
+            print(f"  ⚠️ [Cache] [{beat_id}] 保存分段缓存失败: {e}")
+
         return enforced_segs
 
     raise Phase3BeatError(
@@ -1404,7 +1863,20 @@ def _phase3_prompts_and_pack(
     提示词阶段单独重试（分段已在第一波定稿）。
     """
     beat_id = beat.get("beat_id", "unknown")
+    beat_text = beat["text"]
     beat_time = f"{beat.get('start_time', '?')}s ~ {beat.get('end_time', '?')}s"
+
+    cache_path = SCRIPTS_DIR / f"phase3_cache_{beat_id}.json"
+    if cache_path.exists():
+        try:
+            cache_data = json.loads(cache_path.read_text(encoding="utf-8"))
+            if cache_data.get("beat_text") == beat_text and "packed" in cache_data and cache_data["packed"]:
+                if len(cache_data["packed"]) == len(text_segments):
+                    print(f"  ✨ [Cache] [{beat_id}] 从缓存中成功加载 packed 分镜列表")
+                    return cache_data["packed"]
+        except Exception as e:
+            print(f"  ⚠️ [Cache] [{beat_id}] 读取 packed 缓存失败: {e}")
+
     last_fail_prompt = ""
 
     for attempt in range(1, max_retries + 1):
@@ -1430,6 +1902,10 @@ def _phase3_prompts_and_pack(
                 f"期望 {len(text_segments)}"
             )
             print(f"    ❌ [{beat_id}] [Prompts] 第 {attempt} 次失败，{suffix}。")
+            if attempt < max_retries:
+                sleep_time = 2 ** attempt
+                print(f"    ⏳ [{beat_id}] 等待 {sleep_time} 秒后重试...")
+                time.sleep(sleep_time)
             continue
 
         current_char_idx = 0
@@ -1459,6 +1935,19 @@ def _phase3_prompts_and_pack(
             current_char_idx += len(t_segment)
 
         print(f"    ✅ [Vision] [{beat_id}] 完成，共 {len(subshots_with_time)} 个分镜。")
+        
+        # Write/Update the cache file
+        try:
+            cache_data = {}
+            if cache_path.exists():
+                cache_data = json.loads(cache_path.read_text(encoding="utf-8"))
+            cache_data["beat_text"] = beat_text
+            cache_data["packed"] = subshots_with_time
+            cache_path.write_text(json.dumps(cache_data, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"  💾 [Cache] [{beat_id}] 已保存 packed 分镜列表到缓存")
+        except Exception as e:
+            print(f"  ⚠️ [Cache] [{beat_id}] 保存 packed 缓存失败: {e}")
+
         return subshots_with_time
 
     raise Phase3BeatError(
@@ -1515,6 +2004,17 @@ def main():
         print("🎬 [Phase 2] 绝对时钟底座与行号锚定 (生成 pseudo_srt.json)")
         print("=======================================================")
         
+        master_audio_path = AUDIO_DIR / "master_voice.mp3"
+        if PSEUDO_SRT_PATH.exists() and master_audio_path.exists():
+            try:
+                story_data = json.loads(FULL_STORY_V6_PATH.read_text(encoding="utf-8"))
+                narration = story_data.get("master_design", {}).get("full_narration", "")
+                if narration:
+                    print(f"  ✨ [Skip] 检测到 {PSEUDO_SRT_PATH} 和音频均已存在，跳过 Phase 2。")
+                    sys.exit(0)
+            except Exception as e:
+                print(f"  ⚠️ [Skip] 检查 Phase 2 缓存失败，重新执行: {e}")
+
         if not FULL_STORY_V6_PATH.exists():
             print(f"❌ 找不到长文案 {FULL_STORY_V6_PATH}，请先执行阶段一。")
             sys.exit(1)
@@ -1529,7 +2029,42 @@ def main():
         AUDIO_DIR.mkdir(parents=True, exist_ok=True)
         master_audio_path = AUDIO_DIR / "master_voice.mp3"
         
-        srt_data = generate_master_audio_and_srt(narration, master_audio_path)
+        # 旁白配音参数提取：环境变量优先 -> 剧本元数据次之 -> 默认配置兜底
+        env_engine = os.environ.get("TTS_ENGINE", "").strip()
+        env_voice = os.environ.get("TTS_VOICE", "").strip()
+        env_rate = os.environ.get("TTS_RATE", "").strip()
+        env_emotion = os.environ.get("TTS_EMOTION", "").strip()
+        env_pitch = os.environ.get("TTS_PITCH", "").strip()
+        env_volume = os.environ.get("TTS_VOLUME", "").strip()
+        env_prompt = os.environ.get("TTS_PROMPT", "").strip()
+        
+        meta_tts = story_data.get("metadata", {}).get("voiceover_flow", {})
+        
+        engine = env_engine or meta_tts.get("engine", "edge")
+        voice = env_voice or meta_tts.get("voice_role", "") or meta_tts.get("voice_role_v2", "") or VOICE_ROLE
+        rate = env_rate or meta_tts.get("voice_rate", VOICE_RATE)
+        emotion = env_emotion or meta_tts.get("voice_emotion", "none")
+        try:
+            pitch = int(env_pitch) if env_pitch else int(meta_tts.get("voice_pitch", 0))
+        except ValueError:
+            pitch = 0
+        try:
+            volume = int(env_volume) if env_volume else int(meta_tts.get("voice_volume", 0))
+        except ValueError:
+            volume = 0
+        prompt = env_prompt if env_prompt else meta_tts.get("voice_prompt", "")
+        
+        srt_data = generate_master_audio_and_srt(
+            narration, 
+            master_audio_path,
+            tts_engine=engine,
+            tts_voice=voice,
+            tts_rate=rate,
+            tts_emotion=emotion,
+            tts_pitch=pitch,
+            tts_volume=volume,
+            tts_prompt=prompt
+        )
         pseudo_srt_list = chunk_beats_by_llm(srt_data)
         
         output_data = {

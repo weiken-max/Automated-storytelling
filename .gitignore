@@ -1,0 +1,11 @@
+# Repo-root local reference docs & materials (not part of the codebase)
+# Third-party API integration docs (placeholder examples only, no real secrets)
+/GriboAPI*.md
+/Gribo*API*.md
+/HTTP*.md
+/http豆包语音接入方法.md
+/异步长接口文档.md
+
+# Local scripts / drafts
+/6.12剧本.docx
+/*.docx
