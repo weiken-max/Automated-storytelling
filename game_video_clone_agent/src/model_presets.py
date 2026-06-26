@@ -6,6 +6,9 @@
 """
 
 import os
+import json
+import copy
+import re
 from pathlib import Path
 
 try:
@@ -224,6 +227,284 @@ VENDORS_PRESETS = {
     },
 }
 
+# 内置预设快照：后续会叠加本地供应商配置，但保留一份干净默认值便于重载/恢复
+BUILTIN_VENDOR_KEYS = set(VENDORS_PRESETS.keys())
+_BUILTIN_VENDOR_PRESETS = copy.deepcopy(VENDORS_PRESETS)
+
+
+# ================================================================
+# 🧩 商业版供应商目录：内置预设 + 本地自定义供应商
+# ================================================================
+
+def _settings_file() -> Path:
+    return Path(__file__).resolve().parent.parent / "data" / "model_settings.json"
+
+
+def _load_settings_json() -> dict:
+    path = _settings_file()
+    if not path.exists():
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _safe_vendor_key(name: str) -> str:
+    raw = (name or "custom_provider").strip().lower()
+    raw = re.sub(r"[^a-z0-9_\-]+", "_", raw)
+    raw = re.sub(r"_+", "_", raw).strip("_")
+    return raw or "custom_provider"
+
+
+def normalize_provider_config(vendor_key: str, cfg: dict, builtin: bool = False) -> dict:
+    """把 UI/JSON 中的供应商配置统一成 VENDORS_PRESETS 可用结构。"""
+    cfg = cfg or {}
+    models = cfg.get("models") if isinstance(cfg.get("models"), dict) else {}
+    variants = cfg.get("model_variants") or cfg.get("models_list") or []
+    if isinstance(variants, str):
+        variants = [m.strip() for m in variants.split("\n") if m.strip()]
+    variants = [str(m).strip() for m in variants if str(m).strip()]
+
+    api_format = cfg.get("api_format") or cfg.get("extra_params", {}).get("protocol") or "openai_compatible"
+    extra = cfg.get("extra_params") if isinstance(cfg.get("extra_params"), dict) else {}
+    extra = dict(extra)
+    if api_format:
+        extra["protocol"] = api_format
+
+    return {
+        "vendor_name": cfg.get("vendor_name") or cfg.get("name") or vendor_key,
+        "api_key": cfg.get("api_key", ""),
+        "app_secret": cfg.get("app_secret", ""),
+        "base_url": cfg.get("base_url", ""),
+        "dashscope_base_http": cfg.get("dashscope_base_http", ""),
+        "models": {
+            "llm": models.get("llm", ""),
+            "vlm": models.get("vlm", models.get("llm", "")),
+            "img": models.get("img", ""),
+        },
+        "model_variants": list(dict.fromkeys(variants + [m for m in models.values() if m])),
+        "api_format": api_format,
+        "enabled": bool(cfg.get("enabled", True)),
+        "builtin": bool(cfg.get("builtin", builtin)),
+        "extra_params": extra,
+    }
+
+
+def apply_provider_catalog(data: dict = None):
+    """把 model_settings.json 中的供应商目录合并到运行时 VENDORS_PRESETS。"""
+    data = data if isinstance(data, dict) else _load_settings_json()
+    VENDORS_PRESETS.clear()
+    VENDORS_PRESETS.update(copy.deepcopy(_BUILTIN_VENDOR_PRESETS))
+
+    # 内置供应商默认标记
+    for cfg in VENDORS_PRESETS.values():
+        cfg.setdefault("builtin", True)
+        cfg.setdefault("enabled", True)
+        api_format = cfg.get("api_format") or cfg.get("extra_params", {}).get("protocol") or "openai_compatible"
+        cfg["api_format"] = api_format
+        cfg.setdefault("model_variants", list(dict.fromkeys(m for m in cfg.get("models", {}).values() if m)))
+
+    # 对内置项做本地覆盖（禁用、URL、模型列表等）
+    overrides = data.get("provider_overrides", {})
+    if isinstance(overrides, dict):
+        for vk, ov in overrides.items():
+            if vk not in VENDORS_PRESETS or not isinstance(ov, dict):
+                continue
+            merged = copy.deepcopy(VENDORS_PRESETS[vk])
+            for key in ("vendor_name", "base_url", "api_key", "enabled", "api_format", "model_variants"):
+                if key in ov:
+                    merged[key] = ov[key]
+            if isinstance(ov.get("models"), dict):
+                merged.setdefault("models", {}).update(ov["models"])
+            if isinstance(ov.get("extra_params"), dict):
+                merged.setdefault("extra_params", {}).update(ov["extra_params"])
+            VENDORS_PRESETS[vk] = normalize_provider_config(vk, merged, builtin=True)
+
+    # 加载客户自定义供应商
+    custom = data.get("custom_providers", {})
+    if isinstance(custom, dict):
+        for vk, cfg in custom.items():
+            if not isinstance(cfg, dict):
+                continue
+            safe_key = _safe_vendor_key(vk)
+            if safe_key in BUILTIN_VENDOR_KEYS:
+                safe_key = f"custom_{safe_key}"
+            VENDORS_PRESETS[safe_key] = normalize_provider_config(safe_key, cfg, builtin=False)
+
+
+def _save_settings_json(data: dict):
+    """把完整 settings 字典写回 model_settings.json（调用方负责合并）。"""
+    path = _settings_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
+
+def _merge_save_settings(patch: dict):
+    """读取现有 settings，合并 patch（浅合并顶层 key）后写回，避免整文件覆盖。"""
+    data = _load_settings_json()
+    for k, v in (patch or {}).items():
+        data[k] = v
+    _save_settings_json(data)
+    return data
+
+
+def list_all_providers() -> list:
+    """
+    返回完整供应商目录（不按 base_url 合并），供商业版供应商管理面板使用。
+    每项: vendor_key, vendor_name, base_url, api_format, enabled, builtin,
+          has_key, masked_key, supported_roles, default_models, model_variants
+    """
+    result = []
+    for vk, cfg in VENDORS_PRESETS.items():
+        api_key_raw = cfg.get("api_key", "") or ""
+        has_key = bool(api_key_raw.strip())
+        masked_key = (
+            api_key_raw[:8] + "***" if len(api_key_raw) > 12
+            else (api_key_raw[:4] + "***" if api_key_raw else "")
+        )
+        models = cfg.get("models", {}) or {}
+        supported_roles = [r for r in ("llm", "vlm", "img") if models.get(r)]
+        result.append({
+            "vendor_key": vk,
+            "vendor_name": cfg.get("vendor_name", vk),
+            "base_url": cfg.get("base_url", ""),
+            "api_format": cfg.get("api_format")
+                or cfg.get("extra_params", {}).get("protocol")
+                or "openai_compatible",
+            "enabled": bool(cfg.get("enabled", True)),
+            "builtin": bool(cfg.get("builtin", vk in BUILTIN_VENDOR_KEYS)),
+            "has_key": has_key,
+            "api_key": api_key_raw,
+            "masked_key": masked_key,
+            "supported_roles": supported_roles,
+            "default_models": {
+                "llm": models.get("llm", ""),
+                "vlm": models.get("vlm", ""),
+                "img": models.get("img", ""),
+            },
+            "model_variants": list(cfg.get("model_variants")
+                or dict.fromkeys(m for m in models.values() if m)),
+        })
+    return result
+
+
+def save_provider(cfg: dict) -> dict:
+    """
+    新增或更新一个供应商。
+    - 内置供应商：写入 provider_overrides（只覆盖允许的字段）
+    - 自定义供应商：写入 custom_providers
+    返回 {"vendor_key": ..., "builtin": bool}
+    """
+    cfg = cfg or {}
+    vendor_key = (cfg.get("vendor_key") or "").strip()
+    data = _load_settings_json()
+
+    # —— 内置供应商：走 overrides —— #
+    if vendor_key and vendor_key in BUILTIN_VENDOR_KEYS:
+        overrides = data.get("provider_overrides", {})
+        if not isinstance(overrides, dict):
+            overrides = {}
+        ov = overrides.get(vendor_key, {})
+        if not isinstance(ov, dict):
+            ov = {}
+        for key in ("vendor_name", "base_url", "api_key", "enabled", "api_format"):
+            if key in cfg:
+                ov[key] = cfg[key]
+        if isinstance(cfg.get("models"), dict):
+            ov["models"] = {**(ov.get("models") or {}), **cfg["models"]}
+        variants = cfg.get("model_variants")
+        if isinstance(variants, str):
+            variants = [m.strip() for m in variants.split("\n") if m.strip()]
+        if variants is not None:
+            ov["model_variants"] = [str(m).strip() for m in variants if str(m).strip()]
+        overrides[vendor_key] = ov
+        data["provider_overrides"] = overrides
+        _save_settings_json(data)
+        apply_provider_catalog(data)
+        return {"vendor_key": vendor_key, "builtin": True}
+
+    # —— 自定义供应商：走 custom_providers —— #
+    custom = data.get("custom_providers", {})
+    if not isinstance(custom, dict):
+        custom = {}
+
+    # 编辑已存在的自定义供应商
+    if vendor_key and vendor_key in custom:
+        existing = custom[vendor_key] if isinstance(custom[vendor_key], dict) else {}
+        normalized = normalize_provider_config(vendor_key, {**existing, **cfg}, builtin=False)
+        custom[vendor_key] = normalized
+        save_key = vendor_key
+    else:
+        # 新建：根据名称生成安全 key，避免与内置/已有冲突
+        base_key = _safe_vendor_key(cfg.get("vendor_name") or cfg.get("name") or vendor_key)
+        if base_key in BUILTIN_VENDOR_KEYS:
+            base_key = f"custom_{base_key}"
+        save_key = base_key
+        n = 2
+        while save_key in custom:
+            save_key = f"{base_key}_{n}"
+            n += 1
+        custom[save_key] = normalize_provider_config(save_key, cfg, builtin=False)
+
+    data["custom_providers"] = custom
+    _save_settings_json(data)
+    apply_provider_catalog(data)
+    return {"vendor_key": save_key, "builtin": False}
+
+
+def delete_provider(vendor_key: str) -> dict:
+    """删除一个自定义供应商。内置供应商不允许删除（只能禁用）。"""
+    vendor_key = (vendor_key or "").strip()
+    if vendor_key in BUILTIN_VENDOR_KEYS:
+        raise ValueError("内置供应商不可删除，可改为禁用。")
+    data = _load_settings_json()
+    custom = data.get("custom_providers", {})
+    if not isinstance(custom, dict) or vendor_key not in custom:
+        raise ValueError(f"未找到自定义供应商: {vendor_key}")
+    del custom[vendor_key]
+    data["custom_providers"] = custom
+    # 同时清掉可能残留的 override
+    overrides = data.get("provider_overrides", {})
+    if isinstance(overrides, dict) and vendor_key in overrides:
+        del overrides[vendor_key]
+        data["provider_overrides"] = overrides
+    _save_settings_json(data)
+    apply_provider_catalog(data)
+    return {"vendor_key": vendor_key, "deleted": True}
+
+
+def set_provider_enabled(vendor_key: str, enabled: bool) -> dict:
+    """启用/禁用某供应商（内置走 overrides，自定义直接改）。"""
+    vendor_key = (vendor_key or "").strip()
+    if vendor_key not in VENDORS_PRESETS:
+        raise ValueError(f"未找到供应商: {vendor_key}")
+    enabled = bool(enabled)
+    data = _load_settings_json()
+    if vendor_key in BUILTIN_VENDOR_KEYS:
+        overrides = data.get("provider_overrides", {})
+        if not isinstance(overrides, dict):
+            overrides = {}
+        ov = overrides.get(vendor_key, {})
+        if not isinstance(ov, dict):
+            ov = {}
+        ov["enabled"] = enabled
+        overrides[vendor_key] = ov
+        data["provider_overrides"] = overrides
+    else:
+        custom = data.get("custom_providers", {})
+        if isinstance(custom, dict) and vendor_key in custom and isinstance(custom[vendor_key], dict):
+            custom[vendor_key]["enabled"] = enabled
+            data["custom_providers"] = custom
+    _save_settings_json(data)
+    apply_provider_catalog(data)
+    return {"vendor_key": vendor_key, "enabled": enabled}
+
+
+apply_provider_catalog()
 
 
 # ================================================================
@@ -390,6 +671,9 @@ def get_vendor_list(active_vendor_keys: dict = None) -> list:
     # 第一遍：收集所有有 key 的厂商（原始条目）
     raw = []
     for vk, cfg in VENDORS_PRESETS.items():
+        # 已禁用的供应商不展示（除非正被某角色占用）
+        if not cfg.get("enabled", True) and vk not in active_keys_set:
+            continue
         has_key = bool(cfg.get("api_key", "").strip())
         if active_vendor_keys and not has_key and vk not in active_keys_set:
             continue
@@ -520,6 +804,14 @@ def switch_vendor(role: str, vendor_key: str) -> dict:
     cfg = VENDORS_PRESETS.get(vendor_key)
     if not cfg:
         raise ValueError(f"未找到厂商预设: {vendor_key}")
+    if not cfg.get("enabled", True):
+        raise ValueError(f"供应商已被禁用，无法绑定: {cfg.get('vendor_name', vendor_key)}")
+
+    # 角色兼容性校验：该供应商需配置了对应角色的模型
+    role_model_key = "img" if role in ("img_cast", "img_story") else (
+        "vlm" if role in ("vlm", "vlm_analyze") else "llm")
+    if not cfg.get("models", {}).get(role_model_key) and not cfg.get("model_variants"):
+        print(f"⚠️ [model_presets] {cfg.get('vendor_name', vendor_key)} 未预置 {role_model_key} 模型名，仍允许绑定但需手动填写模型名")
 
     if role in ("llm",):
         ACTIVE_LLM_VENDOR = vendor_key

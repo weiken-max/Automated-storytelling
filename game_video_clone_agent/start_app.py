@@ -514,15 +514,27 @@ class DesktopApiBridge:
 
     def save_model_settings(self, settings):
         """
-        保存模型配置到本地并就地热更新内存变量
+        保存模型配置到本地并就地热更新内存变量（合并保存，不覆盖供应商目录等其他字段）
         """
         try:
             settings_dir = BASE_DIR_PATH / "data"
             settings_dir.mkdir(parents=True, exist_ok=True)
             settings_file = settings_dir / "model_settings.json"
 
+            # 合并已有设置，避免把 provider_overrides / custom_providers / active_vendors 等冲掉
+            existing = {}
+            if settings_file.exists():
+                try:
+                    existing = json.loads(settings_file.read_text(encoding="utf-8"))
+                except Exception:
+                    existing = {}
+            if isinstance(settings, dict):
+                existing.update(settings)
+
             with open(settings_file, "w", encoding="utf-8") as f:
-                json.dump(settings, f, indent=4, ensure_ascii=False)
+                json.dump(existing, f, indent=4, ensure_ascii=False)
+
+            settings = existing
 
             llm = settings.get("MODEL_LLM")
             vlm = settings.get("MODEL_VLM")
@@ -603,13 +615,14 @@ class DesktopApiBridge:
         try:
             from src.model_presets import (
                 switch_vendor, VENDOR_ENV_KEY_MAP, VENDORS_PRESETS,
+                BUILTIN_VENDOR_KEYS, save_provider as _save_provider,
                 save_model_history as _save_hist,
             )
             slots = payload.get("slots", {})
             if not slots:
                 return {"status": "error", "detail": "slots 数据为空"}
 
-            # 1. 收集 API Keys 并先写 .env
+            # 1. 收集 API Keys：内置厂商写 .env，自定义/覆盖厂商持久化到 settings 目录
             api_keys = {}
             for slot_key, sc in slots.items():
                 ak = sc.get("api_key", "").strip()
@@ -617,10 +630,19 @@ class DesktopApiBridge:
                 if ak and vk:
                     api_keys[vk] = ak
             if api_keys:
-                self._write_api_keys_to_env(api_keys)
+                env_keys = {vk: k for vk, k in api_keys.items()
+                            if vk in VENDOR_ENV_KEY_MAP}
+                if env_keys:
+                    self._write_api_keys_to_env(env_keys)
                 for vk, new_key in api_keys.items():
                     if vk in VENDORS_PRESETS:
                         VENDORS_PRESETS[vk]["api_key"] = new_key
+                    # 没有 .env 映射的厂商（含自定义）→ 持久化进供应商目录
+                    if vk not in VENDOR_ENV_KEY_MAP:
+                        try:
+                            _save_provider({"vendor_key": vk, "api_key": new_key})
+                        except Exception as pe:
+                            print(f"[Bridge] ⚠️ 持久化 {vk} 的 Key 失败: {pe}")
 
             # 2. 切换各插槽的厂商
             active_vendors = {}
@@ -671,6 +693,94 @@ class DesktopApiBridge:
             import traceback
             print(f"❌ [Bridge] 保存厂商配置失败: {traceback.format_exc()}")
             return {"status": "error", "detail": f"保存失败: {str(e)}"}
+
+    # ──────────────────────────────────────────────
+    # 🏪 供应商目录 CRUD（商业版供应商管理面板）
+    # ──────────────────────────────────────────────
+    def list_providers(self):
+        """返回完整供应商目录 + 当前各角色绑定，用于供应商管理面板。"""
+        try:
+            from src.model_presets import list_all_providers, get_active_vendor_keys
+            return {
+                "status": "success",
+                "data": {
+                    "providers": list_all_providers(),
+                    "active_vendors": get_active_vendor_keys(),
+                },
+            }
+        except Exception as e:
+            return {"status": "error", "detail": f"获取供应商列表失败: {str(e)}"}
+
+    def save_provider(self, cfg):
+        """新增/更新供应商（内置走 overrides，自定义走 custom_providers）。"""
+        try:
+            from src.model_presets import save_provider as _save, list_all_providers
+            res = _save(cfg or {})
+            self._hot_reload_all_modules()
+            return {"status": "success", "data": {
+                "vendor_key": res["vendor_key"],
+                "builtin": res["builtin"],
+                "providers": list_all_providers(),
+            }}
+        except Exception as e:
+            import traceback
+            print(f"❌ [Bridge] 保存供应商失败: {traceback.format_exc()}")
+            return {"status": "error", "detail": f"保存供应商失败: {str(e)}"}
+
+    def delete_provider(self, vendor_key):
+        """删除自定义供应商（内置不可删）。"""
+        try:
+            from src.model_presets import delete_provider as _del, list_all_providers
+            _del(vendor_key)
+            return {"status": "success", "data": {"providers": list_all_providers()}}
+        except Exception as e:
+            return {"status": "error", "detail": str(e)}
+
+    def set_provider_enabled(self, vendor_key, enabled):
+        """启用/禁用供应商。"""
+        try:
+            from src.model_presets import set_provider_enabled as _toggle, list_all_providers
+            _toggle(vendor_key, enabled)
+            return {"status": "success", "data": {"providers": list_all_providers()}}
+        except Exception as e:
+            return {"status": "error", "detail": str(e)}
+
+    def test_provider_connection(self, cfg):
+        """
+        轻量连接测试：对 OpenAI 兼容供应商发 /models 或最小 chat 请求，验证 key+base_url 可用。
+        cfg = {"base_url": ..., "api_key": ..., "api_format": ..., "model": ...(可选)}
+        """
+        cfg = cfg or {}
+        base_url = (cfg.get("base_url") or "").strip().rstrip("/")
+        api_key = (cfg.get("api_key") or "").strip()
+        if not base_url:
+            return {"status": "error", "detail": "Base URL 为空"}
+        if not api_key:
+            return {"status": "error", "detail": "API Key 为空"}
+        try:
+            import urllib.request
+            import urllib.error
+            # 优先探测 /models（OpenAI 兼容标准只读端点）
+            url = base_url + "/models"
+            req = urllib.request.Request(url, headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            })
+            try:
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    code = resp.getcode()
+                    if 200 <= code < 300:
+                        return {"status": "success", "msg": f"连接成功（HTTP {code}）"}
+                    return {"status": "error", "detail": f"HTTP {code}"}
+            except urllib.error.HTTPError as he:
+                # 401/403 说明能连通但鉴权失败；404 说明端点不存在但服务可达
+                if he.code in (401, 403):
+                    return {"status": "error", "detail": f"鉴权失败（HTTP {he.code}），请检查 API Key"}
+                if he.code == 404:
+                    return {"status": "success", "msg": "服务可达（无 /models 端点，HTTP 404），Key 未验证"}
+                return {"status": "error", "detail": f"HTTP {he.code}: {he.reason}"}
+        except Exception as e:
+            return {"status": "error", "detail": f"连接失败: {str(e)}"}
 
     def _write_api_keys_to_env(self, api_keys: dict):
         """

@@ -3360,3 +3360,233 @@ async function saveVendorSettings() {
 }
 
 async function saveModelSettings() { await saveVendorSettings(); }
+
+// ================================================================
+// 🏪 供应商管理面板（商业版：客户自配供应商/中转站）
+// ================================================================
+
+let _allProviders = [];
+let _providerActiveVendors = {};
+
+async function openProviderManager() {
+  if (typeof pywebview === 'undefined' || !pywebview.api) {
+    showToast("⚠️ 桌面系统接口未就绪");
+    return;
+  }
+  await refreshProviderList();
+  cancelProviderEdit();
+  document.getElementById("providerManagerModal").classList.remove("hidden");
+}
+
+function closeProviderManager() {
+  const modal = document.getElementById("providerManagerModal");
+  if (modal) modal.classList.add("hidden");
+  // 关闭后刷新模型配置卡片，确保新供应商立即可选
+  if (typeof openModelSettingsModal === "function") {
+    pywebview.api.get_model_settings().then(function(res) {
+      if (res && res.status === "success") {
+        _cachedSlots = res.data.slots || _cachedSlots;
+        _cachedVendors = res.data.vendors || _cachedVendors;
+        _renderModelCards();
+      }
+    }).catch(function() {});
+  }
+}
+
+async function refreshProviderList() {
+  try {
+    const res = await pywebview.api.list_providers();
+    if (res.status !== "success") {
+      showCustomModal("⚠️ 获取供应商失败", res.detail || "未知错误");
+      return;
+    }
+    _allProviders = res.data.providers || [];
+    _providerActiveVendors = res.data.active_vendors || {};
+    _renderProviderList();
+  } catch (err) {
+    showCustomModal("⚠️ 接口异常", err.message || err);
+  }
+}
+
+function _isProviderInUse(vk) {
+  return Object.values(_providerActiveVendors).indexOf(vk) !== -1;
+}
+
+function _renderProviderList() {
+  const container = document.getElementById("providerListContainer");
+  if (!container) return;
+  container.innerHTML = "";
+
+  _allProviders.forEach(function(p) {
+    const inUse = _isProviderInUse(p.vendor_key);
+    const enabled = p.enabled !== false;
+    const keyDot = p.has_key ? "🟢" : "🔴";
+    const roles = (p.supported_roles || []).join(" / ") || "未配置模型";
+    const row = document.createElement("div");
+    row.className = "bg-[#05070E] border border-slate-800 rounded-xl px-3 py-2.5 flex items-center justify-between"
+      + (enabled ? "" : " opacity-50");
+    row.innerHTML =
+      '<div class="min-w-0 flex-1">'
+      + '<div class="flex items-center gap-2">'
+      + '<span class="text-[11px] font-semibold text-slate-200 truncate">' + _esc(p.vendor_name) + '</span>'
+      + (p.builtin ? '<span class="text-[8px] px-1.5 py-0.5 rounded-full bg-slate-800 text-slate-400">内置</span>'
+                   : '<span class="text-[8px] px-1.5 py-0.5 rounded-full bg-indigo-900/60 text-indigo-300">自定义</span>')
+      + (inUse ? '<span class="text-[8px] px-1.5 py-0.5 rounded-full bg-emerald-900/50 text-emerald-300">使用中</span>' : '')
+      + '<span class="text-[9px]">' + keyDot + '</span>'
+      + '</div>'
+      + '<div class="text-[8px] text-slate-600 font-mono truncate mt-0.5">' + _esc(p.base_url || '—') + '</div>'
+      + '<div class="text-[8px] text-slate-500 mt-0.5">' + _esc(p.api_format) + ' · ' + _esc(roles) + '</div>'
+      + '</div>'
+      + '<div class="flex items-center gap-1.5 shrink-0 ml-2">'
+      + '<button onclick="startEditProvider(\'' + p.vendor_key + '\')" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 rounded-lg border border-slate-750 cursor-pointer">编辑</button>'
+      + '<button onclick="toggleProviderEnabled(\'' + p.vendor_key + '\',' + (!enabled) + ')" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-[10px] rounded-lg border border-slate-750 cursor-pointer ' + (enabled ? 'text-amber-300' : 'text-emerald-300') + '">' + (enabled ? '禁用' : '启用') + '</button>'
+      + (p.builtin ? '' : '<button onclick="deleteProvider(\'' + p.vendor_key + '\')" class="px-2 py-1 bg-slate-800 hover:bg-red-900/60 text-[10px] text-red-300 rounded-lg border border-slate-750 cursor-pointer">删除</button>')
+      + '</div>';
+    container.appendChild(row);
+  });
+}
+
+function _esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function startAddProvider() {
+  _fillProviderForm({ vendor_key: "", vendor_name: "", base_url: "", api_key: "",
+    api_format: "openai_compatible", builtin: false,
+    default_models: {}, model_variants: [] }, "新增供应商");
+}
+
+function startEditProvider(vk) {
+  const p = _allProviders.find(function(x) { return x.vendor_key === vk; });
+  if (!p) return;
+  _fillProviderForm(p, "编辑：" + p.vendor_name);
+}
+
+function _fillProviderForm(p, title) {
+  document.getElementById("pe_vendor_key").value = p.vendor_key || "";
+  document.getElementById("pe_title").textContent = title;
+  document.getElementById("pe_name").value = p.vendor_name || "";
+  document.getElementById("pe_api_format").value = p.api_format || "openai_compatible";
+  document.getElementById("pe_base_url").value = p.base_url || "";
+  document.getElementById("pe_api_key").value = p.api_key || "";
+  var dm = p.default_models || {};
+  document.getElementById("pe_model_llm").value = dm.llm || "";
+  document.getElementById("pe_model_vlm").value = dm.vlm || "";
+  document.getElementById("pe_model_img").value = dm.img || "";
+  document.getElementById("pe_model_variants").value = (p.model_variants || []).join("\n");
+  var badge = document.getElementById("pe_builtin_badge");
+  var nameInput = document.getElementById("pe_name");
+  if (p.builtin) {
+    badge.classList.remove("hidden");
+    nameInput.setAttribute("disabled", "disabled");
+  } else {
+    badge.classList.add("hidden");
+    nameInput.removeAttribute("disabled");
+  }
+  var tr = document.getElementById("pe_test_result");
+  tr.classList.add("hidden"); tr.textContent = "";
+  document.getElementById("providerEditForm").classList.remove("hidden");
+}
+
+function cancelProviderEdit() {
+  const form = document.getElementById("providerEditForm");
+  if (form) form.classList.add("hidden");
+}
+
+function _collectProviderForm() {
+  var variants = (document.getElementById("pe_model_variants").value || "")
+    .split("\n").map(function(s) { return s.trim(); }).filter(function(s) { return s; });
+  return {
+    vendor_key: document.getElementById("pe_vendor_key").value || "",
+    vendor_name: document.getElementById("pe_name").value.trim(),
+    api_format: document.getElementById("pe_api_format").value,
+    base_url: document.getElementById("pe_base_url").value.trim(),
+    api_key: document.getElementById("pe_api_key").value.trim(),
+    models: {
+      llm: document.getElementById("pe_model_llm").value.trim(),
+      vlm: document.getElementById("pe_model_vlm").value.trim(),
+      img: document.getElementById("pe_model_img").value.trim()
+    },
+    model_variants: variants
+  };
+}
+
+async function submitProviderEdit() {
+  var cfg = _collectProviderForm();
+  if (!cfg.vendor_name) { showToast("⚠️ 请填写供应商名称"); return; }
+  if (!cfg.base_url) { showToast("⚠️ 请填写 Base URL"); return; }
+  try {
+    const res = await pywebview.api.save_provider(cfg);
+    if (res.status === "success") {
+      showToast("✅ 供应商已保存");
+      _allProviders = res.data.providers || _allProviders;
+      _renderProviderList();
+      cancelProviderEdit();
+    } else {
+      showCustomModal("⚠️ 保存失败", res.detail || "未知错误");
+    }
+  } catch (err) {
+    showCustomModal("⚠️ 接口异常", err.message || err);
+  }
+}
+
+async function deleteProvider(vk) {
+  const p = _allProviders.find(function(x) { return x.vendor_key === vk; });
+  if (!confirm("确定删除供应商「" + (p ? p.vendor_name : vk) + "」吗？")) return;
+  try {
+    const res = await pywebview.api.delete_provider(vk);
+    if (res.status === "success") {
+      showToast("🗑️ 已删除");
+      _allProviders = res.data.providers || _allProviders;
+      _renderProviderList();
+    } else {
+      showCustomModal("⚠️ 删除失败", res.detail || "未知错误");
+    }
+  } catch (err) {
+    showCustomModal("⚠️ 接口异常", err.message || err);
+  }
+}
+
+async function toggleProviderEnabled(vk, enabled) {
+  if (!enabled && _isProviderInUse(vk)) {
+    showToast("⚠️ 该供应商正在被某个模型位使用，请先切换后再禁用");
+    return;
+  }
+  try {
+    const res = await pywebview.api.set_provider_enabled(vk, enabled);
+    if (res.status === "success") {
+      _allProviders = res.data.providers || _allProviders;
+      _renderProviderList();
+    } else {
+      showCustomModal("⚠️ 操作失败", res.detail || "未知错误");
+    }
+  } catch (err) {
+    showCustomModal("⚠️ 接口异常", err.message || err);
+  }
+}
+
+async function testProviderConnection() {
+  var cfg = _collectProviderForm();
+  var tr = document.getElementById("pe_test_result");
+  tr.classList.remove("hidden");
+  tr.className = "text-[10px] text-slate-400";
+  tr.textContent = "⏳ 正在测试连接...";
+  try {
+    const res = await pywebview.api.test_provider_connection({
+      base_url: cfg.base_url, api_key: cfg.api_key,
+      api_format: cfg.api_format, model: cfg.models.llm || cfg.models.vlm || cfg.models.img
+    });
+    if (res.status === "success") {
+      tr.className = "text-[10px] text-emerald-400";
+      tr.textContent = "✅ " + (res.msg || "连接成功");
+    } else {
+      tr.className = "text-[10px] text-red-400";
+      tr.textContent = "❌ " + (res.detail || "连接失败");
+    }
+  } catch (err) {
+    tr.className = "text-[10px] text-red-400";
+    tr.textContent = "❌ " + (err.message || err);
+  }
+}
