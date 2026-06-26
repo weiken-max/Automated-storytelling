@@ -70,7 +70,7 @@ MAX_BEATS_PHASE2 = 10
 # ── Phase 3 专用常量与异常 ──────────────────────────────────────────────────
 MAX_VISION_LLM_RETRIES = 5  # 每个 Beat 最多重试次数（两步各自计入同一轮）
 # Phase 3 并行：同时处理的 Beat 数上限（单 Beat 内部仍为 tag→prompt 串行）。设为 1 即退回串行。
-PHASE3_MAX_WORKERS_DEFAULT = 3
+PHASE3_MAX_WORKERS_DEFAULT = 1  # 串行模式，避免多模态请求相互阻塞
 
 
 def _phase3_pool_workers(n_beats: int) -> int:
@@ -1541,7 +1541,8 @@ def _build_vlm_vision_payload(physical_anchors: dict, assets_to_generate: list) 
         vision_parts.append({
             "type": "image_url",
             "image_url": {
-                "url": f"data:image/png;base64,{img_data}"
+                "url": f"data:image/png;base64,{img_data}",
+                "detail": "low"
             }
         })
         
@@ -1679,7 +1680,7 @@ def _generate_visual_prompts(
         f'输出严格 JSON：{{"visual_prompts": [ ... 共 {n} 条 ... ], "per_shot_ref_keys": [ ... 共 {n} 行 ... ]}}'
     )
 
-    client = OpenAI(api_key=VLM_API_KEY, base_url=VLM_BASE_URL.rstrip("/"), timeout=120.0)
+    client = OpenAI(api_key=VLM_API_KEY, base_url=VLM_BASE_URL.rstrip("/"), timeout=1000.0)
     try:
         t_vis = time.perf_counter()
         

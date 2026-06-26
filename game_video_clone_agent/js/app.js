@@ -3135,8 +3135,13 @@ function deleteCustomVoice() {
 }
 
 // ================================================================
-// ⚙️ 全局模型配置面板交互逻辑
+// ⚙️ 模型配置面板 — 5卡手风琴版 v3.0
 // ================================================================
+
+
+let _cachedSlots = [];
+let _cachedVendors = {};
+
 async function openModelSettingsModal() {
   if (typeof pywebview === 'undefined' || !pywebview.api) {
     showToast("⚠️ 桌面系统接口未就绪，无法配置模型");
@@ -3148,69 +3153,9 @@ async function openModelSettingsModal() {
       showCustomModal("⚠️ 获取模型配置失败", res.detail || "未知错误");
       return;
     }
-    
-    const settings = res.data;
-    
-    // 初始化/同步 LLM Select
-    const llmSel = document.getElementById("settingLlmPreset");
-    const llmCustom = document.getElementById("settingLlmCustom");
-    if (llmSel && llmCustom) {
-      let isLlmPreset = Array.from(llmSel.options).some(opt => opt.value === settings.MODEL_LLM);
-      if (isLlmPreset) {
-        llmSel.value = settings.MODEL_LLM;
-        llmCustom.classList.add("hidden");
-      } else {
-        llmSel.value = "custom";
-        llmCustom.value = settings.MODEL_LLM;
-        llmCustom.classList.remove("hidden");
-      }
-    }
-    
-    // 初始化/同步 VLM Select
-    const vlmSel = document.getElementById("settingVlmPreset");
-    const vlmCustom = document.getElementById("settingVlmCustom");
-    if (vlmSel && vlmCustom) {
-      let isVlmPreset = Array.from(vlmSel.options).some(opt => opt.value === settings.MODEL_VLM);
-      if (isVlmPreset) {
-        vlmSel.value = settings.MODEL_VLM;
-        vlmCustom.classList.add("hidden");
-      } else {
-        vlmSel.value = "custom";
-        vlmCustom.value = settings.MODEL_VLM;
-        vlmCustom.classList.remove("hidden");
-      }
-    }
-    
-    // 初始化/同步 IMG Cast Select
-    const imgCastSel = document.getElementById("settingImgCastPreset");
-    const imgCastCustom = document.getElementById("settingImgCastCustom");
-    if (imgCastSel && imgCastCustom) {
-      let isImgPreset = Array.from(imgCastSel.options).some(opt => opt.value === settings.MODEL_IMG_CAST);
-      if (isImgPreset) {
-        imgCastSel.value = settings.MODEL_IMG_CAST;
-        imgCastCustom.classList.add("hidden");
-      } else {
-        imgCastSel.value = "custom";
-        imgCastCustom.value = settings.MODEL_IMG_CAST;
-        imgCastCustom.classList.remove("hidden");
-      }
-    }
-
-    // 初始化/同步 IMG Story Select
-    const imgStorySel = document.getElementById("settingImgStoryPreset");
-    const imgStoryCustom = document.getElementById("settingImgStoryCustom");
-    if (imgStorySel && imgStoryCustom) {
-      let isImgPreset = Array.from(imgStorySel.options).some(opt => opt.value === settings.MODEL_IMG_STORY);
-      if (isImgPreset) {
-        imgStorySel.value = settings.MODEL_IMG_STORY;
-        imgStoryCustom.classList.add("hidden");
-      } else {
-        imgStorySel.value = "custom";
-        imgStoryCustom.value = settings.MODEL_IMG_STORY;
-        imgStoryCustom.classList.remove("hidden");
-      }
-    }
-    
+    _cachedSlots = res.data.slots || [];
+    _cachedVendors = res.data.vendors || {};
+    _renderModelCards();
     document.getElementById("modelSettingsModal").classList.remove("hidden");
   } catch (err) {
     showCustomModal("⚠️ 获取接口异常", err.message || err);
@@ -3222,81 +3167,189 @@ function closeModelSettingsModal() {
   if (modal) modal.classList.add("hidden");
 }
 
-function syncModelPreset(role) {
-  const sel = document.getElementById(`setting${role}Preset`);
-  const customInput = document.getElementById(`setting${role}Custom`);
-  if (!sel || !customInput) return;
-  
-  if (sel.value === "custom") {
-    customInput.classList.remove("hidden");
-    customInput.focus();
-  } else {
-    customInput.classList.add("hidden");
-  }
+function _renderModelCards() {
+  const container = document.getElementById("modelCardsContainer");
+  if (!container) return;
+  container.innerHTML = "";
+
+  _cachedSlots.forEach(slot => {
+    const card = document.createElement("div");
+    card.className = "bg-[#05070E] border border-slate-800 rounded-xl overflow-hidden transition-all";
+
+    const hasKey = slot.masked_key && slot.masked_key.length > 0;
+    const statusColor = hasKey ? "text-emerald-400" : "text-red-400";
+    const statusDot = hasKey ? "🟢" : "🔴";
+
+    card.innerHTML = `
+      <div class="flex items-center justify-between px-3 py-2.5 cursor-pointer select-none hover:bg-[#0a0e1a] transition"
+           onclick="toggleModelCard('${slot.key}')">
+        <div class="flex items-center space-x-2.5 min-w-0">
+          <span class="text-sm">${slot.icon}</span>
+          <span class="text-[11px] font-semibold text-slate-200 whitespace-nowrap">${slot.name}</span>
+          <span class="text-[9px] text-slate-500 truncate">${slot.vendor_name} | ${slot.model}</span>
+        </div>
+        <div class="flex items-center space-x-2 shrink-0 ml-2">
+          <span class="${statusColor} text-[9px]">${statusDot}</span>
+          <span id="card_arrow_${slot.key}" class="text-[10px] text-slate-600 transition-transform duration-200">▶</span>
+        </div>
+      </div>
+      <div id="card_body_${slot.key}" class="hidden px-3 pb-3 pt-1 border-t border-slate-800/60 space-y-2.5">
+        <p class="text-[9px] text-slate-500">${slot.desc}</p>
+        <div>
+          <label class="text-[9px] text-slate-500 mb-1 block">厂商</label>
+          <select id="vendor_sel_${slot.key}" onchange="onCardVendorChange('${slot.key}')"
+                  class="w-full bg-[#0a0e1a] border border-slate-750 rounded-lg p-1.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none">
+          </select>
+          <div id="vendor_url_${slot.key}" class="text-[8px] text-slate-600 font-mono mt-0.5 truncate"></div>
+        </div>
+        <div>
+          <label class="text-[9px] text-slate-500 mb-1 block">API Key</label>
+          <div class="flex gap-1.5">
+            <input id="apikey_${slot.key}" type="password" value="${slot.api_key || ''}"
+                   class="flex-1 bg-[#0a0e1a] border border-slate-750 rounded-lg p-1.5 text-xs text-slate-200 font-mono focus:border-indigo-500 focus:outline-none">
+            <button onclick="event.stopPropagation(); togglePw('apikey_${slot.key}')"
+                    class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-400 rounded-lg border border-slate-750 cursor-pointer">👁️</button>
+          </div>
+        </div>
+        <div>
+          <label class="text-[9px] text-slate-500 mb-1 block">模型名</label>
+          <input id="model_${slot.key}" type="text" list="hist_${slot.key}" value="${slot.model}"
+                 class="w-full bg-[#0a0e1a] border border-slate-750 rounded-lg p-1.5 text-xs text-slate-200 font-mono focus:border-indigo-500 focus:outline-none">
+          <datalist id="hist_${slot.key}">
+            ${(() => {
+              var v = _cachedVendors[slot.vendor_key];
+              var vars = (v && v.model_variants) || [];
+              var hist = slot.model_history || [];
+              var all = vars.concat(hist.filter(function(h) { return vars.indexOf(h) === -1; }));
+              return all.map(function(m) { return '<option value="' + m + '">'; }).join("");
+            })()}
+          </datalist>
+        </div>
+      </div>
+    `;
+    container.appendChild(card);
+    setTimeout(() => _populateCardVendorSelect(slot.key, slot.vendor_key), 0);
+  });
 }
 
-async function saveModelSettings() {
-  if (typeof pywebview === 'undefined' || !pywebview.api) return;
-  
-  // LLM Model Name
-  const llmSel = document.getElementById("settingLlmPreset");
-  const llmCustom = document.getElementById("settingLlmCustom");
-  let llmModel = llmSel.value;
-  if (llmModel === "custom") {
-    llmModel = llmCustom.value.trim();
-  }
-  if (!llmModel) {
-    showToast("⚠️ 文本大模型名称不能为空！");
-    return;
-  }
-  
-  // VLM Model Name
-  const vlmSel = document.getElementById("settingVlmPreset");
-  const vlmCustom = document.getElementById("settingVlmCustom");
-  let vlmModel = vlmSel.value;
-  if (vlmModel === "custom") {
-    vlmModel = vlmCustom.value.trim();
-  }
-  if (!vlmModel) {
-    showToast("⚠️ 多模态识别模型名称不能为空！");
-    return;
-  }
-  
-  // IMG Cast Model Name
-  const imgCastSel = document.getElementById("settingImgCastPreset");
-  const imgCastCustom = document.getElementById("settingImgCastCustom");
-  let imgCastModel = imgCastSel.value;
-  if (imgCastModel === "custom") {
-    imgCastModel = imgCastCustom.value.trim();
-  }
-  if (!imgCastModel) {
-    showToast("⚠️ 定妆照生图模型名称不能为空！");
-    return;
-  }
+function _populateCardVendorSelect(slotKey, currentVendorKey) {
+  const sel = document.getElementById('vendor_sel_' + slotKey);
+  if (!sel) return;
+  sel.innerHTML = "";
+  Object.entries(_cachedVendors).forEach(([vk, v]) => {
+    const opt = document.createElement("option");
+    opt.value = vk;
+    opt.textContent = v.vendor_name + '  ' + (v.has_key ? "🟢" : "🔴");
+    if (vk === currentVendorKey) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  _updateCardVendorUrl(slotKey);
+}
 
-  // IMG Story Model Name
-  const imgStorySel = document.getElementById("settingImgStoryPreset");
-  const imgStoryCustom = document.getElementById("settingImgStoryCustom");
-  let imgStoryModel = imgStorySel.value;
-  if (imgStoryModel === "custom") {
-    imgStoryModel = imgStoryCustom.value.trim();
+function _updateCardVendorUrl(slotKey) {
+  const sel = document.getElementById('vendor_sel_' + slotKey);
+  const urlEl = document.getElementById('vendor_url_' + slotKey);
+  if (!sel || !urlEl) return;
+  const v = _cachedVendors[sel.value];
+  urlEl.textContent = v ? v.base_url : "";
+}
+
+function onCardVendorChange(slotKey) {
+  _updateCardVendorUrl(slotKey);
+  var sel = document.getElementById('vendor_sel_' + slotKey);
+  var modelInput = document.getElementById('model_' + slotKey);
+  var apiKeyInput = document.getElementById('apikey_' + slotKey);
+  if (!sel) return;
+  var v = _cachedVendors[sel.value];
+  if (!v) return;
+  // 更新 API Key 输入框
+  if (apiKeyInput) apiKeyInput.value = v.api_key || '';
+  // 更新模型名
+  var dm = v.default_models || {};
+  var def = "";
+  if (slotKey === "llm") def = dm.llm;
+  else if (slotKey === "vlm" || slotKey === "vlm_analyze") def = dm.vlm;
+  else def = dm.img;
+  if (def && modelInput) modelInput.value = def;
+  // 重建模型名历史 datalist（含当前厂商变体）
+  _rebuildModelDatalist(slotKey);
+}
+
+function _rebuildModelDatalist(slotKey) {
+  var dl = document.getElementById('hist_' + slotKey);
+  if (!dl) return;
+  dl.innerHTML = "";
+  var slot = _cachedSlots.find(function(s) { return s.key === slotKey; });
+  var history = (slot && slot.model_history) || [];
+  // 加当前厂商的默认模型名变体（如有）
+  var sel = document.getElementById('vendor_sel_' + slotKey);
+  if (sel) {
+    var v = _cachedVendors[sel.value];
+    if (v && v.model_variants) {
+      history = v.model_variants.concat(history.filter(function(h) { return v.model_variants.indexOf(h) === -1; }));
+    }
   }
-  if (!imgStoryModel) {
-    showToast("⚠️ 分镜图生图模型名称不能为空！");
-    return;
-  }
-  
-  const payload = {
-    "MODEL_LLM": llmModel,
-    "MODEL_VLM": vlmModel,
-    "MODEL_IMG_CAST": imgCastModel,
-    "MODEL_IMG_STORY": imgStoryModel
-  };
-  
+  history.forEach(function(m) {
+    var opt = document.createElement("option");
+    opt.value = m;
+    dl.appendChild(opt);
+  });
+}
+
+function toggleModelCard(slotKey) {
+  const body = document.getElementById('card_body_' + slotKey);
+  const arrow = document.getElementById('card_arrow_' + slotKey);
+  if (!body) return;
+  document.querySelectorAll('[id^="card_body_"]').forEach(function(b) {
+    if (b !== body) b.classList.add("hidden");
+  });
+  document.querySelectorAll('[id^="card_arrow_"]').forEach(function(a) {
+    if (a !== arrow) a.style.transform = "rotate(0deg)";
+  });
+  const isHidden = body.classList.contains("hidden");
+  body.classList.toggle("hidden");
+  arrow.style.transform = isHidden ? "rotate(90deg)" : "rotate(0deg)";
+}
+
+function togglePw(inputId) {
+  const inp = document.getElementById(inputId);
+  if (inp) inp.type = inp.type === "password" ? "text" : "password";
+}
+
+async function saveVendorSettings() {
+  if (typeof pywebview === 'undefined' || !pywebview.api) return;
+
+  var slots = {};
+  _cachedSlots.forEach(function(s) {
+    var vkEl = document.getElementById('vendor_sel_' + s.key);
+    var akEl = document.getElementById('apikey_' + s.key);
+    var mnEl = document.getElementById('model_' + s.key);
+    slots[s.key] = {
+      vendor_key: (vkEl && vkEl.value) || s.vendor_key,
+      api_key: (akEl && akEl.value) || "",
+      model: (mnEl && mnEl.value) || s.model
+    };
+  });
+
   try {
-    const res = await pywebview.api.save_model_settings(payload);
+    const res = await pywebview.api.save_vendor_settings({ slots: slots });
     if (res.status === "success") {
-      showToast("🎉 模型配置保存成功并已应用！");
+      showToast("🎉 配置已保存并热更新！");
+      if (res.data) {
+        _cachedSlots = _cachedSlots.map(function(s) {
+          var vk = (res.data.active_vendors && res.data.active_vendors[s.key]) || s.vendor_key;
+          var v = (res.data.vendors && res.data.vendors[vk]) || {};
+          return {
+            key: s.key, name: s.name, icon: s.icon, desc: s.desc,
+            vendor_key: vk,
+            vendor_name: v.vendor_name || s.vendor_name,
+            masked_key: v.masked_key || s.masked_key,
+            model: res.data['MODEL_' + s.key.toUpperCase()] || s.model,
+            model_history: s.model_history, base_url: v.base_url || s.base_url
+          };
+        });
+        _cachedVendors = res.data.vendors || _cachedVendors;
+      }
       closeModelSettingsModal();
     } else {
       showCustomModal("⚠️ 保存失败", res.detail || "未知错误");
@@ -3306,4 +3359,4 @@ async function saveModelSettings() {
   }
 }
 
-
+async function saveModelSettings() { await saveVendorSettings(); }

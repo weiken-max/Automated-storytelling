@@ -22,9 +22,10 @@ if load_dotenv:
 #  🚩 三分离：LLM / VLM / IMG 各自独立选厂商
 # ================================================================
 ACTIVE_LLM_VENDOR = "deepseek_v4_pro"    # DeepSeek V4 Pro（OpenAI 兼容）
-ACTIVE_VLM_VENDOR = "gribo_text"    # 与 LLM 同源；分镜多模态
+ACTIVE_VLM_VENDOR = "gribo_text"   # VLM 多模态（Google 模型经 Gribo 中转）
 ACTIVE_IMG_VENDOR = "gribo_img"          # ✅ 生图仍走 Gribo
-TRANSLATE_LLM_VENDOR = "deepseek_v4_flash"  # 翻译专用（DeepSeek V4 Flash，轻量快速）
+ACTIVE_VLM_ANALYZE_VENDOR = "gribo_text"  # 🔍 VLM 识图分析（默认同 VLM）
+TRANSLATE_LLM_VENDOR = "deepseek_v4_flash"  # 翻译专用
 # 备选厂商（降级时才改）："doubao_v4" | "aliyun_dashscope" | "deepseek_v4_pro"
 
 
@@ -172,6 +173,24 @@ VENDORS_PRESETS = {
     },
 
     # ----------------------------------------------------------
+    # 🌋 火山方舟 ARK (VLM 多模态专用 — OpenAI 兼容 Bearer Token)
+    # 鉴权：标准 OpenAI 客户端 + Bearer Token；model 填推理接入点 ID (ep-/endpoint id)
+    # ----------------------------------------------------------
+    "volc_ark_vlm": {
+        "vendor_name": "火山方舟 ARK (VLM 多模态)",
+        "api_key": os.getenv("VOLC_ARK_API_KEY", ""),
+        "app_secret": "",
+        "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+        "dashscope_base_http": "",
+        "models": {
+            "vlm": "doubao-seed-2-1-turbo-260628",
+        },
+        "extra_params": {
+            "protocol": "openai_compatible",
+        }
+    },
+
+    # ----------------------------------------------------------
     # 📝 Gribo Text (VLM / LLM 专用)
     # ----------------------------------------------------------
     "gribo_text": {
@@ -219,6 +238,7 @@ def _get_config(vendor_key: str, role: str) -> dict:
 _llm_cfg  = _get_config(ACTIVE_LLM_VENDOR, "LLM")
 _vlm_cfg  = _get_config(ACTIVE_VLM_VENDOR, "VLM")
 _img_cfg  = _get_config(ACTIVE_IMG_VENDOR, "IMG")
+_vlm_analyze_cfg = _get_config(ACTIVE_VLM_ANALYZE_VENDOR, "VLM ANALYZE")
 
 # ── LLM 相关 ──────────────────────────────────────────
 LLM_API_KEY          = _llm_cfg["api_key"]
@@ -236,6 +256,11 @@ VLM_BASE_URL         = _vlm_cfg["base_url"]
 VLM_DASHSCOPE_HTTP   = _vlm_cfg.get("dashscope_base_http", "")
 VLM_COMPAT_URL       = _vlm_cfg["base_url"]   # OpenAI 兼容 URL
 MODEL_VLM            = _vlm_cfg["models"]["vlm"]
+
+# ── VLM 识图分析（分析用户上传的定妆照，写提示词）───────
+VLM_ANALYZE_API_KEY  = _vlm_analyze_cfg["api_key"]
+VLM_ANALYZE_BASE_URL = _vlm_analyze_cfg["base_url"]
+MODEL_VLM_ANALYZE    = _vlm_analyze_cfg["models"].get("vlm", MODEL_VLM)
 
 # ── IMG 相关 ──────────────────────────────────────────
 IMG_API_KEY          = _img_cfg["api_key"]
@@ -259,37 +284,361 @@ MODELS               = _img_cfg["models"]
 # ⚙️ 动态加载本地自定义模型名覆盖 (data/model_settings.json)
 # ================================================================
 def load_dynamic_settings():
-    global MODEL_LLM, MODEL_VLM, MODEL_IMG, MODEL_IMG_CAST, MODEL_IMG_STORY, MODELS
+    global MODEL_LLM, MODEL_VLM, MODEL_VLM_ANALYZE, MODEL_IMG, MODEL_IMG_CAST, MODEL_IMG_STORY, MODELS
+    global ACTIVE_LLM_VENDOR, ACTIVE_VLM_VENDOR, ACTIVE_IMG_VENDOR, ACTIVE_VLM_ANALYZE_VENDOR
+    global LLM_API_KEY, LLM_BASE_URL, VLM_API_KEY, VLM_BASE_URL, IMG_API_KEY, IMG_BASE_URL
+    global VLM_ANALYZE_API_KEY, VLM_ANALYZE_BASE_URL
     import json
     settings_file = Path(__file__).resolve().parent.parent / "data" / "model_settings.json"
     if settings_file.exists():
         try:
             with open(settings_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            if "MODEL_LLM" in data and data["MODEL_LLM"]:
+
+            # 1. 恢复厂商绑定（持久化厂商选择）
+            stored_vendors = data.get("active_vendors", {})
+            if stored_vendors.get("llm"):
+                ACTIVE_LLM_VENDOR = stored_vendors["llm"]
+            if stored_vendors.get("vlm"):
+                ACTIVE_VLM_VENDOR = stored_vendors["vlm"]
+            if stored_vendors.get("vlm_analyze"):
+                ACTIVE_VLM_ANALYZE_VENDOR = stored_vendors["vlm_analyze"]
+            if stored_vendors.get("img_cast") or stored_vendors.get("img_story"):
+                ACTIVE_IMG_VENDOR = stored_vendors.get("img_cast") or stored_vendors.get("img_story") or ACTIVE_IMG_VENDOR
+
+            # 2. 重新计算各厂商的 key/url（因为厂商可能变了）
+            _llm_cfg = VENDORS_PRESETS.get(ACTIVE_LLM_VENDOR, {})
+            _vlm_cfg = VENDORS_PRESETS.get(ACTIVE_VLM_VENDOR, {})
+            _img_cfg = VENDORS_PRESETS.get(ACTIVE_IMG_VENDOR, {})
+            _vlm_analyze_cfg = VENDORS_PRESETS.get(ACTIVE_VLM_ANALYZE_VENDOR, _vlm_cfg)
+            LLM_API_KEY = _llm_cfg.get("api_key", "")
+            LLM_BASE_URL = _llm_cfg.get("base_url", "")
+            VLM_API_KEY = _vlm_cfg.get("api_key", "")
+            VLM_BASE_URL = _vlm_cfg.get("base_url", "")
+            IMG_API_KEY = _img_cfg.get("api_key", "")
+            IMG_BASE_URL = _img_cfg.get("base_url", "")
+            VLM_ANALYZE_API_KEY = _vlm_analyze_cfg.get("api_key", VLM_API_KEY)
+            VLM_ANALYZE_BASE_URL = _vlm_analyze_cfg.get("base_url", VLM_BASE_URL)
+
+            # 3. 加载模型名覆盖
+            if data.get("MODEL_LLM"):
                 MODEL_LLM = data["MODEL_LLM"]
-            if "MODEL_VLM" in data and data["MODEL_VLM"]:
+            if data.get("MODEL_VLM"):
                 MODEL_VLM = data["MODEL_VLM"]
-            
-            # 加载分离的定妆与分镜生图模型
-            if "MODEL_IMG_CAST" in data and data["MODEL_IMG_CAST"]:
+            if data.get("MODEL_VLM_ANALYZE"):
+                MODEL_VLM_ANALYZE = data["MODEL_VLM_ANALYZE"]
+
+            if data.get("MODEL_IMG_CAST"):
                 MODEL_IMG_CAST = data["MODEL_IMG_CAST"]
-            elif "MODEL_IMG" in data and data["MODEL_IMG"]:
+            elif data.get("MODEL_IMG"):
                 MODEL_IMG_CAST = data["MODEL_IMG"]
-                
-            if "MODEL_IMG_STORY" in data and data["MODEL_IMG_STORY"]:
+
+            if data.get("MODEL_IMG_STORY"):
                 MODEL_IMG_STORY = data["MODEL_IMG_STORY"]
-            elif "MODEL_IMG" in data and data["MODEL_IMG"]:
+            elif data.get("MODEL_IMG"):
                 MODEL_IMG_STORY = data["MODEL_IMG"]
-                
-            # MODEL_IMG 默认为分镜图模型以保证向后兼容
+
             MODEL_IMG = MODEL_IMG_STORY
             if MODELS and isinstance(MODELS, dict):
                 MODELS["img"] = MODEL_IMG
-                
-            print(f"🧠 [model_presets] Loaded dynamic overrides: LLM={MODEL_LLM}, VLM={MODEL_VLM}, IMG_CAST={MODEL_IMG_CAST}, IMG_STORY={MODEL_IMG_STORY}")
+
+            print(f"🧠 [model_presets] Loaded overrides: LLM={MODEL_LLM}, VLM={MODEL_VLM}, IMG_CAST={MODEL_IMG_CAST}, IMG_STORY={MODEL_IMG_STORY}")
+            print(f"   Vendors: LLM={ACTIVE_LLM_VENDOR}, VLM={ACTIVE_VLM_VENDOR}, IMG={ACTIVE_IMG_VENDOR}")
         except Exception as e:
             print(f"⚠️ [model_presets] Failed to load dynamic settings: {e}")
 
 load_dynamic_settings()
+
+
+# ================================================================
+# 🔄 动态厂商切换（供前端 UI / start_app.py 调用）
+# ================================================================
+
+# 厂商 key → .env 环境变量名的映射表（用于 API Key 读写）
+VENDOR_ENV_KEY_MAP = {
+    "aliyun_dashscope": "ALIYUN_DASHSCOPE_API_KEY",
+    "deepseek_v4_pro":    "DEEPSEEK_API_KEY",
+    "deepseek_v4_flash":  "DEEPSEEK_API_KEY",
+    "doubao_v4":          "DOUBAO_V4_API_KEY",
+    "doubao":             "DOUBAO_API_KEY",
+    "nano_banana":        "NANO_BANANA_API_KEY",
+    "starflow_liblib":    "STARFLOW_LIBLIB_API_KEY",
+    "gribo_text":         "GRIBO_TEXT_API_KEY",
+    "gribo_img":          "GRIBO_IMG_API_KEY",
+    "volc_ark_vlm":       "VOLC_ARK_API_KEY",
+}
+
+# 角色标识 → 对应 ACTIVE_*_VENDOR 变量名
+ROLE_TO_ACTIVE_VAR = {
+    "llm":         "ACTIVE_LLM_VENDOR",
+    "vlm":         "ACTIVE_VLM_VENDOR",
+    "vlm_analyze": "ACTIVE_VLM_ANALYZE_VENDOR",
+    "img_cast":    "ACTIVE_IMG_VENDOR",
+    "img_story":   "ACTIVE_IMG_VENDOR",
+}
+
+
+def get_vendor_list(active_vendor_keys: dict = None) -> list:
+    """
+    返回厂商的公开信息列表（自动合并同 key 的变体，如 DeepSeek Pro/Flash → 一个 DeepSeek）。
+    如果提供 active_vendor_keys，则只返回 has_key=true 的厂商 + 当前正在用的厂商。
+    每项包含: vendor_key, vendor_name, base_url, has_key, masked_key, supported_roles,
+               default_models, model_variants
+    """
+    active_keys_set = set(active_vendor_keys.values()) if active_vendor_keys else set()
+
+    # 第一遍：收集所有有 key 的厂商（原始条目）
+    raw = []
+    for vk, cfg in VENDORS_PRESETS.items():
+        has_key = bool(cfg.get("api_key", "").strip())
+        if active_vendor_keys and not has_key and vk not in active_keys_set:
+            continue
+        api_key_raw = cfg.get("api_key", "")
+        masked_key = api_key_raw[:8] + "***" if len(api_key_raw) > 12 else (api_key_raw[:4] + "***" if api_key_raw else "")
+        models = cfg.get("models", {})
+        supported_roles = []
+        if models.get("llm"): supported_roles.append("llm")
+        if models.get("vlm"): supported_roles.append("vlm")
+        if models.get("img"): supported_roles.append("img")
+        env_key = VENDOR_ENV_KEY_MAP.get(vk, "")
+        raw.append({
+            "vendor_key": vk,
+            "vendor_name": cfg.get("vendor_name", vk),
+            "base_url": cfg.get("base_url", ""),
+            "has_key": has_key,
+            "masked_key": masked_key,
+            "supported_roles": supported_roles,
+            "default_models": {
+                "llm": models.get("llm", ""),
+                "vlm": models.get("vlm", ""),
+                "img": models.get("img", ""),
+            },
+            "_env_key": env_key,
+            "_base_url": cfg.get("base_url", ""),
+            "_model_names": list(dict.fromkeys(m for m in models.values() if m)),
+        })
+
+    # 第二遍：按 base_url 合并同厂商变体（同一 base_url = 同一厂商）
+    # 如果某个 variant 是当前正在用的 active key，则不合并
+    groups = {}       # base_url → merged entry
+    alias_map = {}    # 所有 variant key → primary key
+    for entry in raw:
+        gk = entry["_base_url"]  # 主分组键：base_url
+        if gk not in groups:
+            groups[gk] = {
+                "vendor_key": entry["vendor_key"],
+                "vendor_name": _simplify_vendor_name(entry["vendor_name"]),
+                "base_url": entry["base_url"],
+                "has_key": entry["has_key"],
+                "masked_key": entry["masked_key"],
+                "supported_roles": list(entry["supported_roles"]),
+                "default_models": {
+                    "llm": entry["default_models"]["llm"],
+                    "vlm": entry["default_models"]["vlm"],
+                    "img": entry["default_models"]["img"],
+                },
+                "model_variants": list(entry["_model_names"]),
+            }
+        else:
+            g = groups[gk]
+            for r in entry["supported_roles"]:
+                if r not in g["supported_roles"]:
+                    g["supported_roles"].append(r)
+            for role in ["llm", "vlm", "img"]:
+                if not g["default_models"].get(role) and entry["default_models"].get(role):
+                    g["default_models"][role] = entry["default_models"][role]
+            for m in entry["_model_names"]:
+                if m not in g["model_variants"]:
+                    g["model_variants"].append(m)
+        alias_map[entry["vendor_key"]] = groups[gk]["vendor_key"]
+
+    # 更新 active_vendor_keys 中的别名 → 主 key（透明重映射）
+    if active_vendor_keys:
+        for role_key, vk in list(active_vendor_keys.items()):
+            if vk in alias_map and alias_map[vk] != vk:
+                active_vendor_keys[role_key] = alias_map[vk]
+
+    # 剥离内部字段，产出最终列表
+    result = []
+    for gk, g in groups.items():
+        g.pop("_aliases", None)
+        g.pop("_env_key", None)
+        g.pop("_base_url", None)
+        g.pop("_model_names", None)
+        # 补齐原始 API Key（本地桌面，安全可控）
+        vk = g["vendor_key"]
+        g["api_key"] = VENDORS_PRESETS.get(vk, {}).get("api_key", "")
+        result.append(g)
+
+    return result
+
+
+def _simplify_vendor_name(name: str) -> str:
+    """去掉厂商名中的模型后缀，如 'DeepSeek V4 Pro' → 'DeepSeek', 'Gribo Text' → 'Gribo'"""
+    import re
+    name = re.sub(r'\s*\(.*?\)\s*$', '', name)
+    name = re.sub(r'\s+V\d+(\s+(Pro|Flash|Max|Lite|Turbo|Mini))?$', '', name, flags=re.IGNORECASE)
+    name = re.sub(r'\s+Seedream\s*[\d.]+$', '', name, flags=re.IGNORECASE)
+    name = re.sub(r'\s+(Text|Image|Img)(\s+.*)?$', '', name, flags=re.IGNORECASE)
+    name = re.sub(r'\s+(ARK)(\s+.*)?$', '', name, flags=re.IGNORECASE)
+    return name.strip()
+    return name.strip()
+
+
+def get_active_vendor_keys() -> dict:
+    """
+    返回当前各角色绑定的厂商 key。
+    """
+    return {
+        "llm": ACTIVE_LLM_VENDOR,
+        "vlm": ACTIVE_VLM_VENDOR,
+        "vlm_analyze": ACTIVE_VLM_ANALYZE_VENDOR,
+        "img_cast": ACTIVE_IMG_VENDOR,
+        "img_story": ACTIVE_IMG_VENDOR,
+    }
+
+
+def get_vendor_env_key(vendor_key: str) -> str:
+    """获取厂商对应的 .env 环境变量名"""
+    return VENDOR_ENV_KEY_MAP.get(vendor_key, "")
+
+
+def switch_vendor(role: str, vendor_key: str) -> dict:
+    """
+    动态切换某角色到指定厂商，并重新计算所有导出变量。
+
+    role: "llm" | "vlm" | "vlm_analyze" | "img_cast" | "img_story"
+    """
+    global ACTIVE_LLM_VENDOR, ACTIVE_VLM_VENDOR, ACTIVE_VLM_ANALYZE_VENDOR, ACTIVE_IMG_VENDOR
+    global LLM_API_KEY, LLM_BASE_URL, LLM_DASHSCOPE_HTTP, MODEL_LLM
+    global VLM_API_KEY, VLM_BASE_URL, VLM_DASHSCOPE_HTTP, VLM_COMPAT_URL, MODEL_VLM
+    global VLM_ANALYZE_API_KEY, VLM_ANALYZE_BASE_URL, MODEL_VLM_ANALYZE
+    global IMG_API_KEY, IMG_BASE_URL, IMG_DASHSCOPE_HTTP, MODEL_IMG
+    global MODEL_IMG_CAST, MODEL_IMG_STORY
+    global TRANSLATE_MODEL, API_KEY, APP_SECRET, BASE_URL, DASHSCOPE_BASE_HTTP, EXTRA_PARAMS, MODELS
+
+    cfg = VENDORS_PRESETS.get(vendor_key)
+    if not cfg:
+        raise ValueError(f"未找到厂商预设: {vendor_key}")
+
+    if role in ("llm",):
+        ACTIVE_LLM_VENDOR = vendor_key
+    elif role in ("vlm",):
+        ACTIVE_VLM_VENDOR = vendor_key
+    elif role in ("vlm_analyze",):
+        ACTIVE_VLM_ANALYZE_VENDOR = vendor_key
+    elif role in ("img_cast", "img_story"):
+        ACTIVE_IMG_VENDOR = vendor_key
+    else:
+        raise ValueError(f"未知角色: {role}（应为 llm/vlm/vlm_analyze/img_cast/img_story）")
+
+    # 重新计算所有导出变量
+    _llm_cfg = _get_config(ACTIVE_LLM_VENDOR, "LLM")
+    _vlm_cfg = _get_config(ACTIVE_VLM_VENDOR, "VLM")
+    _img_cfg = _get_config(ACTIVE_IMG_VENDOR, "IMG")
+    _vlm_analyze_cfg = _get_config(ACTIVE_VLM_ANALYZE_VENDOR, "VLM ANALYZE")
+
+    LLM_API_KEY        = _llm_cfg["api_key"]
+    LLM_BASE_URL       = _llm_cfg["base_url"]
+    LLM_DASHSCOPE_HTTP = _llm_cfg.get("dashscope_base_http", "")
+    MODEL_LLM          = _llm_cfg["models"]["llm"]
+
+    VLM_API_KEY        = _vlm_cfg["api_key"]
+    VLM_BASE_URL       = _vlm_cfg["base_url"]
+    VLM_DASHSCOPE_HTTP = _vlm_cfg.get("dashscope_base_http", "")
+    VLM_COMPAT_URL     = _vlm_cfg["base_url"]
+    MODEL_VLM          = _vlm_cfg["models"].get("vlm", "")
+
+    VLM_ANALYZE_API_KEY  = _vlm_analyze_cfg["api_key"]
+    VLM_ANALYZE_BASE_URL = _vlm_analyze_cfg["base_url"]
+    MODEL_VLM_ANALYZE    = _vlm_analyze_cfg["models"].get("vlm", MODEL_VLM)
+
+    IMG_API_KEY        = _img_cfg["api_key"]
+    IMG_BASE_URL       = _img_cfg["base_url"]
+    IMG_DASHSCOPE_HTTP = _img_cfg.get("dashscope_base_http", "")
+    MODEL_IMG          = _img_cfg["models"].get("img", "")
+    IMG_EXTRA_PARAMS   = _img_cfg.get("extra_params", {})
+
+    MODEL_IMG_CAST     = MODEL_IMG
+    MODEL_IMG_STORY    = MODEL_IMG
+
+    # 向后兼容别名
+    API_KEY             = IMG_API_KEY
+    APP_SECRET          = _img_cfg.get("app_secret", "")
+    BASE_URL            = IMG_BASE_URL
+    DASHSCOPE_BASE_HTTP = IMG_DASHSCOPE_HTTP
+    EXTRA_PARAMS        = IMG_EXTRA_PARAMS
+    MODELS              = _img_cfg["models"]
+
+    result = {
+        "role": role,
+        "vendor_key": vendor_key,
+        "vendor_name": cfg.get("vendor_name", vendor_key),
+        "base_url": cfg.get("base_url", ""),
+        "model": {
+            "llm": MODEL_LLM,
+            "vlm": MODEL_VLM,
+            "vlm_analyze": MODEL_VLM_ANALYZE,
+            "img_cast": MODEL_IMG_CAST,
+            "img_story": MODEL_IMG_STORY,
+        }
+    }
+
+    print(f"🔄 [model_presets] 切换 {role} → {cfg.get('vendor_name')} | LLM={MODEL_LLM}, VLM={MODEL_VLM}, IMG={MODEL_IMG}")
+    return result
+
+
+# ================================================================
+# 📝 模型名历史记忆（供前端 model_history 下拉）
+# ================================================================
+
+def get_model_history(slot_key: str) -> list:
+    """读取某 slot 的历史模型名列表（不含当前值）"""
+    import json
+    settings_file = Path(__file__).resolve().parent.parent / "data" / "model_settings.json"
+    try:
+        if settings_file.exists():
+            with open(settings_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            history = data.get("model_history", {}).get(slot_key, [])
+            if isinstance(history, list):
+                return history
+    except Exception:
+        pass
+    return []
+
+
+def save_model_history(slot_key: str, model_name: str):
+    """保存某 slot 的当前模型名到历史列表（去重，最大 20 条）"""
+    import json
+    settings_file = Path(__file__).resolve().parent.parent / "data" / "model_settings.json"
+
+    data = {}
+    if settings_file.exists():
+        try:
+            with open(settings_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            pass
+
+    history = data.get("model_history", {})
+    if not isinstance(history, dict):
+        history = {}
+
+    slot_history = history.get(slot_key, [])
+    if not isinstance(slot_history, list):
+        slot_history = []
+
+    # 去重 + 加到头 + 截断
+    if model_name in slot_history:
+        slot_history.remove(model_name)
+    slot_history.insert(0, model_name)
+    slot_history = slot_history[:20]
+
+    history[slot_key] = slot_history
+    data["model_history"] = history
+
+    settings_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(settings_file, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
 

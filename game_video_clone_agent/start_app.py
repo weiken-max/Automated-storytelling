@@ -135,7 +135,7 @@ def _get_channel_assets_config(mode_path: str) -> list:
     - 自定义频道: 从 data/channels_presets.json 中加载
     """
     m = str(mode_path).upper()
-    
+
     # 兼容经典剧情模式
     if "DRAMA" in m or m in ("RED", "BLUE", "ROLEPLAY"):
         return [
@@ -143,7 +143,7 @@ def _get_channel_assets_config(mode_path: str) -> list:
             {"label": "核心场景", "type": "scene"},
             {"label": "线索道具", "type": "prop"}
         ]
-    
+
     # 尝试从 channels_presets.json 读取自定义频道的 assets_config
     try:
         channels_file = os.path.join(BASE_DIR, "data", "channels_presets.json")
@@ -175,19 +175,19 @@ def _extract_entities_manually(text: str, mode_path: str = "RED"):
 
     assets_config = _get_channel_assets_config(mode_path)
     N = len(assets_config)
-    
+
     labels = [ast["label"] for ast in assets_config]
     types = [ast["type"] for ast in assets_config]
-    
+
     print(f"[Bridge] 正在为 {mode_path} 提炼 {N} 个核心视觉要素: {labels}...")
-    
+
     sys_prompt = f"""你是一个专业的剧本视频制作分析师。请读下方文本，根据当前频道的画面元素配置，精确提炼出【{N}个最核心视觉元素】。
 我们需要的元素依次是：
 """
     for idx, (lbl, typ) in enumerate(zip(labels, types)):
         typ_ch = "人物角色" if typ == "character" else ("背景场景" if typ == "scene" else "实体道具")
         sys_prompt += f"{idx + 1}. 【{lbl}】({typ_ch})\n"
-        
+
     sys_prompt += f"""
 请严格按顺序和要求进行提炼，仅返回一个中文 JSON 数组（包含这 {N} 个词，例如：{json.dumps([f"{lbl}示例" for lbl in labels], ensure_ascii=False)}），不要包含任何解释、分析或 markdown 语法包裹的围栏。
 """
@@ -206,7 +206,7 @@ def _extract_entities_manually(text: str, mode_path: str = "RED"):
         content = response.choices[0].message.content.strip()
         if "```" in content:
             content = content.split("```")[1].replace("json", "").strip()
-        
+
         res = json.loads(content)
         if isinstance(res, list) and len(res) >= N:
             return res[:N]
@@ -226,19 +226,19 @@ def _generate_cast_prompts_via_llm(topic: str, synopsis_text: str, entities: lis
     mode_path = GLOBAL_STATE.get("mode_path", "RED")
     print(f"[Bridge] 正在调用大模型为频道 {mode_path} 动态设计符合故事背景的视觉描述...")
     client = planner.get_client()
-    
+
     # 动态获取当前频道资产配置
     assets_config = _get_channel_assets_config(mode_path)
     N = len(assets_config)
-    
+
     labels = [ast["label"] for ast in assets_config]
     types = [ast["type"] for ast in assets_config]
-    
+
     # 保证 entities 长度对齐
     ents = list(entities)
     while len(ents) < N:
         ents.append(labels[len(ents)])
-        
+
     # 1. 默认模板备用
     ref_anchor_lower = str(config.REF_STYLE_ANCHOR or "").lower()
     is_cyanide_style = "cyanide" in ref_anchor_lower or "stickman" in ref_anchor_lower
@@ -252,7 +252,7 @@ def _generate_cast_prompts_via_llm(topic: str, synopsis_text: str, entities: lis
         "scene": "A flat 2D vector style minimalist cartoon background scenery. Flat shades, no character.",
         "prop": "A flat 2D vector icon cartoon object. Primitive shape, flat color fill, white background."
     }
-    
+
     # 2. 从 custom_template 解析用户预设
     baseline_prompts = []
     for lbl, typ in zip(labels, types):
@@ -271,14 +271,14 @@ def _generate_cast_prompts_via_llm(topic: str, synopsis_text: str, entities: lis
                     if match_typ:
                         tpl = match_typ.group(1).strip()
         baseline_prompts.append(tpl)
-        
+
     # 3. 构造大模型 Prompt
     sys_prompt = f"""You are a master concept designer and visual storyteller for a vector comic pipeline.
 Your job is to write detailed narrative-driven visual prompt descriptions for {N} elements based on the topic "{topic}" and the story:
 """
     for idx, (lbl, typ, ent) in enumerate(zip(labels, types, ents)):
         sys_prompt += f"{idx + 1}. Element [{lbl}]: representing \"{ent}\" (Type: {typ})\n"
-        
+
     sys_prompt += f"""
 Output ONLY a raw JSON object where keys are the EXACT labels: {json.dumps(labels, ensure_ascii=False)}.
 Each value must be a highly detailed English paragraph (60-90 words, no bullet lists, no markdown) containing rich, story-specific visual details.
@@ -286,7 +286,7 @@ You MUST follow the style and structure constraints of these baseline templates,
 """
     for lbl, tpl, ent in zip(labels, baseline_prompts, ents):
         sys_prompt += f"- For element \"{lbl}\" (representing \"{ent}\"): Expand upon the baseline template: \"{tpl}\"\n"
-        
+
     sys_prompt += f"""
 Format:
 {{
@@ -295,9 +295,9 @@ Format:
         comma = "," if idx < N - 1 else ""
         sys_prompt += f'  "{lbl}": "..."{comma}\n'
     sys_prompt += "}"
-    
+
     user_content = f"Story Synopsis:\n{synopsis_text}"
-    
+
     try:
         response = client.chat.completions.create(
             model=config.MODEL_LLM,
@@ -312,7 +312,7 @@ Format:
         if "```" in content:
             content = content.split("```")[1].replace("json", "").strip()
         res = json.loads(content)
-        
+
         cast_prompt_parts = []
         for lbl in labels:
             desc = res.get(lbl, "").strip()
@@ -322,7 +322,7 @@ Format:
                         desc = v.strip()
                         break
             cast_prompt_parts.append(f"[{lbl}]\\n{desc}")
-            
+
         cast_prompt = "\\n\\n".join(cast_prompt_parts)
         print("[Bridge] 动态定妆提示词大模型构思成功！")
         return cast_prompt
@@ -450,35 +450,64 @@ class DesktopApiBridge:
     # ──────────────────────────────────────────────
     def get_model_settings(self):
         """
-        获取当前模型配置及可选预设
+        获取当前模型配置（5卡插槽式，含厂商列表与模型历史）
         """
         try:
-            from src.model_presets import MODEL_LLM, MODEL_VLM, MODEL_IMG_CAST, MODEL_IMG_STORY
-            preset_text_models = [
-                "deepseek-v4-pro",
-                "gemini-1.5-pro",
-                "gemini-2.5-flash"
+            from src.model_presets import (
+                MODEL_LLM, MODEL_VLM, MODEL_VLM_ANALYZE, MODEL_IMG_CAST, MODEL_IMG_STORY,
+                get_vendor_list, get_active_vendor_keys, get_model_history,
+                VENDORS_PRESETS,
+            )
+            active_vendors = get_active_vendor_keys()
+            vendors_list = get_vendor_list(active_vendor_keys=active_vendors)
+
+            # 构建厂商字典（已过滤：只含已配key + 当前在用）
+            vendors = {}
+            for v in vendors_list:
+                vendors[v["vendor_key"]] = v
+
+            # 5 个模型插槽
+            SLOT_DEFS = [
+                {"key": "llm",         "name": "LLM 文本大模型",   "icon": "🧠",
+                 "desc": "剧本润色 / 大纲生成 / Beat 切分"},
+                {"key": "vlm",         "name": "VLM 分镜视觉",     "icon": "👁️",
+                 "desc": "Phase3 看定妆照写分镜视觉提示词"},
+                {"key": "vlm_analyze", "name": "VLM 识图分析",     "icon": "🔍",
+                 "desc": "用户上传自定义定妆照后，VLM 识图并写提示词"},
+                {"key": "img_cast",    "name": "定妆生图",         "icon": "🖼️",
+                 "desc": "生成角色定妆照 / 场景道具底图"},
+                {"key": "img_story",   "name": "分镜生图",         "icon": "🎬",
+                 "desc": "生成 16 宫格漫画大图"},
             ]
-            preset_img_models = [
-                "gemini-3.1-flash-image-preview",
-                "gpt-image-1",
-                "gpt-image-2",
-                "gpt-image-1-all",
-                "flux-kontext-pro",
-                "flux-kontext-max"
-            ]
+            MODEL_MAP = {
+                "llm": MODEL_LLM, "vlm": MODEL_VLM, "vlm_analyze": MODEL_VLM_ANALYZE,
+                "img_cast": MODEL_IMG_CAST, "img_story": MODEL_IMG_STORY,
+            }
+
+            slots = []
+            for sd in SLOT_DEFS:
+                vk = active_vendors.get(sd["key"], "")
+                v_info = vendors.get(vk, {})
+                # 从 VENDORS_PRESETS 获取真实 API Key（本地桌面 APP，安全可控）
+                raw_cfg = VENDORS_PRESETS.get(vk, {})
+                raw_key = raw_cfg.get("api_key", "")
+                slots.append({
+                    "key": sd["key"],
+                    "name": sd["name"],
+                    "icon": sd["icon"],
+                    "desc": sd["desc"],
+                    "vendor_key": vk,
+                    "vendor_name": v_info.get("vendor_name", vk),
+                    "base_url": v_info.get("base_url", ""),
+                    "model": MODEL_MAP.get(sd["key"], ""),
+                    "model_history": get_model_history(sd["key"]),
+                    "masked_key": v_info.get("masked_key", ""),
+                    "api_key": raw_key,  # 完整 key，前端显示
+                })
+
             return {
                 "status": "success",
-                "data": {
-                    "MODEL_LLM": MODEL_LLM,
-                    "MODEL_VLM": MODEL_VLM,
-                    "MODEL_IMG_CAST": MODEL_IMG_CAST,
-                    "MODEL_IMG_STORY": MODEL_IMG_STORY,
-                    "presets": {
-                        "text": preset_text_models,
-                        "image": preset_img_models
-                    }
-                }
+                "data": {"slots": slots, "vendors": vendors}
             }
         except Exception as e:
             return {"status": "error", "detail": f"获取模型配置失败: {str(e)}"}
@@ -491,24 +520,24 @@ class DesktopApiBridge:
             settings_dir = BASE_DIR_PATH / "data"
             settings_dir.mkdir(parents=True, exist_ok=True)
             settings_file = settings_dir / "model_settings.json"
-            
+
             with open(settings_file, "w", encoding="utf-8") as f:
                 json.dump(settings, f, indent=4, ensure_ascii=False)
-                
+
             llm = settings.get("MODEL_LLM")
             vlm = settings.get("MODEL_VLM")
             img_cast = settings.get("MODEL_IMG_CAST")
             img_story = settings.get("MODEL_IMG_STORY")
-            
+
             # 兼容性兜底
             if not img_cast:
                 img_cast = settings.get("MODEL_IMG")
             if not img_story:
                 img_story = settings.get("MODEL_IMG")
             img = img_story or img_cast
-            
+
             import sys
-            
+
             # 1. 更新 src.model_presets
             if "src.model_presets" in sys.modules:
                 m = sys.modules["src.model_presets"]
@@ -521,7 +550,7 @@ class DesktopApiBridge:
                     if llm: m.MODELS["llm"] = llm
                     if vlm: m.MODELS["vlm"] = vlm
                     if img: m.MODELS["img"] = img
-                    
+
             # 2. 更新 src.style_config
             if "src.style_config" in sys.modules:
                 s = sys.modules["src.style_config"]
@@ -530,32 +559,258 @@ class DesktopApiBridge:
                 if img: s.MODEL_IMG = img
                 if img_cast: s.MODEL_IMG_CAST = img_cast
                 if img_story: s.MODEL_IMG_STORY = img_story
-                
+
             # 3. 更新 src.image_engine
             if "src.image_engine" in sys.modules:
                 ie = sys.modules["src.image_engine"]
                 if img: ie.MODEL_IMG = img
                 if img_cast: ie.MODEL_IMG_CAST = img_cast
                 if img_story: ie.MODEL_IMG_STORY = img_story
-                
+
             # 4. 更新 src.step1_writer_v6
             if "src.step1_writer_v6" in sys.modules:
                 sw = sys.modules["src.step1_writer_v6"]
                 if llm:
                     sw.MODEL_LLM = llm
                     sw.MODEL_WRITER = llm
-                    
+
             # 5. 更新 src.story_planner_v6
             if "src.story_planner_v6" in sys.modules:
                 sp = sys.modules["src.story_planner_v6"]
                 if llm:
                     sp.MODEL_LLM = llm
                     sp.MODEL_WRITER = llm
-                    
+
             print(f"[Bridge] Saved split model settings: LLM={llm}, VLM={vlm}, IMG_CAST={img_cast}, IMG_STORY={img_story}")
             return {"status": "success", "msg": "模型配置已保存并生效"}
         except Exception as e:
             return {"status": "error", "detail": f"保存模型配置失败: {str(e)}"}
+
+    # ──────────────────────────────────────────────
+    # 🔄 厂商切换 + API Key 管理接口（扩展版）
+    # ──────────────────────────────────────────────
+    def save_vendor_settings(self, payload):
+        """
+        一体化保存：slots 结构
+        payload = {
+            "slots": {
+                "llm": {"vendor_key": "deepseek_v4_pro", "api_key": "sk-...", "model": "deepseek-v4-pro"},
+                "vlm": {"vendor_key": "volc_ark_vlm", "api_key": "api-key-...", "model": "348cb4e5-..."},
+                "vlm_analyze": {...}, "img_cast": {...}, "img_story": {...}
+            }
+        }
+        """
+        try:
+            from src.model_presets import (
+                switch_vendor, VENDOR_ENV_KEY_MAP, VENDORS_PRESETS,
+                save_model_history as _save_hist,
+            )
+            slots = payload.get("slots", {})
+            if not slots:
+                return {"status": "error", "detail": "slots 数据为空"}
+
+            # 1. 收集 API Keys 并先写 .env
+            api_keys = {}
+            for slot_key, sc in slots.items():
+                ak = sc.get("api_key", "").strip()
+                vk = sc.get("vendor_key", "")
+                if ak and vk:
+                    api_keys[vk] = ak
+            if api_keys:
+                self._write_api_keys_to_env(api_keys)
+                for vk, new_key in api_keys.items():
+                    if vk in VENDORS_PRESETS:
+                        VENDORS_PRESETS[vk]["api_key"] = new_key
+
+            # 2. 切换各插槽的厂商
+            active_vendors = {}
+            for slot_key, sc in slots.items():
+                vk = sc.get("vendor_key", "")
+                if vk:
+                    active_vendors[slot_key] = vk
+                    try:
+                        switch_vendor(slot_key, vk)
+                    except Exception as ve:
+                        print(f"[Bridge] ⚠️ 切换 {slot_key}→{vk} 失败: {ve}")
+
+            # 2.5 持久化厂商绑定到 model_settings.json（重启后可恢复）
+            self._save_active_vendors(active_vendors)
+
+            # 3. 模型名覆盖并写入历史
+            models = {}
+            for slot_key, sc in slots.items():
+                mn = sc.get("model", "").strip()
+                if mn:
+                    models[f"MODEL_{slot_key.upper()}"] = mn
+                    _save_hist(slot_key, mn)
+            if models:
+                self._apply_model_overrides(models)
+
+            # 4. 热更新
+            self._hot_reload_all_modules()
+
+            # 5. 返回最新快照
+            from src.model_presets import (
+                MODEL_LLM, MODEL_VLM, MODEL_VLM_ANALYZE, MODEL_IMG_CAST, MODEL_IMG_STORY,
+                get_vendor_list, get_active_vendor_keys,
+            )
+            active = get_active_vendor_keys()
+            vendors = {}
+            for v in get_vendor_list(active_vendor_keys=active):
+                vendors[v["vendor_key"]] = v
+
+            result = {
+                "MODEL_LLM": MODEL_LLM, "MODEL_VLM": MODEL_VLM,
+                "MODEL_VLM_ANALYZE": MODEL_VLM_ANALYZE,
+                "MODEL_IMG_CAST": MODEL_IMG_CAST, "MODEL_IMG_STORY": MODEL_IMG_STORY,
+                "active_vendors": active, "vendors": vendors,
+            }
+            print(f"[Bridge] ✅ 厂商配置已保存")
+            return {"status": "success", "msg": "配置已保存并热更新", "data": result}
+        except Exception as e:
+            import traceback
+            print(f"❌ [Bridge] 保存厂商配置失败: {traceback.format_exc()}")
+            return {"status": "error", "detail": f"保存失败: {str(e)}"}
+
+    def _write_api_keys_to_env(self, api_keys: dict):
+        """
+        将 API Key 写入 .env 文件（安全更新，不删除其他行）
+        """
+        from src.model_presets import VENDOR_ENV_KEY_MAP
+        env_file = BASE_DIR_PATH / ".env"
+
+        if not env_file.exists():
+            print("[Bridge] ⚠️ .env 文件不存在，跳过 API Key 写入")
+            return
+
+        content = env_file.read_text(encoding="utf-8")
+        lines = content.split("\n")
+
+        for vendor_key, new_key in api_keys.items():
+            env_var_name = VENDOR_ENV_KEY_MAP.get(vendor_key)
+            if not env_var_name or not new_key:
+                continue
+
+            # 查找并更新现有行
+            found = False
+            for i, line in enumerate(lines):
+                stripped = line.strip()
+                if stripped.startswith(f"{env_var_name}=") or stripped.startswith(f"{env_var_name} ="):
+                    lines[i] = f"{env_var_name}={new_key}"
+                    found = True
+                    break
+                elif stripped == f"{env_var_name}":
+                    # 下一行可能有 =
+                    if i + 1 < len(lines) and lines[i + 1].strip().startswith("="):
+                        lines[i + 1] = f"={new_key}"
+                        found = True
+                        break
+
+            if not found:
+                # 追加到末尾
+                lines.append(f"{env_var_name}={new_key}")
+                print(f"[Bridge] 📝 新增 {env_var_name} 到 .env")
+
+        env_file.write_text("\n".join(lines), encoding="utf-8")
+        print(f"[Bridge] ✅ API Keys 已写入 .env（{len(api_keys)} 个厂商）")
+
+    def _save_active_vendors(self, active_vendors: dict):
+        """将厂商绑定持久化到 model_settings.json"""
+        settings_file = BASE_DIR_PATH / "data" / "model_settings.json"
+        existing = {}
+        if settings_file.exists():
+            try:
+                existing = json.loads(settings_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        existing["active_vendors"] = active_vendors
+        settings_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(settings_file, "w", encoding="utf-8") as f:
+            json.dump(existing, f, indent=4, ensure_ascii=False)
+        print(f"[Bridge] 💾 厂商绑定已持久化: {active_vendors}")
+
+    def _apply_model_overrides(self, models: dict):
+        """模型名覆盖：写入 model_settings.json + 热更新内存"""
+        import sys
+        settings_dir = BASE_DIR_PATH / "data"
+        settings_dir.mkdir(parents=True, exist_ok=True)
+        settings_file = settings_dir / "model_settings.json"
+
+        # 合并已有设置
+        existing = {}
+        if settings_file.exists():
+            try:
+                existing = json.loads(settings_file.read_text(encoding="utf-8"))
+            except Exception:
+                pass
+        existing.update(models)
+
+        with open(settings_file, "w", encoding="utf-8") as f:
+            json.dump(existing, f, indent=4, ensure_ascii=False)
+
+        # 热更新 model_presets 内存
+        if "src.model_presets" in sys.modules:
+            m = sys.modules["src.model_presets"]
+            for k, v in models.items():
+                if hasattr(m, k) and v:
+                    setattr(m, k, v)
+
+        print(f"[Bridge] 📝 模型名覆盖已应用: {models}")
+
+    def _hot_reload_all_modules(self):
+        """热更新所有已加载模块中的模型变量"""
+        import sys
+        from src.model_presets import (
+            MODEL_LLM, MODEL_VLM, MODEL_VLM_ANALYZE, MODEL_IMG_CAST, MODEL_IMG_STORY, MODEL_IMG,
+            LLM_API_KEY, LLM_BASE_URL, VLM_API_KEY, VLM_BASE_URL,
+            IMG_API_KEY, IMG_BASE_URL,
+        )
+
+        # 1. src.style_config
+        if "src.style_config" in sys.modules:
+            s = sys.modules["src.style_config"]
+            s.MODEL_LLM = MODEL_LLM
+            s.MODEL_VLM = MODEL_VLM
+            s.MODEL_VLM_ANALYZE = MODEL_VLM_ANALYZE
+            s.MODEL_IMG = MODEL_IMG
+            s.MODEL_IMG_CAST = MODEL_IMG_CAST
+            s.MODEL_IMG_STORY = MODEL_IMG_STORY
+            s.LLM_API_KEY = LLM_API_KEY
+            s.LLM_BASE_URL = LLM_BASE_URL
+            s.VLM_API_KEY = VLM_API_KEY
+            s.VLM_BASE_URL = VLM_BASE_URL
+            s.IMG_API_KEY = IMG_API_KEY
+            s.IMG_BASE_URL = IMG_BASE_URL
+
+        # 2. src.step1_writer_v6
+        if "src.step1_writer_v6" in sys.modules:
+            sw = sys.modules["src.step1_writer_v6"]
+            sw.MODEL_LLM = MODEL_LLM
+            sw.MODEL_WRITER = MODEL_LLM
+            sw.MODEL_VLM = MODEL_VLM
+            sw.LLM_API_KEY = LLM_API_KEY
+            sw.LLM_BASE_URL = LLM_BASE_URL
+            sw.VLM_API_KEY = VLM_API_KEY
+            sw.VLM_BASE_URL = VLM_BASE_URL
+
+        # 3. src.story_planner_v6
+        if "src.story_planner_v6" in sys.modules:
+            sp = sys.modules["src.story_planner_v6"]
+            sp.MODEL_LLM = MODEL_LLM
+            sp.MODEL_WRITER = MODEL_LLM
+            sp.LLM_API_KEY = LLM_API_KEY
+            sp.LLM_BASE_URL = LLM_BASE_URL
+
+        # 4. src.image_engine
+        if "src.image_engine" in sys.modules:
+            ie = sys.modules["src.image_engine"]
+            ie.MODEL_IMG = MODEL_IMG
+            ie.MODEL_IMG_CAST = MODEL_IMG_CAST
+            ie.MODEL_IMG_STORY = MODEL_IMG_STORY
+            ie.IMG_API_KEY = IMG_API_KEY
+            ie.IMG_BASE_URL = IMG_BASE_URL
+
+        print("[Bridge] ✅ 所有模块热更新完成")
 
     # ──────────────────────────────────────────────
     # 🔍 探测历史会话恢复现场
@@ -651,7 +906,7 @@ class DesktopApiBridge:
                     if idx < len(entities):
                         ent = entities[idx]
                         name_str = f"{label}：{ent}"
-                        
+
                         cast_template = GLOBAL_STATE.get("cast_prompt", "")
                         char_prompt = "A cute cartoon stickman style representation of {entity}. Flat colors, strong outline, white background."
                         scene_prompt = "A flat 2D vector style minimalist cartoon background scenery depicting {entity}. Flat shades, no character."
@@ -698,13 +953,14 @@ class DesktopApiBridge:
 
         grids = []
         frames = []
+        grid_mode = "4x4"  # 默认兜底，避免 narrative 不存在时 UnboundLocalError
         if narrative_path.exists():
             try:
                 with open(narrative_path, "r", encoding="utf-8") as f:
                     narr_data = json.load(f)
                 timeline = narr_data.get("timeline") or narr_data.get("shots") or []
                 total_shots = len(timeline)
-                
+
                 # Reconstruct grids
                 grid_mode = (narr_data.get("metadata") or {}).get("grid_mode", "4x4")
                 if grid_mode == "2x2":
@@ -720,17 +976,17 @@ class DesktopApiBridge:
                     batch_index = idx + 1
                     batch_start = (batch_index - 1) * panels_count + 1
                     batch_end = min(batch_start + len(batch_shots) - 1, total_shots)
-                    
+
                     grid_filename = f"grid_batch_{batch_index:03d}.png"
                     grid_file = storyboards_dir / grid_filename
                     if grid_file.exists():
                         img_url = _to_relative_url(grid_file)
-                        
+
                         prompt_lines = []
                         for shot_idx, shot in enumerate(batch_shots, start=batch_start):
                             prompt_lines.append(f"F-{shot_idx:02d}: {shot.get('visual_prompt', '')}")
                         prompt_str = "\n".join(prompt_lines)
-                        
+
                         grids.append({
                             "id": f"grid_batch_{batch_index:03d}",
                             "batch_index": batch_index,
@@ -780,7 +1036,7 @@ class DesktopApiBridge:
             GLOBAL_STATE["original_text"] = synopsis_data.get("synopsis", "")
             GLOBAL_STATE["compiled_voiceover"] = synopsis_data.get("synopsis", "")
 
-        # 恢复 seed 与 润色标记 
+        # 恢复 seed 与 润色标记
         seed = 40984180
         polish_enabled = False
         if synopsis_data:
@@ -822,7 +1078,7 @@ class DesktopApiBridge:
 
             # 开启全新隔离批次或重用未完工的同文本批次
             topic = "director_cut_" + mode_path.lower()
-            
+
             last_run_id = get_current_run_id()
             reuse_run = False
             RUNS_ROOT = BASE_DIR_PATH / "data" / "runs"
@@ -841,7 +1097,7 @@ class DesktopApiBridge:
                                 print(f"[Bridge] 🌟 检测到输入文本与上次一致且未合成最终成片，自动重用当前批次目录: {run_id}")
                         except Exception:
                             pass
-            
+
             if not reuse_run:
                 run_dir = start_new_run(topic=topic)
                 run_id = run_dir.name
@@ -853,7 +1109,7 @@ class DesktopApiBridge:
 
             paths = get_paths(create_if_missing=True)
             scripts_dir = paths["scripts_dir"]
-            
+
             try:
                 (scripts_dir / "original_text.txt").write_text(original_text, encoding="utf-8")
             except Exception as e:
@@ -1015,7 +1271,7 @@ class DesktopApiBridge:
                                 "anchor_description": f"{lbl}：{ent}",
                                 "entity_text": ent
                             })
-                    
+
                     cast_prompt_parts = []
                     for ast in assets_to_generate:
                         lbl = ast["label"]
@@ -1030,18 +1286,18 @@ class DesktopApiBridge:
                 custom_tpl = GLOBAL_STATE.get("cast_prompt", "")
                 dynamic_cast_prompt = _generate_cast_prompts_via_llm(topic, compiled_voiceover, entities, custom_template=custom_tpl)
                 GLOBAL_STATE["cast_prompt"] = dynamic_cast_prompt
-                
+
                 # 双通道智能名字对齐
                 matched_entities = {}
                 unmatched_entities = list(entities)
-                
+
                 # 第一通道：完全名称对齐
                 for idx, ast_cfg in enumerate(assets_config):
                     label = ast_cfg.get("label")
                     if label in unmatched_entities:
                         matched_entities[idx] = label
                         unmatched_entities.remove(label)
-                
+
                 # 第二通道：顺序兜底对齐
                 for idx, ast_cfg in enumerate(assets_config):
                     if idx not in matched_entities:
@@ -1049,13 +1305,13 @@ class DesktopApiBridge:
                             matched_entities[idx] = unmatched_entities.pop(0)
                         else:
                             matched_entities[idx] = ast_cfg.get("label", f"Card_{idx+1}")
-                
+
                 char_idx = 0
                 for idx, ast_cfg in enumerate(assets_config):
                     label = ast_cfg.get("label", f"Card_{idx+1}")
                     t = ast_cfg.get("type", "character")
                     ent = matched_entities.get(idx, label)
-                    
+
                     role_id = t
                     display_name_en = ent
                     if t == "character":
@@ -1064,7 +1320,7 @@ class DesktopApiBridge:
                             role_id = "protagonist"
                         else:
                             role_id = f"cast_{char_idx:02d}"
-                    
+
                     prompt = ""
                     if "[" in dynamic_cast_prompt:
                         import re
@@ -1073,7 +1329,7 @@ class DesktopApiBridge:
                             prompt = lbl_match.group(1).strip()
                     if not prompt:
                         prompt = dynamic_cast_prompt
-                        
+
                     assets_to_generate.append({
                         "label": label,
                         "type": t,
@@ -1134,18 +1390,18 @@ class DesktopApiBridge:
                 # Fallback to old behavior
                 mode_path = GLOBAL_STATE.get("mode_path", "RED")
                 assets_config = _get_channel_assets_config(mode_path)
-                
+
                 # 双通道智能名字对齐
                 matched_entities = {}
                 unmatched_entities = list(entities)
-                
+
                 # 第一通道：完全名称对齐
                 for idx, ast_cfg in enumerate(assets_config):
                     label = ast_cfg.get("label")
                     if label in unmatched_entities:
                         matched_entities[idx] = label
                         unmatched_entities.remove(label)
-                
+
                 # 第二通道：顺序兜底对齐
                 for idx, ast_cfg in enumerate(assets_config):
                     if idx not in matched_entities:
@@ -1153,7 +1409,7 @@ class DesktopApiBridge:
                             matched_entities[idx] = unmatched_entities.pop(0)
                         else:
                             matched_entities[idx] = ast_cfg.get("label", f"Card_{idx+1}")
-                
+
                 assets_to_generate = []
                 char_idx = 0
                 for idx, ast_cfg in enumerate(assets_config):
@@ -1161,7 +1417,7 @@ class DesktopApiBridge:
                     t = ast_cfg.get("type", "character")
                     ent = matched_entities.get(idx, label)
                     custom_image_path = ast_cfg.get("custom_image_path")
-                    
+
                     role_id = t
                     display_name_en = ent
                     if t == "character":
@@ -1170,7 +1426,7 @@ class DesktopApiBridge:
                             role_id = "protagonist"
                         else:
                             role_id = f"cast_{char_idx:02d}"
-                            
+
                     cast_template = GLOBAL_STATE.get("cast_prompt", "")
                     ref_anchor_lower = str(global_style_prompt or "").lower()
                     is_cyanide_style = "cyanide" in ref_anchor_lower or "stickman" in ref_anchor_lower
@@ -1201,7 +1457,7 @@ class DesktopApiBridge:
                                     if t == "character": char_prompt = matched_prompt
                                     elif t == "scene": scene_prompt = matched_prompt
                                     elif t == "prop": prop_prompt = matched_prompt
-                    
+
                     if t == "scene":
                         prompt = scene_prompt.replace("{entity}", ent).replace("{ent}", ent)
                     elif t == "prop":
@@ -1297,7 +1553,7 @@ class DesktopApiBridge:
                     else:
                         # character character character
                         ref_image_path = generated_char_refs.get(role_id)
-                        
+
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         try:
@@ -1309,7 +1565,7 @@ class DesktopApiBridge:
                         finally:
                             loop.close()
                             asyncio.set_event_loop(None)
-    
+
                         if img_file.exists() and role_id not in generated_char_refs:
                             generated_char_refs[role_id] = img_file
 
@@ -1328,18 +1584,18 @@ class DesktopApiBridge:
             # 回写 full_story_v6.json 锚点
             full_story_path = paths["scripts_dir"] / "full_story_v6.json"
             physical_anchors = {}
-            
+
             protagonist_stages = []
             protagonist_prompts = {}
             supporting_map = {}
-            
+
             scene_idx = 0
             prop_idx = 0
 
             for idx, ast in enumerate(assets_to_generate):
                 card_id = f"cast_0{idx + 1}"
                 path_str = str(refs_dir / card_id / "triple_view.png")
-                
+
                 card_t = ast.get("type", "character")
                 role_id = ast.get("role_id")
                 stage = ast.get("stage")
@@ -1575,7 +1831,7 @@ class DesktopApiBridge:
 
                 timeline = data.get("timeline") or data.get("shots") or []
                 total_shots = len(timeline)
-                
+
                 # Reconstruct sliced frames
                 for idx, shot in enumerate(timeline):
                     frame_num = idx + 1
@@ -1598,23 +1854,23 @@ class DesktopApiBridge:
                     panels_count = 9
                 else:
                     panels_count = 16
-                
+
                 batches = [timeline[i:i + panels_count] for i in range(0, len(timeline), panels_count)]
-                
+
                 for idx, batch_shots in enumerate(batches):
                     batch_index = idx + 1
                     batch_start = (batch_index - 1) * panels_count + 1
                     batch_end = min(batch_start + len(batch_shots) - 1, total_shots)
-                    
+
                     grid_filename = f"grid_batch_{batch_index:03d}.png"
                     grid_file = paths["storyboards_dir"] / grid_filename
                     img_url = _to_relative_url(grid_file) if grid_file.exists() else ""
-                    
+
                     prompt_lines = []
                     for shot_idx, shot in enumerate(batch_shots, start=batch_start):
                         prompt_lines.append(f"F-{shot_idx:02d}: {shot.get('visual_prompt', '')}")
                     prompt_str = "\n".join(prompt_lines)
-                    
+
                     grids_res.append({
                         "id": f"grid_batch_{batch_index:03d}",
                         "batch_index": batch_index,
@@ -1640,11 +1896,11 @@ class DesktopApiBridge:
         run_id = GLOBAL_STATE.get("current_run_id", "")
         if not run_id:
             return {"status": "error", "detail": "未检测到活跃的 Run-ID。"}
-        
+
         batch_index = int(payload.get("batch_index", 1))
         prompts_str = payload.get("prompts", "")
         print(f"\n[Bridge] 收到第 {batch_index} 批次分镜重画请求...")
-        
+
         try:
             # 解析 textarea 的 prompts_str 并更新到 narrative_v6_final.json
             import re
@@ -1658,19 +1914,19 @@ class DesktopApiBridge:
                     shot_idx = int(m.group(1))
                     new_prompt = m.group(2).strip()
                     prompts_map[shot_idx] = new_prompt
-            
+
             paths = get_paths()
             final_json_path = paths["scripts_dir"] / "narrative_v6_final.json"
             if final_json_path.exists():
                 with open(final_json_path, "r", encoding="utf-8") as f:
                     narrative_data = json.load(f)
-                
+
                 timeline = narrative_data.get("timeline") or narrative_data.get("shots") or []
                 for shot_idx, new_prompt in prompts_map.items():
                     idx_0 = shot_idx - 1
                     if 0 <= idx_0 < len(timeline):
                         timeline[idx_0]["visual_prompt"] = new_prompt
-                
+
                 # Clear manually_redrawn and delete S_XXX.png files of this batch
                 grid_mode = (narrative_data.get("metadata") or {}).get("grid_mode", "4x4")
                 panels_count = 4 if grid_mode == "2x2" else (9 if grid_mode == "3x3" else 16)
@@ -1688,10 +1944,10 @@ class DesktopApiBridge:
                             s_file.unlink()
                         except Exception:
                             pass
-                
+
                 with open(final_json_path, "w", encoding="utf-8") as f:
                     json.dump(narrative_data, f, ensure_ascii=False, indent=2)
-            
+
             # 调用 step2_comic_generator_v6 进行单批次重画
             env = dict(os.environ)
             env["STORYBOARD_PROMPT_TEMPLATE"] = GLOBAL_STATE.get("storyboard_prompt", "")
@@ -1703,13 +1959,13 @@ class DesktopApiBridge:
             if proc_s2.returncode != 0:
                 print(f"❌ [Step2-Regen]: {proc_s2.stderr[-800:]}")
                 return {"status": "error", "detail": f"重画分镜失败:\n{proc_s2.stderr[-400:]}"}
-            
+
             # 读取更新后的数据返回
             with open(final_json_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
             timeline = data.get("timeline") or data.get("shots") or []
             total_shots = len(timeline)
-            
+
             grid_mode = (data.get("metadata") or {}).get("grid_mode", "4x4")
             if grid_mode == "2x2":
                 panels_count = 4
@@ -1721,16 +1977,16 @@ class DesktopApiBridge:
             batch_start = (batch_index - 1) * panels_count + 1
             batch_shots = timeline[batch_start - 1 : batch_start - 1 + panels_count]
             batch_end = min(batch_start + len(batch_shots) - 1, total_shots)
-            
+
             grid_filename = f"grid_batch_{batch_index:03d}.png"
             grid_file = paths["storyboards_dir"] / grid_filename
             img_url = _to_relative_url(grid_file) if grid_file.exists() else ""
-            
+
             prompt_lines = []
             for shot_idx, shot in enumerate(batch_shots, start=batch_start):
                 prompt_lines.append(f"F-{shot_idx:02d}: {shot.get('visual_prompt', '')}")
             prompt_str = "\n".join(prompt_lines)
-            
+
             return {
                 "status": "success",
                 "grid": {
@@ -1741,7 +1997,7 @@ class DesktopApiBridge:
                     "prompt": prompt_str
                 }
             }
-            
+
         except Exception as e:
             import traceback
             print(f"❌ [Bridge] 重画分镜发生异常: {traceback.format_exc()}")
@@ -1869,7 +2125,7 @@ class DesktopApiBridge:
                 role_id = "protagonist"
                 stage = "middle"
                 display_name_en = "Protagonist"
-                
+
                 if assets_to_generate and idx < len(assets_to_generate):
                     ast = assets_to_generate[idx]
                     t = ast.get("type", "character")
@@ -1921,7 +2177,7 @@ class DesktopApiBridge:
                                 f"Object Details: {prompt}"
                             ]
                         full_prompt = "\n".join(lines)
-                        
+
                         from src.api_audit import PHASE_CASTING
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
@@ -1981,14 +2237,14 @@ class DesktopApiBridge:
                     full_story_path = paths["scripts_dir"] / "full_story_v6.json"
                     refs_prompt_path = paths["scripts_dir"] / "refs-prompt.json"
                     topic = GLOBAL_STATE.get("topic", "my_epic_story")
-                    
+
                     # 1. 增量更新 full_story_v6.json
                     if full_story_path.exists():
                         with open(full_story_path, "r", encoding="utf-8") as f:
                             fs_data = json.load(f)
-                        
+
                         fs_data.setdefault("metadata", {})["assets_to_generate"] = GLOBAL_STATE.get("assets_to_generate", [])
-                        
+
                         md = fs_data.setdefault("master_design", {})
                         cr = md.setdefault("cast_registry", {})
                         physical_anchors = md.setdefault("physical_char_anchors", {})
@@ -2031,7 +2287,7 @@ class DesktopApiBridge:
                                             }
                                         } if stage else {}
                                     })
-                            
+
                             md["ref_display_slots"] = _build_ref_display_slots(cr, physical_anchors)
 
                         with open(full_story_path, "w", encoding="utf-8") as f:
@@ -2055,7 +2311,7 @@ class DesktopApiBridge:
                             },
                             "supporting": []
                         }
-                    
+
                     if t == "character":
                         if role_id == "protagonist":
                             rp_pro = rp_data.setdefault("protagonist", {})
@@ -2124,10 +2380,10 @@ class DesktopApiBridge:
                 if final_json_path.exists():
                     with open(final_json_path, "r", encoding="utf-8") as f:
                         narrative_data = json.load(f)
-                    
+
                     timeline = narrative_data.get("timeline")
                     shots = narrative_data.get("shots")
-                    
+
                     target_shot = None
                     if timeline and frame_idx < len(timeline):
                         timeline[frame_idx]["visual_prompt"] = prompt
@@ -2138,10 +2394,10 @@ class DesktopApiBridge:
                         shots[frame_idx]["manually_redrawn"] = True
                         if not target_shot:
                             target_shot = shots[frame_idx]
-                    
+
                     with open(final_json_path, "w", encoding="utf-8") as f:
                         json.dump(narrative_data, f, ensure_ascii=False, indent=2)
-                    
+
                     if target_shot:
                         ref_image_paths = target_shot.get("ref_image_paths") or []
                         anchor_look = target_shot.get("anchor_look")
@@ -2199,7 +2455,7 @@ class DesktopApiBridge:
         try:
             import subprocess
             import sys
-            
+
             code = f"""
 import tkinter as tk
 from tkinter import filedialog
@@ -2209,7 +2465,7 @@ try:
     root = tk.Tk()
     root.withdraw()
     root.attributes("-topmost", True)
-    
+
     file_path = filedialog.asksaveasfilename(
         initialfile={repr(default_filename)},
         defaultextension=".mp4",
@@ -2234,7 +2490,7 @@ except Exception as e:
                 print(f"❌ [Bridge] 安全子进程对话框运行失败: {res.stderr}")
         except Exception as err:
             print(f"❌ [Bridge] 唤起安全子进程另存为对话框失败: {err}")
-            
+
         # 👑 备用兜底 pywebview 对话框通道
         try:
             global GLOBAL_WINDOW
@@ -2260,7 +2516,7 @@ except Exception as e:
         try:
             import subprocess
             import sys
-            
+
             code = """
 import tkinter as tk
 from tkinter import filedialog
@@ -2270,7 +2526,7 @@ try:
     root = tk.Tk()
     root.withdraw()
     root.attributes("-topmost", True)
-    
+
     dir_path = filedialog.askdirectory()
     if dir_path:
         print(dir_path.strip())
@@ -2305,7 +2561,7 @@ except Exception as e:
             import subprocess
             import sys
             import shutil
-            
+
             code = """
 import tkinter as tk
 from tkinter import filedialog
@@ -2315,7 +2571,7 @@ try:
     root = tk.Tk()
     root.withdraw()
     root.attributes("-topmost", True)
-    
+
     file_path = filedialog.askopenfilename(
         filetypes=[("图片文件", "*.png;*.jpg;*.jpeg;*.webp"), ("所有文件", "*.*")]
     )
@@ -2335,22 +2591,22 @@ except Exception as e:
                 if not src_path:
                     print("[Bridge] 用户取消了文件选择。")
                     return {"status": "cancel"}
-                
+
                 # 创建目标路径
                 import re
                 safe_label = re.sub(r'[\\/*?:"<>|]', "_", label).strip()
                 dest_dir = BASE_DIR_PATH / "data" / "custom_assets" / channel_id
                 dest_dir.mkdir(parents=True, exist_ok=True)
-                
+
                 # 获取原文件后缀名
                 suffix = Path(src_path).suffix or ".png"
                 dest_file = dest_dir / f"{safe_label}{suffix}"
-                
+
                 # 复制图片
                 shutil.copy(src_path, dest_file)
                 rel_path = str(dest_file.relative_to(BASE_DIR_PATH)).replace("\\", "/")
                 print(f"[Bridge] 成功复制自定义资产图片到: {rel_path}")
-                
+
                 return {"status": "success", "image_path": rel_path}
             else:
                 print(f"❌ [Bridge] 安全子进程文件选择运行失败: {res.stderr}")
@@ -2368,23 +2624,23 @@ except Exception as e:
         import json
         from openai import OpenAI
         from src.run_context import get_paths
-        
+
         image_path = payload.get("image_path", "")
         asset_type = payload.get("type", "character")
-        
+
         print(f"[Bridge] 正在调用 VLM 模型识别资产描述: image_path={image_path}, type={asset_type}")
         if not image_path:
             return {"status": "error", "detail": "图片路径为空"}
-            
+
         full_img_path = BASE_DIR_PATH / image_path
         if not full_img_path.exists():
             return {"status": "error", "detail": "物理图片不存在"}
-            
+
         try:
             # 读取图片并做 Base64 编码
             with open(full_img_path, "rb") as img_f:
                 img_data = base64.b64encode(img_f.read()).decode("utf-8")
-                
+
             # 根据类型，使用对应的 VLM 引导 Prompt
             if asset_type == "scene":
                 vlm_prompt = (
@@ -2408,12 +2664,12 @@ except Exception as e:
                     "Describe it as a 2D flat comic character. Keep it simple, iconic, and very short. "
                     "Do NOT include photorealism, CGI, or complex anatomy terms."
                 )
-                
+
             # 引入 VLM 配置（强制使用配置中的 VLM，如 Gemini Pro）
             from src.model_presets import MODEL_VLM, VLM_API_KEY, VLM_BASE_URL
-            
+
             client = OpenAI(api_key=VLM_API_KEY, base_url=VLM_BASE_URL.rstrip("/"), timeout=60.0)
-            
+
             # 使用 OpenAI 格式的 Vision 格式调用
             messages = [
                 {
@@ -2429,10 +2685,10 @@ except Exception as e:
                     ]
                 }
             ]
-            
+
             # 兼容性日志记录
             from src.api_audit import PHASE_CASTING, log_llm_chat
-            
+
             response = log_llm_chat(
                 PHASE_CASTING,
                 "custom_asset_vlm_describe",
@@ -2444,11 +2700,11 @@ except Exception as e:
                     max_tokens=4096
                 )
             )
-            
+
             description = (response.choices[0].message.content or "").strip()
             print(f"[Bridge] VLM 识别描述成功: {description[:100]}...")
             return {"status": "success", "description": description}
-            
+
         except Exception as e:
             import traceback
             print(f"❌ [Bridge] VLM 识别失败: {str(e)}")
@@ -2517,7 +2773,7 @@ except Exception as e:
             actual_path = str(target_path)
             print(f"🎉 [Bridge] 成功导出至: {actual_path}")
             return {
-                "status": "success", 
+                "status": "success",
                 "msg": f"保存成功！视频已导出至 {actual_path}",
                 "actual_path": actual_path
             }
@@ -2540,22 +2796,22 @@ except Exception as e:
         pitch = int(payload.get("pitch", 0))
         volume = int(payload.get("volume", 0))
         prompt = payload.get("prompt", "")
-        
+
         print(f"\n[Bridge] 正在生成试听音频: engine={engine}, voice={voice}, rate={rate}, emotion={emotion}, pitch={pitch}, volume={volume}, prompt={prompt}")
-        
+
         try:
             preview_text = "您好！这是我当前的声音效果，如果您觉得满意，就选择我为您配音吧。"
             if engine == "volc" and emotion == "expressive":
                 preview_text = "<cot text=温柔>您好！这是我当前的声音效果，如果您觉得满意，就选择我为您配音吧。</cot>"
-                
+
             preview_dir = BASE_DIR_PATH / "previews"
             preview_dir.mkdir(parents=True, exist_ok=True)
-            
+
             import hashlib
             config_hash = hashlib.md5(f"{engine}_{voice}_{rate}_{emotion}_{pitch}_{volume}_{prompt}".encode("utf-8")).hexdigest()
             filename = f"preview_{config_hash}.mp3"
             local_audio_path = preview_dir / filename
-            
+
             if not local_audio_path.exists():
                 if engine == "volc":
                     from src.step1_writer_v6 import _run_volc_tts_to_files
@@ -2580,13 +2836,13 @@ except Exception as e:
                         rate=rate
                     )
                     vtt_path.unlink(missing_ok=True)
-                    
+
             relative_url = _to_relative_url(local_audio_path)
             return {"status": "success", "audio_url": relative_url}
         except Exception as e:
             print(f"❌ [Bridge] 试听音频生成失败: {e}")
             return {"status": "error", "detail": f"试听音频生成失败: {str(e)}"}
-            
+
 
 
 def main():

@@ -102,98 +102,24 @@
     </div>
   </div>
 
-  <!-- ⚙️ 全局模型配置模态弹窗 -->
+  <!-- ⚙️ 模型配置弹窗（5卡手风琴版 v3.0） -->
   <div id="modelSettingsModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
-    <div class="w-full max-w-lg bg-[#0D1127] border border-indigo-500/20 rounded-2xl shadow-2xl flex flex-col overflow-hidden" style="max-height:90vh">
+    <div class="w-full max-w-lg bg-[#0D1127] border border-indigo-500/20 rounded-2xl shadow-2xl flex flex-col overflow-hidden" style="max-height:92vh">
       <!-- Header -->
       <div class="flex items-center justify-between px-6 py-4 border-b border-slate-900/80 shrink-0">
         <div class="flex items-center space-x-3">
           <span class="text-2xl">⚙️</span>
           <div>
-            <h3 class="text-sm font-bold text-slate-100">全局模型选择配置</h3>
-            <p class="text-[10px] text-slate-500">动态切换底座模型名，保持 API Key 与代理基址不变</p>
+            <h3 class="text-sm font-bold text-slate-100">模型配置</h3>
+            <p class="text-[10px] text-slate-500">5 个调用位置，点击展开配置</p>
           </div>
         </div>
         <button onclick="closeModelSettingsModal()" class="text-slate-400 hover:text-white text-lg cursor-pointer">✕</button>
       </div>
 
-      <!-- Body -->
-      <div class="overflow-y-auto flex-1 p-6 space-y-5 no-scrollbar">
-        <!-- Text LLM Model -->
-        <div class="space-y-1.5">
-          <label class="text-[10px] tracking-widest text-slate-400 font-bold">🧠 文本生成大模型 (LLM)</label>
-          <div class="flex gap-2">
-            <select id="settingLlmPreset" onchange="syncModelPreset('Llm')" class="bg-[#05070E] border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none flex-1">
-              <option value="deepseek-v4-pro">DeepSeek V4 Pro (deepseek-v4-pro)</option>
-              <option value="gemini-1.5-pro">Gemini 1.5 Pro (gemini-1.5-pro)</option>
-              <option value="gemini-2.5-flash">Gemini 2.5 Flash (gemini-2.5-flash)</option>
-              <option value="custom">── 自定义模型名 ──</option>
-            </select>
-            <input id="settingLlmCustom" type="text" placeholder="输入自定义模型名" class="hidden bg-[#05070E] border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none flex-1">
-          </div>
-          <p class="text-[10px] text-slate-500 leading-relaxed bg-[#05070E] p-2.5 rounded-xl border border-slate-850">
-            ℹ️ <span class="text-slate-450">控制环节:</span> Phase 2 的长剧本文本拆分段落 (Beat)；大纲生成与剧本智能润色。
-          </p>
-        </div>
-
-        <!-- VLM Model -->
-        <div class="space-y-1.5">
-          <label class="text-[10px] tracking-widest text-slate-400 font-bold">👁️ 多模态识别模型 (VLM)</label>
-          <div class="flex gap-2">
-            <select id="settingVlmPreset" onchange="syncModelPreset('Vlm')" class="bg-[#05070E] border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none flex-1">
-              <option value="deepseek-v4-pro">DeepSeek V4 Pro (deepseek-v4-pro)</option>
-              <option value="gemini-1.5-pro">Gemini 1.5 Pro (gemini-1.5-pro)</option>
-              <option value="gemini-2.5-flash">Gemini 2.5 Flash (gemini-2.5-flash)</option>
-              <option value="custom">── 自定义模型名 ──</option>
-            </select>
-            <input id="settingVlmCustom" type="text" placeholder="输入自定义模型名" class="hidden bg-[#05070E] border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none flex-1">
-          </div>
-          <p class="text-[10px] text-slate-500 leading-relaxed bg-[#05070E] p-2.5 rounded-xl border border-slate-850">
-            ℹ️ <span class="text-slate-450">控制环节:</span> Phase 3 视觉提示词编写（核心多模态图文输入）；定妆资产上传时的智能识图描述。
-          </p>
-        </div>
-
-        <!-- Image Generation Model - Casting -->
-        <div class="space-y-1.5">
-          <label class="text-[10px] tracking-widest text-slate-400 font-bold">👤 定妆照生图模型 (Casting IMG)</label>
-          <div class="flex gap-2">
-            <select id="settingImgCastPreset" onchange="syncModelPreset('ImgCast')" class="bg-[#05070E] border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none flex-1">
-              <option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image (gemini-3.1-flash-image-preview)</option>
-              <option value="gpt-image-1">GPT Image 1 (gpt-image-1)</option>
-              <option value="gpt-image-2">GPT Image 2 (gpt-image-2)</option>
-              <option value="gpt-image-1-all">GPT Image 1 All (gpt-image-1-all)</option>
-              <option value="flux-kontext-pro">Flux Kontext Pro (flux-kontext-pro)</option>
-              <option value="flux-kontext-max">Flux Kontext Max (flux-kontext-max)</option>
-              <option value="custom">── 自定义模型名 ──</option>
-            </select>
-            <input id="settingImgCastCustom" type="text" placeholder="输入自定义模型名" class="hidden bg-[#05070E] border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none flex-1">
-          </div>
-          <p class="text-[10px] text-slate-500 leading-relaxed bg-[#05070E] p-2.5 rounded-xl border border-slate-850">
-            ℹ️ <span class="text-slate-450">控制环节:</span> 生成最开始的角色定妆照、场景道具底图（即卡片 triple_view.png 的初次生成）。
-          </p>
-        </div>
-
-        <!-- Image Generation Model - Storyboard -->
-        <div class="space-y-1.5">
-          <label class="text-[10px] tracking-widest text-slate-400 font-bold">🎬 分镜图生图模型 (Storyboard IMG)</label>
-          <div class="flex gap-2">
-            <select id="settingImgStoryPreset" onchange="syncModelPreset('ImgStory')" class="bg-[#05070E] border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none flex-1">
-              <option value="gemini-3.1-flash-image-preview">Gemini 3.1 Flash Image (gemini-3.1-flash-image-preview)</option>
-              <option value="gpt-image-1">GPT Image 1 (gpt-image-1)</option>
-              <option value="gpt-image-2">GPT Image 2 (gpt-image-2)</option>
-              <option value="gpt-image-1-all">GPT Image 1 All (gpt-image-1-all)</option>
-              <option value="flux-kontext-pro">Flux Kontext Pro (flux-kontext-pro)</option>
-              <option value="flux-kontext-max">Flux Kontext Max (flux-kontext-max)</option>
-              <option value="custom">── 自定义模型名 ──</option>
-            </select>
-            <input id="settingImgStoryCustom" type="text" placeholder="输入自定义模型名" class="hidden bg-[#05070E] border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none flex-1">
-          </div>
-          <p class="text-[10px] text-slate-500 leading-relaxed bg-[#05070E] p-2.5 rounded-xl border border-slate-850">
-            ℹ️ <span class="text-slate-450">控制环节:</span> 生成最终的宫格漫画大图（双保险接收 VLM 提示词 + 空间参考图）。
-            <br>
-            ℹ️ <span class="text-slate-450">注意:</span> 包含 <code class="text-indigo-400">gpt-image</code> / <code class="text-indigo-400">flux-kontext</code> 的模型会自动转入 <b>GPT 家族编辑格式</b>（支持多张定妆参考图二进制上传）；Gemini 家族模型将使用原生生成方式。
-          </p>
-        </div>
+      <!-- Body: 5 cards -->
+      <div id="modelCardsContainer" class="overflow-y-auto flex-1 p-4 space-y-2 no-scrollbar">
+        <!-- JS 动态生成 5 张卡片 -->
       </div>
 
       <!-- Footer -->
@@ -201,8 +127,8 @@
         <button onclick="closeModelSettingsModal()" class="px-4 py-2 bg-slate-850 hover:bg-slate-800 text-slate-400 font-semibold text-xs rounded-xl transition border border-slate-800 cursor-pointer">
           取消
         </button>
-        <button onclick="saveModelSettings()" class="px-5 py-2.5 bg-indigo-650 hover:bg-indigo-550 text-white font-bold text-xs rounded-xl transition shadow-lg shadow-indigo-600/20 cursor-pointer">
-          💾 保存并应用
+        <button onclick="saveVendorSettings()" class="px-5 py-2.5 bg-indigo-650 hover:bg-indigo-550 text-white font-bold text-xs rounded-xl transition shadow-lg shadow-indigo-600/20 cursor-pointer">
+          💾 保存全部配置
         </button>
       </div>
     </div>
