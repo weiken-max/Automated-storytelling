@@ -117,6 +117,23 @@
         <button onclick="closeModelSettingsModal()" class="text-slate-400 hover:text-white text-lg cursor-pointer">✕</button>
       </div>
 
+      <!-- 组合预设快捷条 -->
+      <div class="px-4 py-2.5 border-b border-slate-900/80 shrink-0 bg-[#080b1a]">
+        <div class="flex items-center gap-2">
+          <span class="text-[10px] text-slate-500 shrink-0">🎛️ 组合预设</span>
+          <select id="comboPresetSelect"
+                  class="flex-1 min-w-0 bg-[#0a0e1a] border border-slate-750 rounded-lg p-1.5 text-[11px] text-slate-200 focus:border-indigo-500 focus:outline-none">
+            <option value="">— 选择一个方案 —</option>
+          </select>
+          <button onclick="applyComboPreset()" title="应用所选方案到全部 5 槽位"
+                  class="px-2.5 py-1.5 bg-indigo-650 hover:bg-indigo-550 text-white text-[11px] font-semibold rounded-lg transition cursor-pointer shrink-0">应用</button>
+          <button onclick="saveComboPreset()" title="把当前 5 槽位配置存为新方案"
+                  class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-300 text-[11px] font-semibold rounded-lg border border-slate-750 transition cursor-pointer shrink-0">💾 存为方案</button>
+          <button onclick="deleteComboPreset()" title="删除所选方案"
+                  class="px-2 py-1.5 bg-slate-800 hover:bg-slate-700 text-red-300 text-[11px] rounded-lg border border-slate-750 transition cursor-pointer shrink-0">🗑</button>
+        </div>
+      </div>
+
       <!-- Body: 5 cards -->
       <div id="modelCardsContainer" class="overflow-y-auto flex-1 p-4 space-y-2 no-scrollbar">
         <!-- JS 动态生成 5 张卡片 -->
@@ -135,6 +152,49 @@
             💾 保存全部配置
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ➕ 内联添加厂商/中转站 弹窗（从模型卡片厂商下拉触发） -->
+  <div id="inlineProviderModal" class="fixed inset-0 z-[60] hidden flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+    <div class="w-full max-w-md bg-[#0D1127] border border-indigo-500/20 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+      <div class="flex items-center justify-between px-5 py-3.5 border-b border-slate-900/80">
+        <div class="flex items-center space-x-2.5">
+          <span class="text-xl">➕</span>
+          <div>
+            <h3 class="text-sm font-bold text-slate-100">添加新厂商 / 中转站</h3>
+            <p class="text-[10px] text-slate-500">填入名称与 Base URL，添加后自动选中</p>
+          </div>
+        </div>
+        <button onclick="closeInlineProvider()" class="text-slate-400 hover:text-white text-lg cursor-pointer">✕</button>
+      </div>
+      <div class="p-5 space-y-3">
+        <input id="ip_slot_key" type="hidden" value="">
+        <div>
+          <label class="text-[9px] text-slate-500 mb-1 block">厂商名称 *</label>
+          <input id="ip_name" type="text" placeholder="例如：我的中转站"
+                 class="w-full bg-[#0a0e1a] border border-slate-750 rounded-lg p-2 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="text-[9px] text-slate-500 mb-1 block">Base URL *</label>
+          <input id="ip_base_url" type="text" placeholder="https://api.example.com/v1"
+                 class="w-full bg-[#0a0e1a] border border-slate-750 rounded-lg p-2 text-xs text-slate-200 font-mono focus:border-indigo-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="text-[9px] text-slate-500 mb-1 block">API Key（可选）</label>
+          <input id="ip_api_key" type="password" placeholder="sk-..."
+                 class="w-full bg-[#0a0e1a] border border-slate-750 rounded-lg p-2 text-xs text-slate-200 font-mono focus:border-indigo-500 focus:outline-none">
+        </div>
+        <div>
+          <label class="text-[9px] text-slate-500 mb-1 block">模型名（可选，多个用换行）</label>
+          <textarea id="ip_model_variants" rows="2" placeholder="gpt-4o&#10;gpt-4o-mini"
+                    class="w-full bg-[#0a0e1a] border border-slate-750 rounded-lg p-2 text-xs text-slate-200 font-mono focus:border-indigo-500 focus:outline-none"></textarea>
+        </div>
+      </div>
+      <div class="px-5 py-3.5 border-t border-slate-900/80 flex justify-end space-x-3">
+        <button onclick="closeInlineProvider()" class="px-4 py-2 bg-slate-850 hover:bg-slate-800 text-slate-400 font-semibold text-xs rounded-xl border border-slate-800 cursor-pointer">取消</button>
+        <button onclick="submitInlineProvider()" class="px-5 py-2 bg-indigo-650 hover:bg-indigo-550 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/20 cursor-pointer">➕ 添加并选中</button>
       </div>
     </div>
   </div>

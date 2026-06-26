@@ -504,6 +504,235 @@ def set_provider_enabled(vendor_key: str, enabled: bool) -> dict:
     return {"vendor_key": vendor_key, "enabled": enabled}
 
 
+# ================================================================
+# 🧠 槽位记忆（slot × vendor → 模型/Key 两级记忆）+ 组合预设
+# ================================================================
+
+SLOT_KEYS = ["llm", "vlm", "vlm_analyze", "img_cast", "img_story"]
+_MEMORY_MODEL_LIMIT = 20
+
+
+def _role_model_key(slot_key: str) -> str:
+    """槽位 → 厂商 models 字典里对应的角色键。"""
+    if slot_key in ("img_cast", "img_story"):
+        return "img"
+    if slot_key in ("vlm", "vlm_analyze"):
+        return "vlm"
+    return "llm"
+
+
+def _migrate_slot_memory(data: dict) -> dict:
+    """
+    首次运行（无 slot_memory / slot_bindings）时，从旧字段
+    active_vendors + MODEL_* + model_history 自动迁移出初始记忆。
+    返回（可能被补全的）data，不落盘——由调用方决定是否保存。
+    """
+    if not isinstance(data, dict):
+        return {}
+    changed = False
+
+    active = data.get("active_vendors", {}) if isinstance(data.get("active_vendors"), dict) else {}
+    model_map = {
+        "llm": data.get("MODEL_LLM", ""),
+        "vlm": data.get("MODEL_VLM", ""),
+        "vlm_analyze": data.get("MODEL_VLM_ANALYZE", ""),
+        "img_cast": data.get("MODEL_IMG_CAST", ""),
+        "img_story": data.get("MODEL_IMG_STORY", ""),
+    }
+    old_history = data.get("model_history", {}) if isinstance(data.get("model_history"), dict) else {}
+
+    # 1. slot_bindings 迁移
+    if "slot_bindings" not in data or not isinstance(data.get("slot_bindings"), dict):
+        bindings = {}
+        for sk in SLOT_KEYS:
+            vk = active.get(sk, "")
+            cfg = VENDORS_PRESETS.get(vk, {})
+            bindings[sk] = {
+                "vendor_key": vk,
+                "model": model_map.get(sk, "") or cfg.get("models", {}).get(_role_model_key(sk), ""),
+                "api_key": cfg.get("api_key", ""),
+                "base_url": cfg.get("base_url", ""),
+            }
+        data["slot_bindings"] = bindings
+        changed = True
+
+    # 2. slot_memory 迁移：把当前绑定厂商 + 该槽位历史模型挂到 (slot, vendor) 下
+    if "slot_memory" not in data or not isinstance(data.get("slot_memory"), dict):
+        memory = {}
+        for sk in SLOT_KEYS:
+            vk = active.get(sk, "")
+            if not vk:
+                continue
+            cfg = VENDORS_PRESETS.get(vk, {})
+            models = []
+            # 该槽位历史 + 当前模型 + 厂商默认模型
+            for m in old_history.get(sk, []) or []:
+                if m and m not in models:
+                    models.append(m)
+            cur_model = model_map.get(sk, "")
+            if cur_model and cur_model not in models:
+                models.insert(0, cur_model)
+            dm = cfg.get("models", {}).get(_role_model_key(sk), "")
+            if dm and dm not in models:
+                models.append(dm)
+            memory[sk] = {
+                vk: {
+                    "models": models[:_MEMORY_MODEL_LIMIT],
+                    "api_key": cfg.get("api_key", ""),
+                    "base_url": cfg.get("base_url", ""),
+                }
+            }
+        data["slot_memory"] = memory
+        changed = True
+
+    data["_memory_migrated"] = changed or data.get("_memory_migrated", True)
+    return data
+
+
+def get_slot_memory(slot_key: str = None) -> dict:
+    """
+    返回槽位记忆。
+    - 传 slot_key：返回 {vendor_key: {models, api_key, base_url}}
+    - 不传：返回全部 {slot_key: {vendor_key: {...}}}
+    会在首次访问时触发迁移并落盘。
+    """
+    data = _load_settings_json()
+    before = "slot_memory" in data
+    data = _migrate_slot_memory(data)
+    if not before:
+        _save_settings_json(data)
+    memory = data.get("slot_memory", {}) if isinstance(data.get("slot_memory"), dict) else {}
+    if slot_key is None:
+        return memory
+    return memory.get(slot_key, {}) if isinstance(memory.get(slot_key), dict) else {}
+
+
+def get_slot_bindings() -> dict:
+    """返回每个槽位当前绑定 {vendor_key, model, api_key, base_url}（首次迁移）。"""
+    data = _load_settings_json()
+    before = "slot_bindings" in data
+    data = _migrate_slot_memory(data)
+    if not before:
+        _save_settings_json(data)
+    return data.get("slot_bindings", {}) if isinstance(data.get("slot_bindings"), dict) else {}
+
+
+def record_slot_usage(slot_key: str, vendor_key: str, model: str = "",
+                      api_key: str = "", base_url: str = "") -> dict:
+    """
+    把一次「槽位用了某厂商的某模型」记进两级记忆，并更新该槽位当前绑定。
+    去重 + 模型列表截断到 _MEMORY_MODEL_LIMIT。返回更新后的该槽位记忆。
+    """
+    slot_key = (slot_key or "").strip()
+    vendor_key = (vendor_key or "").strip()
+    if not slot_key or not vendor_key:
+        return {}
+    data = _load_settings_json()
+    data = _migrate_slot_memory(data)
+
+    memory = data.setdefault("slot_memory", {})
+    if not isinstance(memory, dict):
+        memory = {}
+        data["slot_memory"] = memory
+    slot_mem = memory.setdefault(slot_key, {})
+    if not isinstance(slot_mem, dict):
+        slot_mem = {}
+        memory[slot_key] = slot_mem
+    vendor_mem = slot_mem.setdefault(vendor_key, {"models": [], "api_key": "", "base_url": ""})
+    if not isinstance(vendor_mem, dict):
+        vendor_mem = {"models": [], "api_key": "", "base_url": ""}
+        slot_mem[vendor_key] = vendor_mem
+
+    models = vendor_mem.get("models", [])
+    if not isinstance(models, list):
+        models = []
+    model = (model or "").strip()
+    if model:
+        if model in models:
+            models.remove(model)
+        models.insert(0, model)
+    vendor_mem["models"] = models[:_MEMORY_MODEL_LIMIT]
+    if api_key:
+        vendor_mem["api_key"] = api_key
+    # base_url 优先用入参，否则回退厂商目录
+    vendor_mem["base_url"] = base_url or vendor_mem.get("base_url") \
+        or VENDORS_PRESETS.get(vendor_key, {}).get("base_url", "")
+
+    # 同步当前绑定
+    bindings = data.setdefault("slot_bindings", {})
+    if not isinstance(bindings, dict):
+        bindings = {}
+        data["slot_bindings"] = bindings
+    bindings[slot_key] = {
+        "vendor_key": vendor_key,
+        "model": model or bindings.get(slot_key, {}).get("model", ""),
+        "api_key": vendor_mem.get("api_key", ""),
+        "base_url": vendor_mem.get("base_url", ""),
+    }
+
+    _save_settings_json(data)
+    return vendor_mem
+
+
+# ── 组合预设（整套 5 槽位方案）─────────────────────────────
+
+def list_combo_presets() -> dict:
+    """返回 {preset_name: {slot_key: {vendor_key, model, api_key, base_url}, _created}}"""
+    data = _load_settings_json()
+    presets = data.get("combo_presets", {})
+    return presets if isinstance(presets, dict) else {}
+
+
+def save_combo_preset(name: str, slots: dict) -> dict:
+    """保存/覆盖一个命名的整套 5 槽位方案。"""
+    import time
+    name = (name or "").strip()
+    if not name:
+        raise ValueError("预设名称不能为空")
+    if not isinstance(slots, dict) or not slots:
+        raise ValueError("预设内容为空")
+    data = _load_settings_json()
+    presets = data.get("combo_presets", {})
+    if not isinstance(presets, dict):
+        presets = {}
+    clean = {}
+    for sk in SLOT_KEYS:
+        sc = slots.get(sk, {}) if isinstance(slots.get(sk), dict) else {}
+        clean[sk] = {
+            "vendor_key": sc.get("vendor_key", ""),
+            "model": sc.get("model", ""),
+            "api_key": sc.get("api_key", ""),
+            "base_url": sc.get("base_url", ""),
+        }
+    clean["_created"] = presets.get(name, {}).get("_created") or time.time()
+    clean["_updated"] = time.time()
+    presets[name] = clean
+    data["combo_presets"] = presets
+    _save_settings_json(data)
+    return {"name": name, "presets": presets}
+
+
+def delete_combo_preset(name: str) -> dict:
+    name = (name or "").strip()
+    data = _load_settings_json()
+    presets = data.get("combo_presets", {})
+    if not isinstance(presets, dict) or name not in presets:
+        raise ValueError(f"未找到预设: {name}")
+    del presets[name]
+    data["combo_presets"] = presets
+    _save_settings_json(data)
+    return {"name": name, "presets": presets}
+
+
+def apply_combo_preset(name: str) -> dict:
+    """读取一个组合预设，返回它的槽位配置（实际切换由 bridge 调 switch_vendor 完成）。"""
+    name = (name or "").strip()
+    presets = list_combo_presets()
+    if name not in presets:
+        raise ValueError(f"未找到预设: {name}")
+    return presets[name]
+
+
 apply_provider_catalog()
 
 
@@ -787,11 +1016,13 @@ def get_vendor_env_key(vendor_key: str) -> str:
     return VENDOR_ENV_KEY_MAP.get(vendor_key, "")
 
 
-def switch_vendor(role: str, vendor_key: str) -> dict:
+def switch_vendor(role: str, vendor_key: str, api_key: str = None, base_url: str = None) -> dict:
     """
     动态切换某角色到指定厂商，并重新计算所有导出变量。
 
     role: "llm" | "vlm" | "vlm_analyze" | "img_cast" | "img_story"
+    api_key / base_url: 槽位级覆盖（商业版：每槽位可有独立 Key/中转地址）。
+                        传入则只覆盖该角色对应的导出变量，不污染厂商目录。
     """
     global ACTIVE_LLM_VENDOR, ACTIVE_VLM_VENDOR, ACTIVE_VLM_ANALYZE_VENDOR, ACTIVE_IMG_VENDOR
     global LLM_API_KEY, LLM_BASE_URL, LLM_DASHSCOPE_HTTP, MODEL_LLM
@@ -861,6 +1092,23 @@ def switch_vendor(role: str, vendor_key: str) -> dict:
     DASHSCOPE_BASE_HTTP = IMG_DASHSCOPE_HTTP
     EXTRA_PARAMS        = IMG_EXTRA_PARAMS
     MODELS              = _img_cfg["models"]
+
+    # 槽位级覆盖：只改当前 role 对应的导出 Key/URL，不影响厂商目录与其他角色
+    ak = (api_key or "").strip()
+    bu = (base_url or "").strip()
+    if ak or bu:
+        if role == "llm":
+            if ak: LLM_API_KEY = ak
+            if bu: LLM_BASE_URL = bu
+        elif role == "vlm":
+            if ak: VLM_API_KEY = ak
+            if bu: VLM_BASE_URL = VLM_COMPAT_URL = bu
+        elif role == "vlm_analyze":
+            if ak: VLM_ANALYZE_API_KEY = ak
+            if bu: VLM_ANALYZE_BASE_URL = bu
+        elif role in ("img_cast", "img_story"):
+            if ak: IMG_API_KEY = API_KEY = ak
+            if bu: IMG_BASE_URL = BASE_URL = bu
 
     result = {
         "role": role,

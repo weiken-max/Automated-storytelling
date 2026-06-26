@@ -450,13 +450,14 @@ class DesktopApiBridge:
     # ──────────────────────────────────────────────
     def get_model_settings(self):
         """
-        获取当前模型配置（5卡插槽式，含厂商列表与模型历史）
+        获取当前模型配置（5卡插槽式，含厂商列表、槽位记忆、组合预设）
         """
         try:
             from src.model_presets import (
                 MODEL_LLM, MODEL_VLM, MODEL_VLM_ANALYZE, MODEL_IMG_CAST, MODEL_IMG_STORY,
                 get_vendor_list, get_active_vendor_keys, get_model_history,
-                VENDORS_PRESETS,
+                get_slot_memory, get_slot_bindings, list_combo_presets,
+                list_all_providers, VENDORS_PRESETS,
             )
             active_vendors = get_active_vendor_keys()
             vendors_list = get_vendor_list(active_vendor_keys=active_vendors)
@@ -465,6 +466,11 @@ class DesktopApiBridge:
             vendors = {}
             for v in vendors_list:
                 vendors[v["vendor_key"]] = v
+
+            slot_memory = get_slot_memory()
+            slot_bindings = get_slot_bindings()
+            combo_presets = list_combo_presets()
+            all_providers = list_all_providers()
 
             # 5 个模型插槽
             SLOT_DEFS = [
@@ -486,30 +492,43 @@ class DesktopApiBridge:
 
             slots = []
             for sd in SLOT_DEFS:
-                vk = active_vendors.get(sd["key"], "")
+                sk = sd["key"]
+                binding = slot_bindings.get(sk, {}) if isinstance(slot_bindings.get(sk), dict) else {}
+                vk = binding.get("vendor_key") or active_vendors.get(sk, "")
                 v_info = vendors.get(vk, {})
-                # 从 VENDORS_PRESETS 获取真实 API Key（本地桌面 APP，安全可控）
                 raw_cfg = VENDORS_PRESETS.get(vk, {})
-                raw_key = raw_cfg.get("api_key", "")
+                # 槽位级 key 优先取记忆里的，再回退厂商目录
+                slot_vendor_mem = slot_memory.get(sk, {}).get(vk, {}) if isinstance(slot_memory.get(sk), dict) else {}
+                raw_key = binding.get("api_key") or slot_vendor_mem.get("api_key") or raw_cfg.get("api_key", "")
+                base_url = binding.get("base_url") or slot_vendor_mem.get("base_url") or v_info.get("base_url", "")
                 slots.append({
-                    "key": sd["key"],
+                    "key": sk,
                     "name": sd["name"],
                     "icon": sd["icon"],
                     "desc": sd["desc"],
                     "vendor_key": vk,
                     "vendor_name": v_info.get("vendor_name", vk),
-                    "base_url": v_info.get("base_url", ""),
-                    "model": MODEL_MAP.get(sd["key"], ""),
-                    "model_history": get_model_history(sd["key"]),
+                    "base_url": base_url,
+                    "model": binding.get("model") or MODEL_MAP.get(sk, ""),
+                    "model_history": get_model_history(sk),
                     "masked_key": v_info.get("masked_key", ""),
-                    "api_key": raw_key,  # 完整 key，前端显示
+                    "api_key": raw_key,
+                    # 槽位记忆：该槽位用过哪些厂商 + 每个厂商用过的模型/key
+                    "memory": slot_memory.get(sk, {}) if isinstance(slot_memory.get(sk), dict) else {},
                 })
 
             return {
                 "status": "success",
-                "data": {"slots": slots, "vendors": vendors}
+                "data": {
+                    "slots": slots,
+                    "vendors": vendors,
+                    "providers": all_providers,
+                    "combo_presets": combo_presets,
+                }
             }
         except Exception as e:
+            import traceback
+            print(f"❌ [Bridge] 获取模型配置失败: {traceback.format_exc()}")
             return {"status": "error", "detail": f"获取模型配置失败: {str(e)}"}
 
     def save_model_settings(self, settings):
@@ -603,78 +622,75 @@ class DesktopApiBridge:
     # ──────────────────────────────────────────────
     def save_vendor_settings(self, payload):
         """
-        一体化保存：slots 结构
+        一体化保存：slots 结构（商业版：槽位级独立 Key/Base URL + 两级记忆）
         payload = {
             "slots": {
-                "llm": {"vendor_key": "deepseek_v4_pro", "api_key": "sk-...", "model": "deepseek-v4-pro"},
-                "vlm": {"vendor_key": "volc_ark_vlm", "api_key": "api-key-...", "model": "348cb4e5-..."},
-                "vlm_analyze": {...}, "img_cast": {...}, "img_story": {...}
+                "llm": {"vendor_key": "deepseek_v4_pro", "api_key": "sk-...", "model": "deepseek-v4-pro", "base_url": "..."},
+                "vlm": {...}, "vlm_analyze": {...}, "img_cast": {...}, "img_story": {...}
             }
         }
+        每个槽位的 api_key / base_url 作用于该槽位本身（槽位级独立），
+        并写入 (slot, vendor) 两级记忆，便于下次快速回填。
         """
         try:
             from src.model_presets import (
                 switch_vendor, VENDOR_ENV_KEY_MAP, VENDORS_PRESETS,
-                BUILTIN_VENDOR_KEYS, save_provider as _save_provider,
-                save_model_history as _save_hist,
+                save_provider as _save_provider, save_model_history as _save_hist,
+                record_slot_usage,
             )
             slots = payload.get("slots", {})
             if not slots:
                 return {"status": "error", "detail": "slots 数据为空"}
 
-            # 1. 收集 API Keys：内置厂商写 .env，自定义/覆盖厂商持久化到 settings 目录
-            api_keys = {}
-            for slot_key, sc in slots.items():
-                ak = sc.get("api_key", "").strip()
-                vk = sc.get("vendor_key", "")
-                if ak and vk:
-                    api_keys[vk] = ak
-            if api_keys:
-                env_keys = {vk: k for vk, k in api_keys.items()
-                            if vk in VENDOR_ENV_KEY_MAP}
-                if env_keys:
-                    self._write_api_keys_to_env(env_keys)
-                for vk, new_key in api_keys.items():
-                    if vk in VENDORS_PRESETS:
-                        VENDORS_PRESETS[vk]["api_key"] = new_key
-                    # 没有 .env 映射的厂商（含自定义）→ 持久化进供应商目录
-                    if vk not in VENDOR_ENV_KEY_MAP:
-                        try:
-                            _save_provider({"vendor_key": vk, "api_key": new_key})
-                        except Exception as pe:
-                            print(f"[Bridge] ⚠️ 持久化 {vk} 的 Key 失败: {pe}")
-
-            # 2. 切换各插槽的厂商
+            # 1. 切换各插槽厂商（带槽位级 key/base_url 覆盖）+ 记忆 + 历史
             active_vendors = {}
-            for slot_key, sc in slots.items():
-                vk = sc.get("vendor_key", "")
-                if vk:
-                    active_vendors[slot_key] = vk
-                    try:
-                        switch_vendor(slot_key, vk)
-                    except Exception as ve:
-                        print(f"[Bridge] ⚠️ 切换 {slot_key}→{vk} 失败: {ve}")
-
-            # 2.5 持久化厂商绑定到 model_settings.json（重启后可恢复）
-            self._save_active_vendors(active_vendors)
-
-            # 3. 模型名覆盖并写入历史
             models = {}
             for slot_key, sc in slots.items():
-                mn = sc.get("model", "").strip()
+                vk = (sc.get("vendor_key") or "").strip()
+                ak = (sc.get("api_key") or "").strip()
+                bu = (sc.get("base_url") or "").strip()
+                mn = (sc.get("model") or "").strip()
+                if not vk:
+                    continue
+                active_vendors[slot_key] = vk
+
+                # 内置厂商的 key 仍可回写 .env（兼容旧链路）；自定义厂商持久化进目录
+                if ak:
+                    if vk in VENDOR_ENV_KEY_MAP:
+                        self._write_api_keys_to_env({vk: ak})
+                        if vk in VENDORS_PRESETS:
+                            VENDORS_PRESETS[vk]["api_key"] = ak
+                    elif vk in VENDORS_PRESETS:
+                        VENDORS_PRESETS[vk]["api_key"] = ak
+
+                # 切换厂商（应用槽位级覆盖到导出变量）
+                try:
+                    switch_vendor(slot_key, vk, api_key=ak or None, base_url=bu or None)
+                except Exception as ve:
+                    print(f"[Bridge] ⚠️ 切换 {slot_key}→{vk} 失败: {ve}")
+
+                # 写两级记忆（slot × vendor → 模型/key/base_url）
+                try:
+                    record_slot_usage(slot_key, vk, model=mn, api_key=ak, base_url=bu)
+                except Exception as me:
+                    print(f"[Bridge] ⚠️ 记录槽位记忆 {slot_key}/{vk} 失败: {me}")
+
                 if mn:
                     models[f"MODEL_{slot_key.upper()}"] = mn
                     _save_hist(slot_key, mn)
+
+            # 2. 持久化厂商绑定 + 模型名覆盖（兼容旧 load_dynamic_settings）
+            self._save_active_vendors(active_vendors)
             if models:
                 self._apply_model_overrides(models)
 
-            # 4. 热更新
+            # 3. 热更新所有模块
             self._hot_reload_all_modules()
 
-            # 5. 返回最新快照
+            # 4. 返回最新快照
             from src.model_presets import (
                 MODEL_LLM, MODEL_VLM, MODEL_VLM_ANALYZE, MODEL_IMG_CAST, MODEL_IMG_STORY,
-                get_vendor_list, get_active_vendor_keys,
+                get_vendor_list, get_active_vendor_keys, get_slot_memory,
             )
             active = get_active_vendor_keys()
             vendors = {}
@@ -686,8 +702,9 @@ class DesktopApiBridge:
                 "MODEL_VLM_ANALYZE": MODEL_VLM_ANALYZE,
                 "MODEL_IMG_CAST": MODEL_IMG_CAST, "MODEL_IMG_STORY": MODEL_IMG_STORY,
                 "active_vendors": active, "vendors": vendors,
+                "slot_memory": get_slot_memory(),
             }
-            print(f"[Bridge] ✅ 厂商配置已保存")
+            print(f"[Bridge] ✅ 厂商配置已保存（含槽位记忆）")
             return {"status": "success", "msg": "配置已保存并热更新", "data": result}
         except Exception as e:
             import traceback
@@ -781,6 +798,130 @@ class DesktopApiBridge:
                 return {"status": "error", "detail": f"HTTP {he.code}: {he.reason}"}
         except Exception as e:
             return {"status": "error", "detail": f"连接失败: {str(e)}"}
+
+    # ──────────────────────────────────────────────
+    # 🎛️ 组合预设（整套 5 槽位方案）+ 内联加厂商
+    # ──────────────────────────────────────────────
+    def save_combo_preset(self, name, slots):
+        """保存/覆盖一个命名的整套 5 槽位组合方案（厂商+模型+key+base_url）。"""
+        try:
+            from src.model_presets import save_combo_preset as _save, list_combo_presets
+            _save(name, slots or {})
+            return {"status": "success", "data": {"combo_presets": list_combo_presets()},
+                    "msg": f"组合预设「{name}」已保存"}
+        except Exception as e:
+            return {"status": "error", "detail": f"保存组合预设失败: {str(e)}"}
+
+    def delete_combo_preset(self, name):
+        """删除一个组合预设。"""
+        try:
+            from src.model_presets import delete_combo_preset as _del, list_combo_presets
+            _del(name)
+            return {"status": "success", "data": {"combo_presets": list_combo_presets()},
+                    "msg": f"组合预设「{name}」已删除"}
+        except Exception as e:
+            return {"status": "error", "detail": f"删除组合预设失败: {str(e)}"}
+
+    def apply_combo_preset(self, name):
+        """
+        一键应用整套组合预设：对 5 槽位逐个 switch_vendor + record_slot_usage，
+        回写 active_vendors / 模型覆盖，并热更新所有模块。
+        """
+        try:
+            from src.model_presets import (
+                apply_combo_preset as _get_preset, switch_vendor, record_slot_usage,
+                save_model_history as _save_hist, VENDOR_ENV_KEY_MAP, VENDORS_PRESETS,
+                MODEL_LLM, MODEL_VLM, MODEL_VLM_ANALYZE, MODEL_IMG_CAST, MODEL_IMG_STORY,
+                get_vendor_list, get_active_vendor_keys, get_slot_memory,
+            )
+            preset = _get_preset(name)  # {slot_key: {vendor_key, model, api_key, base_url}, ...}
+
+            active_vendors = {}
+            models = {}
+            for slot_key, sc in preset.items():
+                if slot_key.startswith("_") or not isinstance(sc, dict):
+                    continue
+                vk = (sc.get("vendor_key") or "").strip()
+                ak = (sc.get("api_key") or "").strip()
+                bu = (sc.get("base_url") or "").strip()
+                mn = (sc.get("model") or "").strip()
+                if not vk:
+                    continue
+                active_vendors[slot_key] = vk
+
+                if ak:
+                    if vk in VENDOR_ENV_KEY_MAP:
+                        self._write_api_keys_to_env({vk: ak})
+                    if vk in VENDORS_PRESETS:
+                        VENDORS_PRESETS[vk]["api_key"] = ak
+
+                try:
+                    switch_vendor(slot_key, vk, api_key=ak or None, base_url=bu or None)
+                except Exception as ve:
+                    print(f"[Bridge] ⚠️ 应用预设 切换 {slot_key}→{vk} 失败: {ve}")
+
+                try:
+                    record_slot_usage(slot_key, vk, model=mn, api_key=ak, base_url=bu)
+                except Exception as me:
+                    print(f"[Bridge] ⚠️ 应用预设 记录记忆 {slot_key}/{vk} 失败: {me}")
+
+                if mn:
+                    models[f"MODEL_{slot_key.upper()}"] = mn
+                    _save_hist(slot_key, mn)
+
+            self._save_active_vendors(active_vendors)
+            if models:
+                self._apply_model_overrides(models)
+            self._hot_reload_all_modules()
+
+            from src.model_presets import (
+                MODEL_LLM as L, MODEL_VLM as V, MODEL_VLM_ANALYZE as VA,
+                MODEL_IMG_CAST as IC, MODEL_IMG_STORY as IS,
+            )
+            active = get_active_vendor_keys()
+            vendors = {}
+            for v in get_vendor_list(active_vendor_keys=active):
+                vendors[v["vendor_key"]] = v
+            result = {
+                "MODEL_LLM": L, "MODEL_VLM": V, "MODEL_VLM_ANALYZE": VA,
+                "MODEL_IMG_CAST": IC, "MODEL_IMG_STORY": IS,
+                "active_vendors": active, "vendors": vendors,
+                "slot_memory": get_slot_memory(),
+            }
+            print(f"[Bridge] ✅ 已应用组合预设「{name}」")
+            return {"status": "success", "msg": f"已应用组合预设「{name}」", "data": result}
+        except Exception as e:
+            import traceback
+            print(f"❌ [Bridge] 应用组合预设失败: {traceback.format_exc()}")
+            return {"status": "error", "detail": f"应用组合预设失败: {str(e)}"}
+
+    def add_inline_provider(self, cfg):
+        """
+        厂商下拉里「➕ 添加新厂商/中转站」内联新增。
+        cfg = {"vendor_name": ..., "base_url": ..., "api_key": ...(可选),
+               "api_format": "openai"(默认), "model_variants": [...](可选)}
+        返回新厂商 key + 最新供应商目录，供前端把它选中。
+        """
+        try:
+            from src.model_presets import save_provider as _save, list_all_providers
+            cfg = cfg or {}
+            if not (cfg.get("vendor_name") or "").strip():
+                return {"status": "error", "detail": "厂商名称不能为空"}
+            if not (cfg.get("base_url") or "").strip():
+                return {"status": "error", "detail": "Base URL 不能为空"}
+            cfg.setdefault("api_format", "openai")
+            cfg.setdefault("enabled", True)
+            res = _save(cfg)
+            self._hot_reload_all_modules()
+            return {"status": "success",
+                    "data": {"vendor_key": res.get("vendor_key"),
+                             "builtin": res.get("builtin", False),
+                             "providers": list_all_providers()},
+                    "msg": f"已添加厂商「{cfg.get('vendor_name')}」"}
+        except Exception as e:
+            import traceback
+            print(f"❌ [Bridge] 内联添加厂商失败: {traceback.format_exc()}")
+            return {"status": "error", "detail": f"添加厂商失败: {str(e)}"}
 
     def _write_api_keys_to_env(self, api_keys: dict):
         """

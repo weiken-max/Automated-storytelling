@@ -3141,6 +3141,25 @@ function deleteCustomVoice() {
 
 let _cachedSlots = [];
 let _cachedVendors = {};
+let _cachedProviders = [];   // list_all_providers()：全部厂商（含自定义/中转站）
+let _cachedCombos = {};      // combo_presets：整套 5 槽位方案
+
+const INLINE_ADD_OPT = "__add_provider__";
+
+function _slotRoleModelKey(slotKey) {
+  if (slotKey === "llm") return "llm";
+  if (slotKey === "vlm" || slotKey === "vlm_analyze") return "vlm";
+  return "img";
+}
+
+// 厂商目录索引：vendor_key → provider 项（优先全量目录，回退已配厂商）
+function _providerByKey(vk) {
+  if (!vk) return null;
+  for (var i = 0; i < _cachedProviders.length; i++) {
+    if (_cachedProviders[i].vendor_key === vk) return _cachedProviders[i];
+  }
+  return _cachedVendors[vk] || null;
+}
 
 async function openModelSettingsModal() {
   if (typeof pywebview === 'undefined' || !pywebview.api) {
@@ -3155,6 +3174,9 @@ async function openModelSettingsModal() {
     }
     _cachedSlots = res.data.slots || [];
     _cachedVendors = res.data.vendors || {};
+    _cachedProviders = res.data.providers || [];
+    _cachedCombos = res.data.combo_presets || {};
+    _renderComboPresetSelect();
     _renderModelCards();
     document.getElementById("modelSettingsModal").classList.remove("hidden");
   } catch (err) {
@@ -3176,7 +3198,7 @@ function _renderModelCards() {
     const card = document.createElement("div");
     card.className = "bg-[#05070E] border border-slate-800 rounded-xl overflow-hidden transition-all";
 
-    const hasKey = slot.masked_key && slot.masked_key.length > 0;
+    const hasKey = (slot.api_key && slot.api_key.length > 0) || (slot.masked_key && slot.masked_key.length > 0);
     const statusColor = hasKey ? "text-emerald-400" : "text-red-400";
     const statusDot = hasKey ? "🟢" : "🔴";
 
@@ -3186,7 +3208,7 @@ function _renderModelCards() {
         <div class="flex items-center space-x-2.5 min-w-0">
           <span class="text-sm">${slot.icon}</span>
           <span class="text-[11px] font-semibold text-slate-200 whitespace-nowrap">${slot.name}</span>
-          <span class="text-[9px] text-slate-500 truncate">${slot.vendor_name} | ${slot.model}</span>
+          <span id="card_summary_${slot.key}" class="text-[9px] text-slate-500 truncate">${slot.vendor_name} | ${slot.model}</span>
         </div>
         <div class="flex items-center space-x-2 shrink-0 ml-2">
           <span class="${statusColor} text-[9px]">${statusDot}</span>
@@ -3196,14 +3218,14 @@ function _renderModelCards() {
       <div id="card_body_${slot.key}" class="hidden px-3 pb-3 pt-1 border-t border-slate-800/60 space-y-2.5">
         <p class="text-[9px] text-slate-500">${slot.desc}</p>
         <div>
-          <label class="text-[9px] text-slate-500 mb-1 block">厂商</label>
+          <label class="text-[9px] text-slate-500 mb-1 block">厂商 / 中转站</label>
           <select id="vendor_sel_${slot.key}" onchange="onCardVendorChange('${slot.key}')"
                   class="w-full bg-[#0a0e1a] border border-slate-750 rounded-lg p-1.5 text-xs text-slate-200 focus:border-indigo-500 focus:outline-none">
           </select>
           <div id="vendor_url_${slot.key}" class="text-[8px] text-slate-600 font-mono mt-0.5 truncate"></div>
         </div>
         <div>
-          <label class="text-[9px] text-slate-500 mb-1 block">API Key</label>
+          <label class="text-[9px] text-slate-500 mb-1 block">API Key（该槽位独立）</label>
           <div class="flex gap-1.5">
             <input id="apikey_${slot.key}" type="password" value="${slot.api_key || ''}"
                    class="flex-1 bg-[#0a0e1a] border border-slate-750 rounded-lg p-1.5 text-xs text-slate-200 font-mono focus:border-indigo-500 focus:outline-none">
@@ -3215,20 +3237,15 @@ function _renderModelCards() {
           <label class="text-[9px] text-slate-500 mb-1 block">模型名</label>
           <input id="model_${slot.key}" type="text" list="hist_${slot.key}" value="${slot.model}"
                  class="w-full bg-[#0a0e1a] border border-slate-750 rounded-lg p-1.5 text-xs text-slate-200 font-mono focus:border-indigo-500 focus:outline-none">
-          <datalist id="hist_${slot.key}">
-            ${(() => {
-              var v = _cachedVendors[slot.vendor_key];
-              var vars = (v && v.model_variants) || [];
-              var hist = slot.model_history || [];
-              var all = vars.concat(hist.filter(function(h) { return vars.indexOf(h) === -1; }));
-              return all.map(function(m) { return '<option value="' + m + '">'; }).join("");
-            })()}
-          </datalist>
+          <datalist id="hist_${slot.key}"></datalist>
         </div>
       </div>
     `;
     container.appendChild(card);
-    setTimeout(() => _populateCardVendorSelect(slot.key, slot.vendor_key), 0);
+    setTimeout(() => {
+      _populateCardVendorSelect(slot.key, slot.vendor_key);
+      _rebuildModelDatalist(slot.key);
+    }, 0);
   });
 }
 
@@ -3236,13 +3253,61 @@ function _populateCardVendorSelect(slotKey, currentVendorKey) {
   const sel = document.getElementById('vendor_sel_' + slotKey);
   if (!sel) return;
   sel.innerHTML = "";
-  Object.entries(_cachedVendors).forEach(([vk, v]) => {
+
+  const slot = _cachedSlots.find(function (s) { return s.key === slotKey; });
+  const memory = (slot && slot.memory) || {};
+  const memVendorKeys = Object.keys(memory);
+
+  // 已用厂商集合（用于去重）
+  const usedSet = {};
+
+  // 1) 最近使用（该槽位记忆里的厂商）
+  if (memVendorKeys.length) {
+    const g1 = document.createElement("optgroup");
+    g1.label = "最近使用";
+    memVendorKeys.forEach(function (vk) {
+      const p = _providerByKey(vk);
+      const name = (p && p.vendor_name) || vk;
+      const opt = document.createElement("option");
+      opt.value = vk;
+      opt.textContent = "⭐ " + name;
+      if (vk === currentVendorKey) opt.selected = true;
+      g1.appendChild(opt);
+      usedSet[vk] = true;
+    });
+    sel.appendChild(g1);
+  }
+
+  // 2) 全部厂商（启用的，排除已在“最近使用”里的）
+  const g2 = document.createElement("optgroup");
+  g2.label = "全部厂商";
+  _cachedProviders.forEach(function (p) {
+    if (p.enabled === false) return;
+    if (usedSet[p.vendor_key]) return;
     const opt = document.createElement("option");
-    opt.value = vk;
-    opt.textContent = v.vendor_name + '  ' + (v.has_key ? "🟢" : "🔴");
-    if (vk === currentVendorKey) opt.selected = true;
-    sel.appendChild(opt);
+    opt.value = p.vendor_key;
+    opt.textContent = p.vendor_name + (p.has_key ? "  🟢" : "  🔴");
+    if (p.vendor_key === currentVendorKey) opt.selected = true;
+    g2.appendChild(opt);
+    usedSet[p.vendor_key] = true;
   });
+  // 当前绑定的厂商若不在目录里（已禁用/被删），仍补一条以免丢失选择
+  if (currentVendorKey && !usedSet[currentVendorKey]) {
+    const p = _providerByKey(currentVendorKey);
+    const opt = document.createElement("option");
+    opt.value = currentVendorKey;
+    opt.textContent = ((p && p.vendor_name) || currentVendorKey) + "（当前）";
+    opt.selected = true;
+    g2.appendChild(opt);
+  }
+  sel.appendChild(g2);
+
+  // 3) 内联添加
+  const optAdd = document.createElement("option");
+  optAdd.value = INLINE_ADD_OPT;
+  optAdd.textContent = "➕ 添加新厂商 / 中转站…";
+  sel.appendChild(optAdd);
+
   _updateCardVendorUrl(slotKey);
 }
 
@@ -3250,28 +3315,42 @@ function _updateCardVendorUrl(slotKey) {
   const sel = document.getElementById('vendor_sel_' + slotKey);
   const urlEl = document.getElementById('vendor_url_' + slotKey);
   if (!sel || !urlEl) return;
-  const v = _cachedVendors[sel.value];
-  urlEl.textContent = v ? v.base_url : "";
+  if (sel.value === INLINE_ADD_OPT) { urlEl.textContent = ""; return; }
+  const slot = _cachedSlots.find(function (s) { return s.key === slotKey; });
+  const mem = (slot && slot.memory && slot.memory[sel.value]) || {};
+  const p = _providerByKey(sel.value);
+  urlEl.textContent = mem.base_url || (p ? p.base_url : "") || "";
 }
 
 function onCardVendorChange(slotKey) {
-  _updateCardVendorUrl(slotKey);
   var sel = document.getElementById('vendor_sel_' + slotKey);
+  if (!sel) return;
+
+  // 选中“➕ 添加新厂商/中转站”
+  if (sel.value === INLINE_ADD_OPT) {
+    openInlineProvider(slotKey);
+    // 暂时回退到该槽位上次的厂商，等添加成功后再切
+    var slotPrev = _cachedSlots.find(function (s) { return s.key === slotKey; });
+    sel.value = (slotPrev && slotPrev.vendor_key) || "";
+    return;
+  }
+
+  _updateCardVendorUrl(slotKey);
   var modelInput = document.getElementById('model_' + slotKey);
   var apiKeyInput = document.getElementById('apikey_' + slotKey);
-  if (!sel) return;
-  var v = _cachedVendors[sel.value];
-  if (!v) return;
-  // 更新 API Key 输入框
-  if (apiKeyInput) apiKeyInput.value = v.api_key || '';
-  // 更新模型名
-  var dm = v.default_models || {};
-  var def = "";
-  if (slotKey === "llm") def = dm.llm;
-  else if (slotKey === "vlm" || slotKey === "vlm_analyze") def = dm.vlm;
-  else def = dm.img;
-  if (def && modelInput) modelInput.value = def;
-  // 重建模型名历史 datalist（含当前厂商变体）
+  var slot = _cachedSlots.find(function (s) { return s.key === slotKey; });
+  var vk = sel.value;
+  var mem = (slot && slot.memory && slot.memory[vk]) || {};
+  var p = _providerByKey(vk) || {};
+
+  // API Key：优先该槽位对该厂商记忆的 key → 厂商目录 key
+  if (apiKeyInput) apiKeyInput.value = mem.api_key || p.api_key || '';
+
+  // 模型名：优先该槽位×厂商记忆里最近用的模型 → 厂商默认模型
+  var modelKey = _slotRoleModelKey(slotKey);
+  var def = (mem.models && mem.models[0]) || (p.default_models && p.default_models[modelKey]) || "";
+  if (modelInput) modelInput.value = def;
+
   _rebuildModelDatalist(slotKey);
 }
 
@@ -3279,17 +3358,27 @@ function _rebuildModelDatalist(slotKey) {
   var dl = document.getElementById('hist_' + slotKey);
   if (!dl) return;
   dl.innerHTML = "";
-  var slot = _cachedSlots.find(function(s) { return s.key === slotKey; });
-  var history = (slot && slot.model_history) || [];
-  // 加当前厂商的默认模型名变体（如有）
   var sel = document.getElementById('vendor_sel_' + slotKey);
-  if (sel) {
-    var v = _cachedVendors[sel.value];
-    if (v && v.model_variants) {
-      history = v.model_variants.concat(history.filter(function(h) { return v.model_variants.indexOf(h) === -1; }));
-    }
+  var slot = _cachedSlots.find(function (s) { return s.key === slotKey; });
+  var vk = sel ? sel.value : (slot && slot.vendor_key);
+  if (vk === INLINE_ADD_OPT) return;
+
+  var list = [];
+  // 该槽位×该厂商记忆里用过的模型（两级记忆的第二级）
+  var mem = (slot && slot.memory && slot.memory[vk]) || {};
+  if (mem.models && mem.models.length) list = list.concat(mem.models);
+  // 厂商预置变体
+  var p = _providerByKey(vk);
+  if (p && p.model_variants) {
+    p.model_variants.forEach(function (m) { if (list.indexOf(m) === -1) list.push(m); });
   }
-  history.forEach(function(m) {
+  // 该厂商默认模型
+  if (p && p.default_models) {
+    var modelKey = _slotRoleModelKey(slotKey);
+    var d = p.default_models[modelKey];
+    if (d && list.indexOf(d) === -1) list.push(d);
+  }
+  list.forEach(function (m) {
     var opt = document.createElement("option");
     opt.value = m;
     dl.appendChild(opt);
@@ -3316,40 +3405,32 @@ function togglePw(inputId) {
   if (inp) inp.type = inp.type === "password" ? "text" : "password";
 }
 
-async function saveVendorSettings() {
-  if (typeof pywebview === 'undefined' || !pywebview.api) return;
-
+// 收集当前 5 槽位 UI → slots 结构
+function _collectSlotsFromUI() {
   var slots = {};
-  _cachedSlots.forEach(function(s) {
+  _cachedSlots.forEach(function (s) {
     var vkEl = document.getElementById('vendor_sel_' + s.key);
     var akEl = document.getElementById('apikey_' + s.key);
     var mnEl = document.getElementById('model_' + s.key);
+    var buEl = document.getElementById('vendor_url_' + s.key);
+    var vk = (vkEl && vkEl.value && vkEl.value !== INLINE_ADD_OPT) ? vkEl.value : s.vendor_key;
     slots[s.key] = {
-      vendor_key: (vkEl && vkEl.value) || s.vendor_key,
+      vendor_key: vk,
       api_key: (akEl && akEl.value) || "",
-      model: (mnEl && mnEl.value) || s.model
+      model: (mnEl && mnEl.value) || s.model,
+      base_url: (buEl && buEl.textContent) || s.base_url || ""
     };
   });
+  return slots;
+}
 
+async function saveVendorSettings() {
+  if (typeof pywebview === 'undefined' || !pywebview.api) return;
+  var slots = _collectSlotsFromUI();
   try {
     const res = await pywebview.api.save_vendor_settings({ slots: slots });
     if (res.status === "success") {
       showToast("🎉 配置已保存并热更新！");
-      if (res.data) {
-        _cachedSlots = _cachedSlots.map(function(s) {
-          var vk = (res.data.active_vendors && res.data.active_vendors[s.key]) || s.vendor_key;
-          var v = (res.data.vendors && res.data.vendors[vk]) || {};
-          return {
-            key: s.key, name: s.name, icon: s.icon, desc: s.desc,
-            vendor_key: vk,
-            vendor_name: v.vendor_name || s.vendor_name,
-            masked_key: v.masked_key || s.masked_key,
-            model: res.data['MODEL_' + s.key.toUpperCase()] || s.model,
-            model_history: s.model_history, base_url: v.base_url || s.base_url
-          };
-        });
-        _cachedVendors = res.data.vendors || _cachedVendors;
-      }
       closeModelSettingsModal();
     } else {
       showCustomModal("⚠️ 保存失败", res.detail || "未知错误");
@@ -3360,6 +3441,140 @@ async function saveVendorSettings() {
 }
 
 async function saveModelSettings() { await saveVendorSettings(); }
+
+// ================================================================
+// 🎛️ 组合预设（整套 5 槽位方案）
+// ================================================================
+function _renderComboPresetSelect() {
+  const sel = document.getElementById("comboPresetSelect");
+  if (!sel) return;
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">— 选择一个方案 —</option>';
+  Object.keys(_cachedCombos).forEach(function (name) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    sel.appendChild(opt);
+  });
+  if (prev && _cachedCombos[prev]) sel.value = prev;
+}
+
+async function applyComboPreset() {
+  const sel = document.getElementById("comboPresetSelect");
+  const name = sel ? sel.value : "";
+  if (!name) { showToast("请先选择一个组合预设"); return; }
+  try {
+    const res = await pywebview.api.apply_combo_preset(name);
+    if (res.status === "success") {
+      showToast("✅ 已应用方案「" + name + "」");
+      // 重新拉取最新配置刷新卡片
+      const r2 = await pywebview.api.get_model_settings();
+      if (r2.status === "success") {
+        _cachedSlots = r2.data.slots || _cachedSlots;
+        _cachedVendors = r2.data.vendors || _cachedVendors;
+        _cachedProviders = r2.data.providers || _cachedProviders;
+        _cachedCombos = r2.data.combo_presets || _cachedCombos;
+        _renderModelCards();
+      }
+    } else {
+      showCustomModal("⚠️ 应用失败", res.detail || "未知错误");
+    }
+  } catch (err) {
+    showCustomModal("⚠️ 接口异常", err.message || err);
+  }
+}
+
+async function saveComboPreset() {
+  const name = (prompt("给这套 5 槽位配置起个名字（例如：省钱套餐 / 高质量套餐）") || "").trim();
+  if (!name) return;
+  const slots = _collectSlotsFromUI();
+  try {
+    const res = await pywebview.api.save_combo_preset(name, slots);
+    if (res.status === "success") {
+      _cachedCombos = (res.data && res.data.combo_presets) || _cachedCombos;
+      _renderComboPresetSelect();
+      const sel = document.getElementById("comboPresetSelect");
+      if (sel) sel.value = name;
+      showToast("💾 已保存方案「" + name + "」");
+    } else {
+      showCustomModal("⚠️ 保存失败", res.detail || "未知错误");
+    }
+  } catch (err) {
+    showCustomModal("⚠️ 接口异常", err.message || err);
+  }
+}
+
+async function deleteComboPreset() {
+  const sel = document.getElementById("comboPresetSelect");
+  const name = sel ? sel.value : "";
+  if (!name) { showToast("请先选择要删除的方案"); return; }
+  showCustomModal("🗑 删除方案", "确定删除组合预设「" + name + "」？", "删除", true, async function () {
+    try {
+      const res = await pywebview.api.delete_combo_preset(name);
+      if (res.status === "success") {
+        _cachedCombos = (res.data && res.data.combo_presets) || {};
+        _renderComboPresetSelect();
+        showToast("已删除方案「" + name + "」");
+      } else {
+        showCustomModal("⚠️ 删除失败", res.detail || "未知错误");
+      }
+    } catch (err) {
+      showCustomModal("⚠️ 接口异常", err.message || err);
+    }
+  });
+}
+
+// ================================================================
+// ➕ 内联添加厂商 / 中转站
+// ================================================================
+function openInlineProvider(slotKey) {
+  document.getElementById("ip_slot_key").value = slotKey || "";
+  document.getElementById("ip_name").value = "";
+  document.getElementById("ip_base_url").value = "";
+  document.getElementById("ip_api_key").value = "";
+  document.getElementById("ip_model_variants").value = "";
+  document.getElementById("inlineProviderModal").classList.remove("hidden");
+}
+
+function closeInlineProvider() {
+  document.getElementById("inlineProviderModal").classList.add("hidden");
+}
+
+async function submitInlineProvider() {
+  const slotKey = document.getElementById("ip_slot_key").value;
+  const name = (document.getElementById("ip_name").value || "").trim();
+  const baseUrl = (document.getElementById("ip_base_url").value || "").trim();
+  const apiKey = (document.getElementById("ip_api_key").value || "").trim();
+  const variantsRaw = (document.getElementById("ip_model_variants").value || "").trim();
+  if (!name) { showToast("请填写厂商名称"); return; }
+  if (!baseUrl) { showToast("请填写 Base URL"); return; }
+  const variants = variantsRaw ? variantsRaw.split("\n").map(function (s) { return s.trim(); }).filter(Boolean) : [];
+
+  try {
+    const res = await pywebview.api.add_inline_provider({
+      vendor_name: name, base_url: baseUrl, api_key: apiKey,
+      api_format: "openai_compatible", model_variants: variants
+    });
+    if (res.status === "success") {
+      _cachedProviders = (res.data && res.data.providers) || _cachedProviders;
+      const newKey = res.data && res.data.vendor_key;
+      closeInlineProvider();
+      showToast("➕ 已添加「" + name + "」");
+      // 把新厂商选进触发的槽位并刷新
+      if (slotKey && newKey) {
+        _populateCardVendorSelect(slotKey, newKey);
+        const sel = document.getElementById('vendor_sel_' + slotKey);
+        if (sel) sel.value = newKey;
+        onCardVendorChange(slotKey);
+      }
+    } else {
+      showCustomModal("⚠️ 添加失败", res.detail || "未知错误");
+    }
+  } catch (err) {
+    showCustomModal("⚠️ 接口异常", err.message || err);
+  }
+}
+
 
 // ================================================================
 // 🏪 供应商管理面板（商业版：客户自配供应商/中转站）
@@ -3387,6 +3602,9 @@ function closeProviderManager() {
       if (res && res.status === "success") {
         _cachedSlots = res.data.slots || _cachedSlots;
         _cachedVendors = res.data.vendors || _cachedVendors;
+        _cachedProviders = res.data.providers || _cachedProviders;
+        _cachedCombos = res.data.combo_presets || _cachedCombos;
+        _renderComboPresetSelect();
         _renderModelCards();
       }
     }).catch(function() {});
